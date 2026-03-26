@@ -1,0 +1,139 @@
+# latent-inspector
+
+A fast CLI for inspecting and comparing learned representations across self-supervised vision models. Feed it an image, get a structured comparison of how DINOv2, DINOv3, MAE, I-JEPA, CLIP, and SigLIP see the world.
+
+```bash
+cargo install latent-inspector
+
+# Compare representations across models
+latent-inspector compare photo.jpg --models dinov2,dinov3,mae,ijepa,clip
+
+# Inspect a single model's representation
+latent-inspector inspect photo.jpg --model dinov2 --output report/
+
+# Find nearest neighbors across a dataset
+latent-inspector neighbors photo.jpg --model dinov2 --dataset imagenet-val/
+
+# Measure representation similarity between two models
+latent-inspector similarity --model-a dinov2 --model-b ijepa --dataset images/
+```
+
+## What it does
+
+SSL models learn to represent images in very different ways. DINO learns patch-level features that segment objects without supervision. MAE learns to reconstruct masked regions. I-JEPA predicts in latent space. CLIP aligns images with text. Each approach creates a different internal "view" of the same image.
+
+latent-inspector makes these differences visible and measurable.
+
+### For each model, it computes:
+
+- **Patch-level attention maps** — Where is the model looking? Which patches matter most?
+- **Feature PCA projection** — Reduce the high-dimensional representation to 3 RGB channels. Same-color regions have similar features.
+- **CLS token similarity** — How does the global representation compare across models?
+- **Patch cosine similarity matrix** — Which patches in model A correspond to which patches in model B?
+- **Representation rank** — Effective dimensionality of the learned features (higher = more expressive)
+- **Feature variance spectrum** — Distribution of information across dimensions (concentrated vs spread)
+- **k-NN patch classification** — How well do patches separate semantic categories without fine-tuning?
+
+### Output formats:
+
+- **Terminal** — Rich inline display with colored Unicode blocks (default)
+- **PNG** — Side-by-side comparison images
+- **JSON** — Raw metrics for scripting and analysis
+- **HTML** — Interactive report with hover-to-compare
+
+## Why Rust?
+
+Model inference runs via ONNX Runtime (C++ backend). The analysis pipeline (PCA, cosine similarity, k-NN, attention extraction) runs in native Rust. Parallel across all models via rayon.
+
+On a MacBook M3 Pro, comparing 5 models on a single image takes ~3 seconds. The equivalent Python pipeline takes ~25 seconds.
+
+For researchers processing thousands of images across multiple models, this matters.
+
+## Supported models
+
+| Model | Architecture | Method | Source |
+|-------|-------------|--------|--------|
+| DINOv2 | ViT-L/14 | Self-distillation + centering | Meta FAIR |
+| DINOv3 | ViT-7B (distilled to ViT-L) | Self-distillation + Gram anchoring | Meta FAIR |
+| MAE | ViT-L/16 | Masked autoencoder (reconstruction) | Meta FAIR |
+| I-JEPA | ViT-H/14 | Joint embedding predictive (latent prediction) | Meta FAIR |
+| CLIP | ViT-L/14 | Contrastive image-text | OpenAI |
+| SigLIP | ViT-SO400M/14 | Sigmoid contrastive image-text | Google |
+
+Models are downloaded automatically on first use (~300MB-2GB each) and cached locally.
+
+## Example: How different models see a street scene
+
+```
+$ latent-inspector compare street.jpg --models dinov2,mae,ijepa,clip
+
+Model Comparison: street.jpg
+═══════════════════════════════
+
+                DINOv2-L    MAE-L       I-JEPA-H    CLIP-L
+Repr. rank      487/1024    312/1024    445/1024    198/1024
+Top-10 var%     23.4%       41.7%       28.1%       62.3%
+Patch entropy   6.82        5.91        6.44        4.12
+CLS L2 norm     18.4        N/A         16.2        12.7
+
+Cross-model CLS cosine similarity:
+             DINOv2  MAE     I-JEPA  CLIP
+DINOv2       1.000   -       0.721   0.534
+MAE          -       -       -       -
+I-JEPA       0.721   -       1.000   0.488
+CLIP         0.534   -       0.488   1.000
+
+Attention concentration (Gini coefficient):
+DINOv2: 0.72 (focused)   MAE: 0.31 (diffuse)
+I-JEPA: 0.58 (moderate)  CLIP: 0.81 (very focused)
+
+[PNG outputs saved to ./compare_street/]
+```
+
+## Analysis modes
+
+### `compare` — Side-by-side model comparison
+The main command. Takes an image and a list of models. Produces attention maps, PCA projections, similarity matrices, and summary metrics. The default output everyone uses.
+
+### `inspect` — Deep dive into a single model
+Detailed analysis of one model's representation: per-layer attention maps, feature histograms, dead neuron count, representation collapse detection, per-head analysis for multi-head models.
+
+### `neighbors` — k-NN retrieval across a dataset
+Given an image and a dataset directory, find the most similar images according to each model. Reveals what each model considers "similar." DINO finds visually similar objects. CLIP finds semantically similar concepts. I-JEPA finds structurally similar scenes.
+
+### `similarity` — Representation alignment between models
+Centered Kernel Alignment (CKA) and mutual k-NN overlap between two models across a dataset. Answers: "How similarly do these two models represent the world?"
+
+### `drift` — Track representation changes across checkpoints
+Point it at a directory of model checkpoints (different training stages). Measures how representations evolve during training. Useful for understanding when models develop specific capabilities.
+
+## Dependencies
+
+```toml
+[dependencies]
+ort = "2"                    # ONNX Runtime bindings
+ndarray = "0.16"             # N-dimensional arrays
+image = "0.25"               # Image I/O
+rayon = "1.10"               # Parallel model inference
+clap = { version = "4", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+ratatui = "0.29"             # Terminal visualization
+crossterm = "0.28"
+indicatif = "0.17"           # Progress bars
+tracing = "0.1"
+thiserror = "2.0"
+dirs = "6"                   # Model cache directory
+reqwest = { version = "0.12", features = ["blocking"] }  # Model download
+```
+
+## How model loading works
+
+1. First run: download ONNX model from HuggingFace Hub to `~/.cache/latent-inspector/`
+2. Load via ONNX Runtime (CPU or GPU, auto-detected)
+3. Extract intermediate representations by hooking into specified layers
+4. All models normalized to a common interface: `image → patch_features [N_patches, D] + cls_token [D]`
+
+## License
+
+MIT OR Apache-2.0
