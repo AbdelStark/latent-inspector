@@ -16,3 +16,4 @@ tmp/
 compare_output/
 inspect_output/
 validation_output/
+.claude/worktrees/
