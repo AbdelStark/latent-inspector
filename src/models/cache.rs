@@ -28,13 +28,21 @@ pub fn model_path(model_name: &str) -> Result<PathBuf, ModelError> {
 
 /// Returns true if the model is already cached.
 pub fn is_cached(model_name: &str) -> Result<bool, ModelError> {
-    let entry = registry_entry(model_name)?;
-    for artifact in &entry.artifacts {
-        if !artifact_path(artifact)?.exists() {
-            return Ok(false);
-        }
+    #[cfg(not(feature = "onnx-inference"))]
+    {
+        let _ = model_name;
+        Ok(true)
     }
-    Ok(true)
+    #[cfg(feature = "onnx-inference")]
+    {
+        let entry = registry_entry(model_name)?;
+        for artifact in &entry.artifacts {
+            if !artifact_path(artifact)?.exists() {
+                return Ok(false);
+            }
+        }
+        Ok(true)
+    }
 }
 
 /// Download every artifact for a model and verify SHA-256 where configured.

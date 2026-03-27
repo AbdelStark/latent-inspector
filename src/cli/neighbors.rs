@@ -24,7 +24,10 @@ pub struct NeighborsArgs {
 }
 
 pub fn run(args: NeighborsArgs) -> Result<(), Error> {
-    info!("Finding {} neighbors for {:?} using {}", args.k, args.image, args.model);
+    info!(
+        "Finding {} neighbors for {:?} using {}",
+        args.k, args.image, args.model
+    );
 
     let session = ModelSession::load(&args.model)?;
 
@@ -33,7 +36,9 @@ pub fn run(args: NeighborsArgs) -> Result<(), Error> {
     let query_output = session.infer(&query_img)?;
     let query_features = ExtractedFeatures::from_output(query_output)?;
     let query_cls = query_features.cls_token.as_ref().ok_or_else(|| {
-        crate::errors::AnalysisError::EmptyInput("Model has no CLS token for neighbor search".into())
+        crate::errors::AnalysisError::EmptyInput(
+            "Model has no CLS token for neighbor search".into(),
+        )
     })?;
 
     // Embed all dataset images
@@ -63,7 +68,12 @@ pub fn run(args: NeighborsArgs) -> Result<(), Error> {
         .iter()
         .map(|(name, emb)| {
             let dot: f32 = query_cls.iter().zip(emb.iter()).map(|(a, b)| a * b).sum();
-            let na = query_cls.iter().map(|x| x * x).sum::<f32>().sqrt().max(1e-8);
+            let na = query_cls
+                .iter()
+                .map(|x| x * x)
+                .sum::<f32>()
+                .sqrt()
+                .max(1e-8);
             let nb = emb.iter().map(|x| x * x).sum::<f32>().sqrt().max(1e-8);
             (dot / (na * nb), name.as_str())
         })

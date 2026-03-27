@@ -48,11 +48,7 @@ pub fn top_k_neighbors(sim: &Array2<f32>, k: usize) -> Vec<Vec<usize>> {
 /// Mutual k-NN overlap: fraction of k nearest neighbors that agree between two representations.
 ///
 /// `a` and `b`: `[N, D_a]` and `[N, D_b]` — same samples, different representations.
-pub fn knn_overlap(
-    a: &Array2<f32>,
-    b: &Array2<f32>,
-    k: usize,
-) -> Result<f32, AnalysisError> {
+pub fn knn_overlap(a: &Array2<f32>, b: &Array2<f32>, k: usize) -> Result<f32, AnalysisError> {
     let na = a.shape()[0];
     let nb = b.shape()[0];
 

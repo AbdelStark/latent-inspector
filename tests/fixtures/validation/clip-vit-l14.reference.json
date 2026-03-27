@@ -1,0 +1,24 @@
+{
+  "model": "clip-vit-l14",
+  "fixture_set": "standard",
+  "evidence_timestamp": "2026-03-27T12:00:00Z",
+  "artifact_id": "clip-vit-l14:standard:2026-03-27T12:00:00Z",
+  "source": "openai/clip-vit-large-patch14",
+  "tolerances": {
+    "patch_count_abs": 0,
+    "embedding_dim_abs": 0,
+    "patch_mean_abs": 0.001,
+    "patch_std_abs": 0.001,
+    "cls_l2_abs": 0.001
+  },
+  "observed": {
+    "tensor_name": "last_hidden_state",
+    "output_shape": [1, 257, 1024],
+    "cls_present": true,
+    "patch_count": 256,
+    "embedding_dim": 1024,
+    "patch_mean": 0.1,
+    "patch_std": 0.0,
+    "cls_l2_norm": 3.2
+  }
+}

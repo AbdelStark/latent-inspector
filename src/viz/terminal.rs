@@ -1,6 +1,7 @@
 //! Terminal rendering using Unicode block characters and ANSI colors.
 
 use crate::analysis::{ComparisonMetrics, ModelMetrics};
+use crate::validation::report::ModelValidationSummary;
 use ndarray::Array2;
 
 const BLOCK_CHARS: &[char] = &[' ', '░', '▒', '▓', '█'];
@@ -107,8 +108,7 @@ pub fn print_cls_similarity_matrix(comparisons: &[ComparisonMetrics], model_name
                 let val = comparisons
                     .iter()
                     .find(|c| {
-                        (c.model_a == a && c.model_b == b)
-                            || (c.model_a == b && c.model_b == a)
+                        (c.model_a == a && c.model_b == b) || (c.model_a == b && c.model_b == a)
                     })
                     .and_then(|c| c.cls_cosine_sim)
                     .map(|v| format!("{:.3}", v))
@@ -118,6 +118,34 @@ pub fn print_cls_similarity_matrix(comparisons: &[ComparisonMetrics], model_name
         }
         println!();
     }
+}
+
+pub fn print_validation_summaries(summaries: &[ModelValidationSummary]) {
+    println!();
+    println!("Validation Summary");
+    println!("{}", "═".repeat(100));
+    println!(
+        "{:<20} {:<12} {:<12} {:<18} Recommendation",
+        "Model", "Status", "Parity", "Evidence"
+    );
+    println!("{}", "─".repeat(100));
+
+    for summary in summaries {
+        println!(
+            "{:<20} {:<12} {:<12} {:<18} {}",
+            truncate(&summary.model, 19),
+            summary.status.label(),
+            summary.parity.status.label(),
+            truncate(&summary.evidence_timestamp, 17),
+            truncate(&summary.recommendation, 44),
+        );
+
+        if !summary.caveats.is_empty() {
+            println!("  caveats: {}", summary.caveats.join(" | "));
+        }
+    }
+
+    println!("{}", "═".repeat(100));
 }
 
 fn truncate(s: &str, max: usize) -> String {

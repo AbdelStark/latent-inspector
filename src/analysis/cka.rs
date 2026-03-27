@@ -34,11 +34,7 @@ fn hsic(kc: &Array2<f32>, lc: &Array2<f32>) -> f32 {
         return 0.0;
     }
     // trace(Kc * Lc) = sum_{ij} Kc[i,j] * Lc[i,j]   (element-wise then sum)
-    let trace: f32 = kc
-        .iter()
-        .zip(lc.iter())
-        .map(|(a, b)| a * b)
-        .sum();
+    let trace: f32 = kc.iter().zip(lc.iter()).map(|(a, b)| a * b).sum();
     trace / ((n - 1) * (n - 1)) as f32
 }
 

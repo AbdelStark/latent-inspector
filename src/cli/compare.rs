@@ -2,6 +2,7 @@ use crate::analysis::{compute_comparison, compute_metrics, ComparisonMetrics, Mo
 use crate::errors::Error;
 use crate::extract::ExtractedFeatures;
 use crate::models::ModelSession;
+use crate::validation::summarize_session_or_unverified;
 use crate::viz::OutputFormat;
 use clap::Args;
 use rayon::prelude::*;
@@ -42,6 +43,11 @@ pub fn run(args: CompareArgs) -> Result<(), Error> {
         })
         .collect::<Result<Vec<_>, Error>>()?;
 
+    let validation_summaries = sessions
+        .iter()
+        .map(|(_, session)| summarize_session_or_unverified(session, None))
+        .collect::<Vec<_>>();
+
     // Run inference in parallel
     let outputs: Vec<(String, ExtractedFeatures)> = sessions
         .par_iter()
@@ -76,10 +82,10 @@ pub fn run(args: CompareArgs) -> Result<(), Error> {
         OutputFormat::Terminal => {
             crate::viz::terminal::print_metrics_table(&metrics);
             crate::viz::terminal::print_cls_similarity_matrix(&comparisons, &model_name_refs);
+            crate::viz::terminal::print_validation_summaries(&validation_summaries);
         }
         OutputFormat::Json => {
-            crate::viz::json::print_metrics(&metrics)?;
-            crate::viz::json::print_comparison(&comparisons)?;
+            crate::viz::json::print_report(&metrics, &comparisons, Some(&validation_summaries))?;
         }
         OutputFormat::Html => {
             let outdir = args
@@ -91,10 +97,11 @@ pub fn run(args: CompareArgs) -> Result<(), Error> {
                 .file_name()
                 .and_then(|n| n.to_str())
                 .unwrap_or("image");
-            crate::viz::html::write_report(
+            crate::viz::html::write_report_with_validation(
                 image_name,
                 &metrics,
                 &comparisons,
+                &validation_summaries,
                 &outdir.join("report.html"),
             )?;
             println!("Report written to {}/report.html", outdir.display());

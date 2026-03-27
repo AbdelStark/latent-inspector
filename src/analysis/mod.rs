@@ -120,8 +120,7 @@ pub fn compute_comparison(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::registry::{ModelInfo, SSLMethod};
-    use crate::models::ModelOutput;
+    use crate::models::{ModelInfo, ModelOutput, OutputTensorMetadata, SSLMethod};
     use ndarray::{Array1, Array2};
 
     fn features(name: &str, n_patches: usize, embed_dim: usize) -> ExtractedFeatures {
@@ -141,6 +140,15 @@ mod tests {
                 method: SSLMethod::DINO,
                 input_size: 224,
                 params_m: 300,
+            },
+            tensor_metadata: OutputTensorMetadata {
+                input_name: "pixel_values".into(),
+                input_shape: vec![1, 3, 224, 224],
+                output_name: "last_hidden_state".into(),
+                output_shape: vec![1, n_patches + 1, embed_dim],
+                sequence_has_cls: true,
+                observed_patch_count: n_patches,
+                embedding_dim: embed_dim,
             },
         })
         .unwrap()

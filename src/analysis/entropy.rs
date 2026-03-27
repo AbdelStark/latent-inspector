@@ -119,7 +119,12 @@ pub fn patch_norm_stats(patch_tokens: &Array2<f32>) -> NormStats {
     let var = norms.iter().map(|v| (v - mean).powi(2)).sum::<f32>() / n;
     let min = norms.iter().cloned().fold(f32::INFINITY, f32::min);
     let max = norms.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
-    NormStats { mean, std: var.sqrt(), min, max }
+    NormStats {
+        mean,
+        std: var.sqrt(),
+        min,
+        max,
+    }
 }
 
 #[cfg(test)]

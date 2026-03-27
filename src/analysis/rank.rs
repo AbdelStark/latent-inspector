@@ -57,9 +57,7 @@ mod tests {
     #[test]
     fn test_effective_rank_full() {
         // Diagonal data: identity-like, all dimensions active
-        let data = Array2::from_shape_fn((64, 8), |(i, j)| {
-            if i % 8 == j { 1.0 } else { 0.1 }
-        });
+        let data = Array2::from_shape_fn((64, 8), |(i, j)| if i % 8 == j { 1.0 } else { 0.1 });
         let rank = effective_rank(&data, 0.01, 8).unwrap();
         assert!(rank >= 1);
     }

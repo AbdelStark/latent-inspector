@@ -24,7 +24,9 @@ impl std::str::FromStr for OutputFormat {
             "png" => Ok(OutputFormat::Png),
             "json" => Ok(OutputFormat::Json),
             "html" => Ok(OutputFormat::Html),
-            other => Err(format!("Unknown output format: '{other}'. Use terminal|png|json|html")),
+            other => Err(format!(
+                "Unknown output format: '{other}'. Use terminal|png|json|html"
+            )),
         }
     }
 }

@@ -1,3 +1,3 @@
 pub mod loader;
 
-pub use loader::{DatasetIterator, ImageEntry, load_image, scan_images};
+pub use loader::{load_image, scan_images, DatasetIterator, ImageEntry};

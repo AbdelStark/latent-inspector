@@ -80,7 +80,7 @@ mod tests {
     use ndarray::Array2;
 
     fn dummy_output(n: usize, d: usize) -> ModelOutput {
-        use crate::models::registry::{ModelInfo, SSLMethod};
+        use crate::models::{ModelInfo, OutputTensorMetadata, SSLMethod};
         ModelOutput {
             cls_token: Some(Array1::from_elem(d, 1.0_f32)),
             patch_tokens: Array2::from_elem((n, d), 0.5_f32),
@@ -95,6 +95,15 @@ mod tests {
                 method: SSLMethod::DINO,
                 input_size: 224,
                 params_m: 100,
+            },
+            tensor_metadata: OutputTensorMetadata {
+                input_name: "pixel_values".into(),
+                input_shape: vec![1, 3, 224, 224],
+                output_name: "last_hidden_state".into(),
+                output_shape: vec![1, n + 1, d],
+                sequence_has_cls: true,
+                observed_patch_count: n,
+                embedding_dim: d,
             },
         }
     }

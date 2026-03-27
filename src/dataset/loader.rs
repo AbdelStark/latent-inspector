@@ -16,9 +16,7 @@ pub struct ImageEntry {
 /// Scan `dir` for image files and return them sorted by path.
 pub fn scan_images(dir: &Path) -> Result<Vec<ImageEntry>, DatasetError> {
     if !dir.exists() {
-        return Err(DatasetError::DirectoryNotFound(
-            dir.display().to_string(),
-        ));
+        return Err(DatasetError::DirectoryNotFound(dir.display().to_string()));
     }
 
     let mut entries: Vec<ImageEntry> = Vec::new();
@@ -81,7 +79,11 @@ impl DatasetIterator {
             None
         };
 
-        Ok(Self { entries, index: 0, progress })
+        Ok(Self {
+            entries,
+            index: 0,
+            progress,
+        })
     }
 
     pub fn len(&self) -> usize {
