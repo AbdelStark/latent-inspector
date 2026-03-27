@@ -148,6 +148,38 @@ pub fn print_validation_summaries(summaries: &[ModelValidationSummary]) {
     println!("{}", "═".repeat(100));
 }
 
+pub fn print_drift_summary(checkpoints: &[String], drift_rows: &[(String, String, f32)]) {
+    println!();
+    println!("Representation Drift");
+    println!("{}", "═".repeat(84));
+
+    if checkpoints.is_empty() {
+        println!("No .onnx checkpoint files were found.");
+        println!("{}", "═".repeat(84));
+        return;
+    }
+
+    println!("Checkpoints: {}", checkpoints.join(" -> "));
+    println!("{}", "─".repeat(84));
+
+    if drift_rows.is_empty() {
+        println!("Need at least two checkpoints to compute consecutive drift.");
+        println!("{}", "═".repeat(84));
+        return;
+    }
+
+    for (from, to, cka) in drift_rows {
+        println!(
+            "{:<26} -> {:<26} CKA={:.4}",
+            truncate(from, 25),
+            truncate(to, 25),
+            cka
+        );
+    }
+
+    println!("{}", "═".repeat(84));
+}
+
 fn truncate(s: &str, max: usize) -> String {
     if s.len() <= max {
         s.to_string()
@@ -173,5 +205,10 @@ mod tests {
         let lines: Vec<&str> = rendered.lines().collect();
         assert_eq!(lines.len(), 4);
         assert_eq!(lines[0].chars().count(), 4);
+    }
+
+    #[test]
+    fn test_truncate_adds_ellipsis() {
+        assert_eq!(truncate("checkpoint-0000001", 8), "checkpo…");
     }
 }

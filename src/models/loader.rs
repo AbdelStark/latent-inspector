@@ -6,6 +6,9 @@ use image::DynamicImage;
 use ndarray::{Array1, Array2, Array4, Axis, Ix3};
 use ort::session::Session;
 use ort::value::TensorRef;
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
+use std::path::Path;
 use tracing::info;
 
 /// Normalized output from any model.
@@ -43,7 +46,26 @@ pub struct ModelSession {
 /// Explicit backend used by a `ModelSession`.
 enum SessionInner {
     Onnx(Session),
-    Stub,
+    Stub(StubConfig),
+}
+
+#[derive(Debug, Clone, Copy)]
+struct StubConfig {
+    checkpoint_seed: Option<u64>,
+}
+
+impl StubConfig {
+    fn standard() -> Self {
+        Self {
+            checkpoint_seed: None,
+        }
+    }
+
+    fn checkpoint(path: &Path) -> Self {
+        Self {
+            checkpoint_seed: Some(stub_seed(path)),
+        }
+    }
 }
 
 impl ModelSession {
@@ -57,7 +79,7 @@ impl ModelSession {
             );
             return Ok(Self {
                 entry,
-                inner: SessionInner::Stub,
+                inner: SessionInner::Stub(StubConfig::standard()),
             });
         }
 
@@ -75,6 +97,27 @@ impl ModelSession {
         }
 
         let inner = Self::create_session(&entry, &path)?;
+        Ok(Self { entry, inner })
+    }
+
+    /// Load a model session from an explicit ONNX artifact path while reusing the
+    /// registered preprocessing and tensor contracts for the selected model.
+    pub fn load_checkpoint(model_name: &str, artifact_path: &Path) -> Result<Self, ModelError> {
+        let entry = registry::find_ready(model_name)?;
+        validate_artifact_path(&entry, artifact_path)?;
+
+        if use_stub_backend() {
+            info!(
+                "Using explicit stub backend for checkpoint '{}' via LATENT_INSPECTOR_MODEL_BACKEND=stub",
+                artifact_path.display()
+            );
+            return Ok(Self {
+                entry,
+                inner: SessionInner::Stub(StubConfig::checkpoint(artifact_path)),
+            });
+        }
+
+        let inner = Self::create_session(&entry, artifact_path)?;
         Ok(Self { entry, inner })
     }
 
@@ -236,11 +279,17 @@ impl ModelSession {
                     },
                 })
             }
-            SessionInner::Stub => {
-                let cls_token = contract
-                    .cls_expected
-                    .then(|| Array1::from_elem(expected_dim, 0.1_f32));
-                let patch_tokens = Array2::from_elem((expected_patches, expected_dim), 0.1_f32);
+            SessionInner::Stub(config) => {
+                let (cls_token, patch_tokens) = match config.checkpoint_seed {
+                    Some(seed) => seeded_stub_features(seed, tensor, contract),
+                    None => (
+                        contract
+                            .cls_expected
+                            .then(|| Array1::from_elem(expected_dim, 0.1_f32)),
+                        Array2::from_elem((expected_patches, expected_dim), 0.1_f32),
+                    ),
+                };
+
                 Ok(ModelOutput {
                     cls_token,
                     patch_tokens,
@@ -284,14 +333,107 @@ fn use_stub_backend() -> bool {
         .unwrap_or(false)
 }
 
+fn validate_artifact_path(entry: &RegistryEntry, artifact_path: &Path) -> Result<(), ModelError> {
+    if artifact_path.is_file() {
+        Ok(())
+    } else {
+        Err(ModelError::InvalidArtifactPath {
+            name: entry.info.name.clone(),
+            path: artifact_path.display().to_string(),
+            reason: "file does not exist".to_string(),
+        })
+    }
+}
+
+fn stub_seed(path: &Path) -> u64 {
+    let mut hasher = DefaultHasher::new();
+    path.to_string_lossy().hash(&mut hasher);
+    hasher.finish()
+}
+
+fn seeded_stub_features(
+    seed: u64,
+    tensor: &Array4<f32>,
+    contract: &registry::TensorContract,
+) -> (Option<Array1<f32>>, Array2<f32>) {
+    let (mean, stddev) = tensor_moments(tensor);
+    let flat_tensor = tensor.iter().copied().collect::<Vec<_>>();
+    let patch_tokens = Array2::from_shape_fn(
+        (contract.patch_count, contract.embedding_dim),
+        |(patch_idx, dim_idx)| {
+            let primary =
+                sampled_tensor_value(&flat_tensor, seed ^ 0x1111_1111, patch_idx, dim_idx);
+            let secondary =
+                sampled_tensor_value(&flat_tensor, seed ^ 0x2222_2222, dim_idx, patch_idx);
+            let gate = 0.30 + stub_unit(seed ^ 0x3333_3333, patch_idx, dim_idx) * 0.50;
+            let moment_bias = mean * (0.08 + gate * 0.10) + stddev * (0.04 + (1.0 - gate) * 0.08);
+            primary * gate
+                + secondary * (1.0 - gate)
+                + moment_bias
+                + stub_noise(seed, patch_idx, dim_idx)
+        },
+    );
+
+    let cls_token = contract.cls_expected.then(|| {
+        Array1::from_shape_fn(contract.embedding_dim, |dim_idx| {
+            let primary = sampled_tensor_value(&flat_tensor, seed ^ 0x4444_4444, 0, dim_idx);
+            let secondary = sampled_tensor_value(&flat_tensor, seed ^ 0x5555_5555, dim_idx, 0);
+            let gate = 0.35 + stub_unit(seed ^ 0x6666_6666, 0, dim_idx) * 0.45;
+            primary * gate
+                + secondary * (1.0 - gate)
+                + mean * 0.15
+                + stddev * 0.10
+                + stub_noise(seed ^ 0xA5A5_A5A5, 0, dim_idx)
+        })
+    });
+
+    (cls_token, patch_tokens)
+}
+
+fn tensor_moments(tensor: &Array4<f32>) -> (f32, f32) {
+    let count = tensor.len().max(1) as f32;
+    let mean = tensor.iter().copied().sum::<f32>() / count;
+    let variance = tensor
+        .iter()
+        .map(|value| {
+            let centered = *value - mean;
+            centered * centered
+        })
+        .sum::<f32>()
+        / count;
+    (mean, variance.sqrt())
+}
+
+fn sampled_tensor_value(values: &[f32], seed: u64, major: usize, minor: usize) -> f32 {
+    let len = values.len().max(1);
+    let index = ((seed as usize)
+        .wrapping_add((major + 1).wrapping_mul(131))
+        .wrapping_add((minor + 1).wrapping_mul(17)))
+        % len;
+    values[index]
+}
+
+fn stub_noise(seed: u64, major: usize, minor: usize) -> f32 {
+    (stub_unit(seed, major, minor) - 0.5) * 0.6
+}
+
+fn stub_unit(seed: u64, major: usize, minor: usize) -> f32 {
+    let mixed = seed
+        .wrapping_add((major as u64 + 1).wrapping_mul(0x9E37_79B1_85EB_CA87))
+        .wrapping_add((minor as u64 + 1).wrapping_mul(0xC2B2_AE3D_27D4_EB4F));
+    (mixed % 10_000) as f32 / 10_000.0
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
+    use tempfile::tempdir;
 
     impl ModelSession {
         fn stubbed(entry: RegistryEntry) -> Self {
             Self {
-                inner: SessionInner::Stub,
+                inner: SessionInner::Stub(StubConfig::standard()),
                 entry,
             }
         }
@@ -328,5 +470,41 @@ mod tests {
     fn test_load_rejects_planned_models() {
         let result = ModelSession::load("clip-vit-l14");
         assert!(matches!(result, Err(ModelError::Unavailable { .. })));
+    }
+
+    #[test]
+    fn test_checkpoint_stub_sessions_vary_by_path() {
+        let dir = tempdir().unwrap();
+        let first_path = dir.path().join("step-0001.onnx");
+        let second_path = dir.path().join("step-0002.onnx");
+        fs::write(&first_path, b"stub checkpoint").unwrap();
+        fs::write(&second_path, b"stub checkpoint").unwrap();
+
+        std::env::set_var("LATENT_INSPECTOR_MODEL_BACKEND", "stub");
+
+        let mut first = ModelSession::load_checkpoint("dinov2-vit-l14", &first_path).unwrap();
+        let mut second = ModelSession::load_checkpoint("dinov2-vit-l14", &second_path).unwrap();
+        let img = image::DynamicImage::new_rgb8(224, 224);
+
+        let first_output = first.infer(&img).unwrap();
+        let second_output = second.infer(&img).unwrap();
+
+        std::env::remove_var("LATENT_INSPECTOR_MODEL_BACKEND");
+
+        assert_ne!(
+            first_output.patch_tokens[[0, 0]],
+            second_output.patch_tokens[[0, 0]]
+        );
+    }
+
+    #[test]
+    fn test_load_checkpoint_requires_existing_artifact() {
+        let missing = Path::new("/definitely/missing/checkpoint.onnx");
+        let result = ModelSession::load_checkpoint("dinov2-vit-l14", missing);
+
+        assert!(matches!(
+            result,
+            Err(ModelError::InvalidArtifactPath { .. })
+        ));
     }
 }

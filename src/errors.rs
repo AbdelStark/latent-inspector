@@ -61,6 +61,13 @@ pub enum ModelError {
     #[error("Model '{0}' is missing download metadata")]
     MissingDownloadMetadata(String),
 
+    #[error("Model artifact path is invalid for '{name}': {path} ({reason})")]
+    InvalidArtifactPath {
+        name: String,
+        path: String,
+        reason: String,
+    },
+
     #[error("Hash verification failed for '{name}': expected {expected}, got {actual}")]
     VerificationFailed {
         name: String,

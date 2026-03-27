@@ -132,7 +132,7 @@ Given an image and a dataset directory, find the most similar images according t
 Centered Kernel Alignment (CKA) and mutual k-NN overlap between two models across a dataset. Answers: "How similarly do these two models represent the world?"
 
 ### `drift` — Track representation changes across checkpoints
-Point it at a directory of model checkpoints (different training stages). Measures how representations evolve during training. Useful for understanding when models develop specific capabilities.
+Point it at a directory of `.onnx` checkpoints (different training stages). Each file is loaded as its own session while reusing the selected model's registered preprocessing and tensor contract, then the command reports consecutive checkpoint CKA scores across the dataset. This is useful for understanding when representations materially shift during training.
 
 ## Dependencies
 
