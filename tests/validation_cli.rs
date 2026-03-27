@@ -130,6 +130,74 @@ fn validate_detects_reference_drift() {
 }
 
 #[test]
+fn validate_marks_stale_contract_evidence_without_reporting_runtime_failure() {
+    let fixtures = copy_fixture_dir();
+    let contract_path = fixtures.path().join("dinov2-vit-l14.contract.json");
+    let mut contract = read_json(&contract_path);
+    contract["profile"]["evidence_timestamp"] = Value::from("2026-03-28T00:00:00Z");
+    fs::write(
+        &contract_path,
+        serde_json::to_string_pretty(&contract).unwrap(),
+    )
+    .unwrap();
+
+    let outdir = tempdir().unwrap();
+    let output = run(&[
+        "validate",
+        "--model",
+        "dinov2-vit-l14",
+        "--fixture-set",
+        fixtures.path().join("manifest.json").to_str().unwrap(),
+        "--format",
+        "json",
+        "--output",
+        outdir.path().to_str().unwrap(),
+    ]);
+
+    assert_eq!(output.status.code(), Some(1));
+    let payload = read_json(&outdir.path().join("validation.json"));
+    let summary = &payload[0];
+    assert_eq!(summary["status"], "stale");
+    assert_eq!(summary["preprocess"]["status"], "stale");
+    assert_eq!(summary["tensors"][0]["status"], "stale");
+    assert_eq!(summary["parity"]["status"], "validated");
+}
+
+#[test]
+fn validate_marks_stale_reference_identity_without_reporting_parity_drift() {
+    let fixtures = copy_fixture_dir();
+    let reference_path = fixtures.path().join("dinov2-vit-l14.reference.json");
+    let mut reference = read_json(&reference_path);
+    reference["artifact_id"] = Value::from("dinov2-vit-l14:standard:outdated");
+    reference["observed"]["fixtures"][0]["patch_signature"][0] = Value::from(42.0);
+    fs::write(
+        &reference_path,
+        serde_json::to_string_pretty(&reference).unwrap(),
+    )
+    .unwrap();
+
+    let outdir = tempdir().unwrap();
+    let output = run(&[
+        "validate",
+        "--model",
+        "dinov2-vit-l14",
+        "--fixture-set",
+        fixtures.path().join("manifest.json").to_str().unwrap(),
+        "--format",
+        "json",
+        "--output",
+        outdir.path().to_str().unwrap(),
+    ]);
+
+    assert_eq!(output.status.code(), Some(1));
+    let payload = read_json(&outdir.path().join("validation.json"));
+    let summary = &payload[0];
+    assert_eq!(summary["status"], "stale");
+    assert_eq!(summary["parity"]["status"], "stale");
+    assert!(summary["parity"]["deltas"].is_null());
+}
+
+#[test]
 fn validate_refresh_goldens_rewrites_reference_artifact() {
     let fixtures = copy_fixture_dir();
     let reference_path = fixtures.path().join("dinov2-vit-l14.reference.json");

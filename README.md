@@ -93,6 +93,9 @@ cargo run -- validate --model dinov2-vit-l14 --refresh-goldens
 The validation summary reports preprocessing status, tensor semantics, approved
 reference parity, caveats, and a plain-language recommendation for whether the
 model is safe to interpret as source-aligned.
+If the checked-in contract or reference artifacts no longer match the current
+registry profile, the summary now reports `stale` instead of treating outdated
+evidence as a fresh pass or a runtime failure.
 
 ## Example: How different models see a street scene
 

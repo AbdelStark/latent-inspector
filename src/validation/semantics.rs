@@ -3,6 +3,7 @@ use crate::models::loader::ModelOutput;
 use crate::models::preprocess::{preprocess, PreprocessConfig};
 use crate::models::registry::RegistryEntry;
 use crate::validation::fixtures::{ContractArtifact, LoadedFixtureSet};
+use crate::validation::freshness::{preprocess_evidence_freshness, tensor_evidence_freshness};
 use crate::validation::report::{CheckSummary, TensorValidationSummary, ValidationStatus};
 
 pub fn evaluate_preprocess_contract(
@@ -10,44 +11,9 @@ pub fn evaluate_preprocess_contract(
     contract: &ContractArtifact,
     fixture_set: &LoadedFixtureSet,
 ) -> Result<CheckSummary, ValidationError> {
-    let expected = &contract.profile.preprocess;
+    let expected = &entry.validation.preprocess;
+    let freshness = preprocess_evidence_freshness(entry, contract, fixture_set);
     let mut mismatches = Vec::new();
-
-    if entry.validation.preprocess.input_size != expected.input_size {
-        mismatches.push(format!(
-            "input size mismatch: registry={} contract={}",
-            entry.validation.preprocess.input_size, expected.input_size
-        ));
-    }
-
-    if entry.validation.preprocess.resize_filter != expected.resize_filter {
-        mismatches.push(format!(
-            "resize filter mismatch: registry={} contract={}",
-            entry.validation.preprocess.resize_filter, expected.resize_filter
-        ));
-    }
-
-    if entry.validation.preprocess.color_space != expected.color_space {
-        mismatches.push(format!(
-            "color space mismatch: registry={} contract={}",
-            entry.validation.preprocess.color_space, expected.color_space
-        ));
-    }
-
-    if entry.validation.preprocess.layout != expected.layout {
-        mismatches.push(format!(
-            "tensor layout mismatch: registry={} contract={}",
-            entry.validation.preprocess.layout, expected.layout
-        ));
-    }
-
-    if entry.validation.preprocess.mean != expected.mean {
-        mismatches.push("normalization mean does not match the approved contract".to_string());
-    }
-
-    if entry.validation.preprocess.std != expected.std {
-        mismatches.push("normalization std does not match the approved contract".to_string());
-    }
 
     let fixture = fixture_set
         .materialize_fixtures()?
@@ -90,23 +56,38 @@ pub fn evaluate_preprocess_contract(
     }
 
     if mismatches.is_empty() {
-        Ok(CheckSummary::validated(
-            "Input size, normalization, resize filter, and channel layout match the approved source-model contract.",
-        ))
+        if freshness.is_stale() {
+            Ok(CheckSummary::stale(format!(
+                "Live preprocessing still matches the current registry contract, but the approved preprocessing evidence is stale: {}.",
+                freshness.reasons().join("; ")
+            )))
+        } else {
+            Ok(CheckSummary::validated(
+                "Input size, normalization, resize filter, and channel layout match the approved source-model contract.",
+            ))
+        }
     } else {
-        Ok(CheckSummary::failed(format!(
-            "Preprocessing contract mismatches detected: {}.",
+        let mut summary = format!(
+            "Live preprocessing no longer matches the current registry contract: {}.",
             mismatches.join("; ")
-        )))
+        );
+        if freshness.is_stale() {
+            summary.push_str(" Approved preprocessing evidence is also stale: ");
+            summary.push_str(&freshness.reasons().join("; "));
+            summary.push('.');
+        }
+        Ok(CheckSummary::failed(summary))
     }
 }
 
 pub fn evaluate_tensor_semantics(
     entry: &RegistryEntry,
     contract: &ContractArtifact,
+    fixture_set: &LoadedFixtureSet,
     output: &ModelOutput,
 ) -> Vec<TensorValidationSummary> {
-    let expected = &contract.profile.tensor;
+    let expected = &entry.validation.tensor;
+    let freshness = tensor_evidence_freshness(entry, contract, fixture_set);
     let observed_shape = output.tensor_metadata.output_shape.clone();
     let expected_shape = expected.expected_shape();
     let mut mismatches = Vec::new();
@@ -153,22 +134,35 @@ pub fn evaluate_tensor_semantics(
         ));
     }
 
-    let status = if mismatches.is_empty() {
-        ValidationStatus::Validated
-    } else {
+    let status = if !mismatches.is_empty() {
         ValidationStatus::Failed
+    } else if freshness.is_stale() {
+        ValidationStatus::Stale
+    } else {
+        ValidationStatus::Validated
     };
 
-    let summary = if mismatches.is_empty() {
-        format!(
-            "{} matches the expected {} contract for {} patch tokens.",
-            expected.name, expected.role, expected.patch_count
-        )
-    } else {
-        format!(
+    let summary = if !mismatches.is_empty() {
+        let mut summary = format!(
             "Tensor semantic mismatches detected for {}: {}.",
             entry.info.name,
             mismatches.join("; ")
+        );
+        if freshness.is_stale() {
+            summary.push_str(" Approved tensor evidence is also stale: ");
+            summary.push_str(&freshness.reasons().join("; "));
+            summary.push('.');
+        }
+        summary
+    } else if freshness.is_stale() {
+        format!(
+            "Live tensor semantics still match the current registry contract, but the approved tensor evidence is stale: {}.",
+            freshness.reasons().join("; ")
+        )
+    } else {
+        format!(
+            "{} matches the expected {} contract for {} patch tokens.",
+            expected.name, expected.role, expected.patch_count
         )
     };
 

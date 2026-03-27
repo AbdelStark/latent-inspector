@@ -18,6 +18,8 @@
    - tensor-semantic validation status
    - reference parity status
    - any caveats preventing the model from being treated as source-aligned
+   - `stale` evidence when the checked-in contract or reference artifacts no
+     longer match the current registry profile
 
 ## Scenario 2: Review machine-readable evidence
 
@@ -57,3 +59,6 @@
 3. Re-run the normal validation workflow without refresh and confirm the new
    baseline passes with the refreshed evidence and produces the updated
    artifact identity in the report.
+4. If the command still reports `stale`, refresh or update the checked-in
+   contract/fixture metadata as well; `--refresh-goldens` only rewrites the
+   reference artifacts.

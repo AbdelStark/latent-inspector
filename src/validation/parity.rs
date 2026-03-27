@@ -1,9 +1,10 @@
 use crate::models::loader::ModelOutput;
-use crate::models::registry::{ModelValidationProfile, ParityTolerances};
+use crate::models::registry::{ModelValidationProfile, ParityTolerances, RegistryEntry};
 use crate::validation::fixtures::{
-    build_reference_artifact_id, FixtureSignalSummary, MaterializedFixture, ReferenceArtifact,
-    ReferenceSignals,
+    build_reference_artifact_id, FixtureSignalSummary, LoadedFixtureSet, MaterializedFixture,
+    ReferenceArtifact, ReferenceSignals,
 };
+use crate::validation::freshness::parity_evidence_freshness;
 use crate::validation::report::{ParitySignalDelta, ParityValidationSummary, ValidationStatus};
 
 const SIGNATURE_SAMPLES: usize = 8;
@@ -184,6 +185,29 @@ pub fn compare_against_reference(
         fixture_set: Some(reference.fixture_set.clone()),
         deltas,
     }
+}
+
+pub fn evaluate_reference_parity(
+    entry: &RegistryEntry,
+    fixture_set: &LoadedFixtureSet,
+    observed: &ReferenceSignals,
+    reference: &ReferenceArtifact,
+) -> ParityValidationSummary {
+    let freshness = parity_evidence_freshness(entry, reference, fixture_set);
+    if freshness.is_stale() {
+        return ParityValidationSummary {
+            status: ValidationStatus::Stale,
+            summary: format!(
+                "Approved reference parity evidence is stale: {}.",
+                freshness.reasons().join("; ")
+            ),
+            artifact_id: Some(reference.artifact_id.clone()),
+            fixture_set: Some(reference.fixture_set.clone()),
+            deltas: Vec::new(),
+        };
+    }
+
+    compare_against_reference(observed, reference)
 }
 
 pub fn build_reference_artifact(
@@ -426,9 +450,9 @@ fn compare_numeric(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::registry::{ModelInfo, SSLMethod};
+    use crate::models::registry::{self, ModelInfo, SSLMethod};
     use crate::models::OutputTensorMetadata;
-    use crate::validation::fixtures::{FixturePattern, ValidationFixtureSpec};
+    use crate::validation::fixtures::{load_fixture_set, FixturePattern, ValidationFixtureSpec};
     use image::DynamicImage;
     use ndarray::{Array1, Array2};
 
@@ -542,5 +566,23 @@ mod tests {
             .deltas
             .iter()
             .any(|delta| delta.name == "fixtures.gradient-224.patch_signature[0]"));
+    }
+
+    #[test]
+    fn stale_reference_identity_short_circuits_numeric_parity() {
+        let fixture_set = load_fixture_set(None).unwrap();
+        let entry = registry::find("dinov2-vit-l14").unwrap();
+        let reference = fixture_set.load_reference("dinov2-vit-l14").unwrap();
+        let observed = reference.observed.clone();
+
+        let mut stale = reference.clone();
+        stale.artifact_id = "outdated".to_string();
+        stale.observed.fixtures[0].patch_signature[0] += 10.0;
+
+        let parity = evaluate_reference_parity(&entry, &fixture_set, &observed, &stale);
+
+        assert_eq!(parity.status, ValidationStatus::Stale);
+        assert!(parity.deltas.is_empty());
+        assert!(parity.summary.contains("stale"));
     }
 }

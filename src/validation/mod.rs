@@ -1,4 +1,5 @@
 pub mod fixtures;
+pub mod freshness;
 pub mod parity;
 pub mod report;
 pub mod semantics;
@@ -6,7 +7,7 @@ pub mod semantics;
 use crate::errors::{ModelError, ValidationError};
 use crate::models::ModelSession;
 use fixtures::{build_reference_artifact_id, load_fixture_set, ContractArtifact, LoadedFixtureSet};
-use parity::{build_reference_artifact, compare_against_reference, summarize_outputs};
+use parity::{build_reference_artifact, evaluate_reference_parity, summarize_outputs};
 use report::ModelValidationSummary;
 use semantics::{evaluate_preprocess_contract, evaluate_tensor_semantics};
 
@@ -99,7 +100,7 @@ pub fn validate_session_with_fixture_set(
         outputs.push(output);
     }
 
-    let tensors = evaluate_tensor_semantics(session.entry(), &contract, &outputs[0]);
+    let tensors = evaluate_tensor_semantics(session.entry(), &contract, fixture_set, &outputs[0]);
     let observed = summarize_outputs(fixtures.as_slice(), outputs.as_slice());
 
     let reference = if refresh_goldens {
@@ -111,7 +112,7 @@ pub fn validate_session_with_fixture_set(
         fixture_set.load_reference(&model)?
     };
 
-    let parity = compare_against_reference(&observed, &reference);
+    let parity = evaluate_reference_parity(session.entry(), fixture_set, &observed, &reference);
     let evidence_timestamp = reference.evidence_timestamp.clone();
     let artifact_id = reference.artifact_id.clone();
     let fixture_set_id = reference.fixture_set.clone();

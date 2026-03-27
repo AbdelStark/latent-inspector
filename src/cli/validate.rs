@@ -93,7 +93,7 @@ pub fn run(args: ValidateArgs) -> Result<(), Error> {
     } else {
         Err(ValidationError::FailedValidation {
             model: args.models.join(","),
-            reason: "One or more models failed validation.".to_string(),
+            reason: "One or more models did not reach validated status.".to_string(),
         }
         .into())
     }
