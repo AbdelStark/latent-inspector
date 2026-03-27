@@ -135,12 +135,18 @@ Detailed analysis of one model's representation: rank/entropy metrics, dead dime
 
 ### `neighbors` — k-NN retrieval across a dataset
 Given an image and a dataset directory, find the most similar images according to each model. Reveals what each model considers "similar." DINO finds visually similar objects. CLIP finds semantically similar concepts. I-JEPA finds structurally similar scenes.
+Dataset-backed commands recurse through nested directories and preserve relative
+paths in their reports, so class-folder layouts remain legible in neighbor
+lists.
 
 ### `similarity` — Representation alignment between models
 Centered Kernel Alignment (CKA) and mutual k-NN overlap between two models across a dataset. Answers: "How similarly do these two models represent the world?"
 
 ### `drift` — Track representation changes across checkpoints
 Point it at a directory of `.onnx` checkpoints (different training stages). Each file is loaded as its own session while reusing the selected model's registered preprocessing and tensor contract, then the command reports consecutive checkpoint CKA scores across the dataset. This is useful for understanding when representations materially shift during training.
+If a supported image file in the dataset is unreadable or corrupt, the command
+now skips that file, continues processing the rest of the dataset, and reports
+the skipped paths in the terminal summary instead of aborting the whole run.
 
 ## Dependencies
 

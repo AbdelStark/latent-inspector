@@ -1,6 +1,7 @@
 //! Terminal rendering using Unicode block characters and ANSI colors.
 
 use crate::analysis::{ComparisonMetrics, ModelMetrics};
+use crate::dataset::DatasetProcessingSummary;
 use crate::validation::report::ModelValidationSummary;
 use crate::viz::report::{CompareOverview, PairwiseMatrix};
 use ndarray::Array2;
@@ -224,6 +225,32 @@ pub fn print_validation_summaries(summaries: &[ModelValidationSummary]) {
     println!("{}", "═".repeat(100));
 }
 
+pub fn print_dataset_processing_summary(summary: &DatasetProcessingSummary) {
+    println!();
+    println!("Dataset Summary");
+    println!("{}", "═".repeat(84));
+    println!("Supported files: {}", summary.discovered);
+    println!("Loaded images:   {}", summary.loaded);
+    println!("Skipped images:  {}", summary.skipped);
+
+    for skipped in &summary.skipped_examples {
+        println!(
+            "  skipped: {} ({})",
+            truncate(&skipped.path, 36),
+            truncate(&skipped.reason, 40)
+        );
+    }
+
+    if summary.skipped > summary.skipped_examples.len() {
+        println!(
+            "  skipped: … plus {} more files",
+            summary.skipped - summary.skipped_examples.len()
+        );
+    }
+
+    println!("{}", "═".repeat(84));
+}
+
 pub fn print_drift_summary(checkpoints: &[String], drift_rows: &[(String, String, f32)]) {
     println!();
     println!("Representation Drift");
@@ -249,6 +276,21 @@ pub fn print_drift_summary(checkpoints: &[String], drift_rows: &[(String, String
             "{:<26} -> {:<26} CKA={:.4}",
             truncate(from, 25),
             truncate(to, 25),
+            cka
+        );
+    }
+
+    let mean_cka = drift_rows.iter().map(|(_, _, cka)| cka).sum::<f32>() / drift_rows.len() as f32;
+    if let Some((from, to, cka)) = drift_rows
+        .iter()
+        .min_by(|left, right| left.2.total_cmp(&right.2))
+    {
+        println!("{}", "─".repeat(84));
+        println!("Mean consecutive CKA: {:.4}", mean_cka);
+        println!(
+            "Largest shift: {} -> {} ({:.4})",
+            truncate(from, 22),
+            truncate(to, 22),
             cka
         );
     }

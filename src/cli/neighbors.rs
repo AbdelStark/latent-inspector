@@ -41,25 +41,32 @@ pub fn run(args: NeighborsArgs) -> Result<(), Error> {
         )
     })?;
 
-    // Embed all dataset images
-    let dataset = crate::dataset::DatasetIterator::new(&args.dataset, true)?;
-    let total = dataset.len();
-    info!("Dataset size: {total} images");
-
     let mut embeddings: Vec<(String, ndarray::Array1<f32>)> = Vec::new();
-
-    for result in dataset {
-        let (entry, img) = result?;
+    let dataset_summary = crate::dataset::for_each_image(&args.dataset, true, |entry, img| {
         let output = session.infer(&img)?;
         let features = ExtractedFeatures::from_output(output)?;
         if let Some(cls) = features.cls_token {
-            embeddings.push((entry.stem.clone(), cls));
+            embeddings.push((entry.stem, cls));
         }
+        Ok::<(), Error>(())
+    })?;
+    info!(
+        "Dataset size: {} supported images",
+        dataset_summary.discovered
+    );
+
+    if !dataset_summary.has_loaded_images() {
+        return Err(crate::errors::DatasetError::NoUsableImages(
+            args.dataset.display().to_string(),
+        )
+        .into());
     }
 
     if embeddings.is_empty() {
-        println!("No valid embeddings found in dataset.");
-        return Ok(());
+        return Err(crate::errors::AnalysisError::EmptyInput(
+            "Dataset produced no CLS embeddings for neighbor search".into(),
+        )
+        .into());
     }
 
     // Build similarity scores between query and all dataset entries
@@ -87,6 +94,7 @@ pub fn run(args: NeighborsArgs) -> Result<(), Error> {
     for (rank, (sim, name)) in scores.iter().take(args.k).enumerate() {
         println!("  {:2}. {:40} sim={:.4}", rank + 1, name, sim);
     }
+    crate::viz::terminal::print_dataset_processing_summary(&dataset_summary);
 
     Ok(())
 }

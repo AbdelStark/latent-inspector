@@ -38,11 +38,14 @@ fn drift_reports_consecutive_checkpoint_scores() {
 
     write_dataset_image(&dataset_dir, "sample-a", 5);
     write_dataset_image(&dataset_dir, "sample-b", 29);
-    write_dataset_image(&dataset_dir, "sample-c", 73);
+    let nested = dataset_dir.join("nested");
+    fs::create_dir_all(&nested).unwrap();
+    write_dataset_image(&nested, "sample-c", 73);
+    fs::write(dataset_dir.join("broken.png"), b"not an image").unwrap();
 
-    fs::write(checkpoints_dir.join("step-0001.onnx"), b"checkpoint-a").unwrap();
-    fs::write(checkpoints_dir.join("step-0002.onnx"), b"checkpoint-b").unwrap();
-    fs::write(checkpoints_dir.join("step-0003.onnx"), b"checkpoint-c").unwrap();
+    fs::write(checkpoints_dir.join("step-1.onnx"), b"checkpoint-a").unwrap();
+    fs::write(checkpoints_dir.join("step-2.onnx"), b"checkpoint-b").unwrap();
+    fs::write(checkpoints_dir.join("step-10.onnx"), b"checkpoint-c").unwrap();
 
     let output = Command::new(bin())
         .env("LATENT_INSPECTOR_MODEL_BACKEND", "stub")
@@ -62,9 +65,18 @@ fn drift_reports_consecutive_checkpoint_scores() {
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("Representation Drift"));
-    assert!(stdout.contains("step-0001"));
-    assert!(stdout.contains("step-0002"));
-    assert!(stdout.contains("step-0003"));
+    assert!(stdout.contains("Dataset Summary"));
+    assert!(stdout.contains("broken.png"));
+    assert!(stdout.contains("step-1"));
+    assert!(stdout.contains("step-2"));
+    assert!(stdout.contains("step-10"));
+    assert!(stdout.contains("Largest shift:"));
+
+    let step_1_index = stdout.find("step-1").unwrap();
+    let step_2_index = stdout.find("step-2").unwrap();
+    let step_10_index = stdout.find("step-10").unwrap();
+    assert!(step_1_index < step_2_index);
+    assert!(step_2_index < step_10_index);
 
     let scores = extract_cka_scores(&stdout);
     assert_eq!(scores.len(), 2);

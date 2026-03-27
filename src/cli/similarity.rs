@@ -35,19 +35,13 @@ pub fn run(args: SimilarityArgs) -> Result<(), Error> {
     let mut session_a = ModelSession::load(&args.model_a)?;
     let mut session_b = ModelSession::load(&args.model_b)?;
 
-    let dataset = crate::dataset::DatasetIterator::new(&args.dataset, true)?;
-    let total = dataset.len();
-    info!("Dataset: {total} images");
-
     let mut cls_a: Vec<ndarray::Array1<f32>> = Vec::new();
     let mut cls_b: Vec<ndarray::Array1<f32>> = Vec::new();
 
     let mut patch_rows_a: Vec<ndarray::Array1<f32>> = Vec::new();
     let mut patch_rows_b: Vec<ndarray::Array1<f32>> = Vec::new();
 
-    for result in dataset {
-        let (_, img) = result?;
-
+    let dataset_summary = crate::dataset::for_each_image(&args.dataset, true, |_, img| {
         let out_a = session_a.infer(&img)?;
         let out_b = session_b.infer(&img)?;
 
@@ -64,11 +58,15 @@ pub fn run(args: SimilarityArgs) -> Result<(), Error> {
 
         patch_rows_a.push(mean_a);
         patch_rows_b.push(mean_b);
-    }
+        Ok::<(), Error>(())
+    })?;
+    info!("Dataset: {} supported images", dataset_summary.discovered);
 
-    if patch_rows_a.is_empty() {
-        println!("No valid images processed.");
-        return Ok(());
+    if !dataset_summary.has_loaded_images() || patch_rows_a.is_empty() {
+        return Err(crate::errors::DatasetError::NoUsableImages(
+            args.dataset.display().to_string(),
+        )
+        .into());
     }
 
     let n = patch_rows_a.len();
@@ -124,10 +122,14 @@ pub fn run(args: SimilarityArgs) -> Result<(), Error> {
                         cls_b[0].len()
                     );
                 }
+            } else {
+                println!("  Mean CLS cosine sim: N/A (CLS tokens unavailable)");
             }
         }
         _ => {}
     }
+
+    crate::viz::terminal::print_dataset_processing_summary(&dataset_summary);
 
     Ok(())
 }

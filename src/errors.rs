@@ -136,6 +136,9 @@ pub enum DatasetError {
     #[error("No images found in: {0}")]
     NoImages(String),
 
+    #[error("No usable images could be processed from: {0}")]
+    NoUsableImages(String),
+
     #[error("Image load error for '{path}': {reason}")]
     ImageLoad { path: String, reason: String },
 
