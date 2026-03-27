@@ -47,12 +47,21 @@ pub struct ModelInfo {
 
 /// Full registry entry including download metadata.
 #[derive(Debug, Clone)]
-pub struct RegistryEntry {
-    pub info: ModelInfo,
+pub struct ModelArtifact {
+    /// Relative path within the cache directory.
+    pub relative_path: String,
     /// HuggingFace Hub download URL.
     pub download_url: String,
-    /// Expected SHA-256 hex digest of the ONNX file.
+    /// Expected SHA-256 hex digest of the downloaded file.
     pub sha256: String,
+}
+
+/// Full registry entry including download metadata.
+#[derive(Debug, Clone)]
+pub struct RegistryEntry {
+    pub info: ModelInfo,
+    /// One or more files required to run the model from cache.
+    pub artifacts: Vec<ModelArtifact>,
     /// Image normalization mean (RGB).
     pub norm_mean: [f32; 3],
     /// Image normalization std (RGB).
@@ -78,8 +87,12 @@ pub fn registry() -> Vec<RegistryEntry> {
                 input_size: 224,
                 params_m: 304,
             },
-            download_url: "https://huggingface.co/onnx-community/dinov2-large/resolve/main/onnx/model.onnx".to_string(),
-            sha256: "placeholder_sha256_dinov2_l14".to_string(),
+            artifacts: vec![ModelArtifact {
+                relative_path: "dinov2-vit-l14.onnx".to_string(),
+                download_url:
+                    "https://huggingface.co/onnx-community/dinov2-large/resolve/main/onnx/model.onnx".to_string(),
+                sha256: "placeholder_sha256_dinov2_l14".to_string(),
+            }],
             norm_mean: [0.485, 0.456, 0.406],
             norm_std: [0.229, 0.224, 0.225],
             input_name: "pixel_values".to_string(),
@@ -97,8 +110,12 @@ pub fn registry() -> Vec<RegistryEntry> {
                 input_size: 224,
                 params_m: 304,
             },
-            download_url: "https://huggingface.co/facebook/vit-mae-large/resolve/main/model.onnx".to_string(),
-            sha256: "placeholder_sha256_mae_l16".to_string(),
+            artifacts: vec![ModelArtifact {
+                relative_path: "mae-vit-l16.onnx".to_string(),
+                download_url:
+                    "https://huggingface.co/facebook/vit-mae-large/resolve/main/model.onnx".to_string(),
+                sha256: "placeholder_sha256_mae_l16".to_string(),
+            }],
             norm_mean: [0.5, 0.5, 0.5],
             norm_std: [0.5, 0.5, 0.5],
             input_name: "pixel_values".to_string(),
@@ -116,8 +133,12 @@ pub fn registry() -> Vec<RegistryEntry> {
                 input_size: 224,
                 params_m: 304,
             },
-            download_url: "https://huggingface.co/openai/clip-vit-large-patch14/resolve/main/onnx/visual.onnx".to_string(),
-            sha256: "placeholder_sha256_clip_l14".to_string(),
+            artifacts: vec![ModelArtifact {
+                relative_path: "clip-vit-l14.onnx".to_string(),
+                download_url:
+                    "https://huggingface.co/openai/clip-vit-large-patch14/resolve/main/onnx/visual.onnx".to_string(),
+                sha256: "placeholder_sha256_clip_l14".to_string(),
+            }],
             norm_mean: [0.48145467, 0.4578275, 0.40821073],
             norm_std: [0.268_629_54, 0.261_302_6, 0.275_777_1],
             input_name: "pixel_values".to_string(),
@@ -135,8 +156,22 @@ pub fn registry() -> Vec<RegistryEntry> {
                 input_size: 224,
                 params_m: 632,
             },
-            download_url: "https://huggingface.co/facebook/ijepa_vith14_1k/resolve/main/model.onnx".to_string(),
-            sha256: "placeholder_sha256_ijepa_h14".to_string(),
+            artifacts: vec![
+                ModelArtifact {
+                    relative_path: "ijepa-vit-h14/model.onnx".to_string(),
+                    download_url:
+                        "https://huggingface.co/onnx-community/ijepa_vith14_1k/resolve/main/onnx/model.onnx"
+                            .to_string(),
+                    sha256: "placeholder_sha256_ijepa_h14".to_string(),
+                },
+                ModelArtifact {
+                    relative_path: "ijepa-vit-h14/model.onnx_data".to_string(),
+                    download_url:
+                        "https://huggingface.co/onnx-community/ijepa_vith14_1k/resolve/main/onnx/model.onnx_data"
+                            .to_string(),
+                    sha256: "placeholder_sha256_ijepa_h14_data".to_string(),
+                },
+            ],
             norm_mean: [0.485, 0.456, 0.406],
             norm_std: [0.229, 0.224, 0.225],
             input_name: "pixel_values".to_string(),
@@ -154,8 +189,12 @@ pub fn registry() -> Vec<RegistryEntry> {
                 input_size: 224,
                 params_m: 400,
             },
-            download_url: "https://huggingface.co/google/siglip-so400m-patch14-224/resolve/main/onnx/model.onnx".to_string(),
-            sha256: "placeholder_sha256_siglip_so400m".to_string(),
+            artifacts: vec![ModelArtifact {
+                relative_path: "siglip-so400m.onnx".to_string(),
+                download_url:
+                    "https://huggingface.co/google/siglip-so400m-patch14-224/resolve/main/onnx/model.onnx".to_string(),
+                sha256: "placeholder_sha256_siglip_so400m".to_string(),
+            }],
             norm_mean: [0.5, 0.5, 0.5],
             norm_std: [0.5, 0.5, 0.5],
             input_name: "pixel_values".to_string(),
@@ -172,4 +211,10 @@ pub fn find(name: &str) -> Option<RegistryEntry> {
 /// List all known model names.
 pub fn model_names() -> Vec<String> {
     registry().into_iter().map(|e| e.info.name).collect()
+}
+
+impl RegistryEntry {
+    pub fn primary_artifact(&self) -> &ModelArtifact {
+        &self.artifacts[0]
+    }
 }

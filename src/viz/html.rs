@@ -49,7 +49,9 @@ fn render_html(
                 c.cls_cosine_sim.map(|v| format!("{:.3}", v)).unwrap_or("N/A".into()),
                 c.linear_cka,
                 c.knn_overlap_k10,
-                c.mean_patch_correspondence,
+                c.mean_patch_correspondence
+                    .map(|v| format!("{:.3}", v))
+                    .unwrap_or("N/A".into()),
             )
         })
         .collect::<Vec<_>>()

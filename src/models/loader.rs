@@ -27,24 +27,27 @@ pub struct ModelSession {
 /// Inner session — either a real ONNX session or a stub for testing.
 enum SessionInner {
     #[cfg(feature = "onnx-inference")]
-    Onnx(ort::Session),
+    Onnx(std::sync::Mutex<ort::session::Session>),
     Stub,
 }
 
 impl ModelSession {
     /// Load a model by name.  Downloads if not cached.
     pub fn load(model_name: &str) -> Result<Self, ModelError> {
-        let entry = registry::find(model_name).ok_or_else(|| {
-            ModelError::NotFound(model_name.to_string())
-        })?;
+        let entry = registry::find(model_name)
+            .ok_or_else(|| ModelError::NotFound(model_name.to_string()))?;
 
         let path = cache::model_path(model_name)?;
 
-        if !path.exists() {
+        if !cache::is_cached(model_name)? {
             info!("Model '{}' not found in cache — downloading", model_name);
-            cache::download(model_name, &entry.download_url, &path, &entry.sha256)?;
+            cache::download(model_name, &entry)?;
         } else {
-            info!("Model '{}' found in cache at {}", model_name, path.display());
+            info!(
+                "Model '{}' found in cache at {}",
+                model_name,
+                path.display()
+            );
         }
 
         let inner = Self::create_session(&path)?;
@@ -56,11 +59,11 @@ impl ModelSession {
         #[cfg(feature = "onnx-inference")]
         {
             if path.exists() {
-                let session = ort::Session::builder()
+                let session = ort::session::Session::builder()
                     .map_err(|e| ModelError::SessionCreation(e.to_string()))?
                     .commit_from_file(path)
                     .map_err(|e| ModelError::SessionCreation(e.to_string()))?;
-                return Ok(SessionInner::Onnx(session));
+                return Ok(SessionInner::Onnx(std::sync::Mutex::new(session)));
             }
         }
         let _ = path; // suppress unused warning in stub mode
@@ -68,33 +71,49 @@ impl ModelSession {
     }
 
     /// Run inference on a preprocessed image tensor `[1, 3, H, W]`.
-    pub fn run(&self, _tensor: &Array4<f32>) -> Result<ModelOutput, ModelError> {
+    pub fn run(&self, tensor: &Array4<f32>) -> Result<ModelOutput, ModelError> {
         let info = &self.entry.info;
         let n_patches = ((info.input_size / info.patch_size) as usize).pow(2);
         let d = info.embed_dim as usize;
+        #[cfg(not(feature = "onnx-inference"))]
+        let _ = tensor;
 
         match &self.inner {
             #[cfg(feature = "onnx-inference")]
             SessionInner::Onnx(session) => {
-                use ndarray::ArrayD;
-
                 let input_shape = tensor.shape().to_vec();
                 let flat: Vec<f32> = tensor.iter().copied().collect();
-                let ort_tensor = ort::Value::from_array(
-                    ndarray::Array::from_shape_vec(input_shape.as_slice(), flat)
-                        .map_err(|e| ModelError::InferenceFailed(e.to_string()))?,
-                )
+                let ort_tensor = ort::value::TensorRef::from_array_view((
+                    input_shape.as_slice(),
+                    flat.as_slice(),
+                ))
                 .map_err(|e| ModelError::InferenceFailed(e.to_string()))?;
 
+                let mut session = session.lock().map_err(|e| {
+                    ModelError::InferenceFailed(format!("Failed to lock ONNX session: {e}"))
+                })?;
                 let outputs = session
-                    .run(ort::inputs![self.entry.input_name.as_str() => ort_tensor]
-                        .map_err(|e| ModelError::InferenceFailed(e.to_string()))?)
+                    .run(ort::inputs![self.entry.input_name.as_str() => ort_tensor])
                     .map_err(|e| ModelError::InferenceFailed(e.to_string()))?;
 
-                let hidden: ort::Value = outputs[self.entry.output_name.as_str()].clone();
-                let hidden_array: ndarray::ArrayViewD<f32> = hidden
+                let hidden = outputs
+                    .get(self.entry.output_name.as_str())
+                    .ok_or_else(|| {
+                        ModelError::InferenceFailed(format!(
+                            "Output tensor '{}' not found",
+                            self.entry.output_name
+                        ))
+                    })?;
+                let (hidden_shape, hidden_data) = hidden
                     .try_extract_tensor::<f32>()
                     .map_err(|e| ModelError::InferenceFailed(e.to_string()))?;
+                let hidden_shape: Vec<usize> =
+                    hidden_shape.iter().map(|&dim| dim as usize).collect();
+                let hidden_array = ndarray::ArrayD::from_shape_vec(
+                    ndarray::IxDyn(&hidden_shape),
+                    hidden_data.to_vec(),
+                )
+                .map_err(|e| ModelError::InferenceFailed(e.to_string()))?;
 
                 // Shape: [1, seq_len, D] where seq_len = 1 (CLS) + N_patches
                 let seq_len = hidden_array.shape()[1];

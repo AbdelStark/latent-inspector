@@ -1,8 +1,9 @@
 use crate::errors::ModelError;
+use crate::models::registry::{self, ModelArtifact, RegistryEntry};
 use indicatif::{ProgressBar, ProgressStyle};
 use sha2::{Digest, Sha256};
 use std::fs;
-use std::io::Write;
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use tracing::{debug, info};
 
@@ -21,27 +22,54 @@ pub fn cache_dir() -> Result<PathBuf, ModelError> {
 
 /// Returns the expected path for a model's ONNX file in the cache.
 pub fn model_path(model_name: &str) -> Result<PathBuf, ModelError> {
-    Ok(cache_dir()?.join(format!("{}.onnx", model_name)))
+    let entry = registry_entry(model_name)?;
+    artifact_path(entry.primary_artifact())
 }
 
 /// Returns true if the model is already cached.
 pub fn is_cached(model_name: &str) -> Result<bool, ModelError> {
-    Ok(model_path(model_name)?.exists())
+    let entry = registry_entry(model_name)?;
+    for artifact in &entry.artifacts {
+        if !artifact_path(artifact)?.exists() {
+            return Ok(false);
+        }
+    }
+    Ok(true)
 }
 
-/// Download a model from `url`, save it to `dest`, and verify SHA-256.
-pub fn download(
-    model_name: &str,
-    url: &str,
-    dest: &Path,
-    expected_sha256: &str,
-) -> Result<(), ModelError> {
-    info!("Downloading {} from {}", model_name, url);
+/// Download every artifact for a model and verify SHA-256 where configured.
+pub fn download(model_name: &str, entry: &RegistryEntry) -> Result<(), ModelError> {
+    for artifact in &entry.artifacts {
+        let dest = artifact_path(artifact)?;
+        if let Some(parent) = dest.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        download_artifact(model_name, artifact, &dest)?;
+    }
+    Ok(())
+}
 
-    let response = reqwest::blocking::get(url).map_err(|e| ModelError::DownloadFailed {
-        name: model_name.to_string(),
-        reason: e.to_string(),
-    })?;
+fn download_artifact(
+    model_name: &str,
+    artifact: &ModelArtifact,
+    dest: &Path,
+) -> Result<(), ModelError> {
+    info!(
+        "Downloading {} from {}",
+        artifact.relative_path, artifact.download_url
+    );
+
+    let response =
+        reqwest::blocking::get(&artifact.download_url).map_err(|e| ModelError::DownloadFailed {
+            name: model_name.to_string(),
+            reason: e.to_string(),
+        })?;
+    let response = response
+        .error_for_status()
+        .map_err(|e| ModelError::DownloadFailed {
+            name: model_name.to_string(),
+            reason: e.to_string(),
+        })?;
 
     let total_bytes = response.content_length().unwrap_or(0);
 
@@ -52,32 +80,65 @@ pub fn download(
             .unwrap()
             .progress_chars("#>-"),
     );
-    pb.set_message(format!("Downloading {}", model_name));
-
-    let bytes = response.bytes().map_err(|e| ModelError::DownloadFailed {
-        name: model_name.to_string(),
-        reason: e.to_string(),
-    })?;
-
-    pb.finish_with_message(format!("Downloaded {}", model_name));
+    pb.set_message(format!("Downloading {}", artifact.relative_path));
 
     // Write to a temp file first
     let tmp = dest.with_extension("onnx.tmp");
     let mut file = fs::File::create(&tmp)?;
-    file.write_all(&bytes)?;
+    let mut response = response;
+    let mut hasher = (!artifact.sha256.starts_with("placeholder_")).then(Sha256::new);
+    let mut buf = vec![0u8; 1024 * 1024];
+
+    loop {
+        let n = response
+            .read(&mut buf)
+            .map_err(|e| ModelError::DownloadFailed {
+                name: model_name.to_string(),
+                reason: e.to_string(),
+            })?;
+        if n == 0 {
+            break;
+        }
+
+        file.write_all(&buf[..n])?;
+        if let Some(hasher) = hasher.as_mut() {
+            hasher.update(&buf[..n]);
+        }
+        pb.inc(n as u64);
+    }
     file.flush()?;
     drop(file);
+    pb.finish_with_message(format!("Downloaded {}", artifact.relative_path));
 
     // Verify hash (skip verification for placeholder hashes)
-    if !expected_sha256.starts_with("placeholder_") {
-        verify_sha256(&tmp, expected_sha256, model_name)?;
+    if let Some(hasher) = hasher {
+        let actual = hex::encode(hasher.finalize());
+        if actual != artifact.sha256 {
+            return Err(ModelError::VerificationFailed {
+                name: model_name.to_string(),
+                expected: artifact.sha256.clone(),
+                actual,
+            });
+        }
     }
 
     // Atomic rename
     fs::rename(&tmp, dest)?;
-    info!("Model {} saved to {}", model_name, dest.display());
+    info!(
+        "Model artifact {} saved to {}",
+        artifact.relative_path,
+        dest.display()
+    );
 
     Ok(())
+}
+
+fn registry_entry(model_name: &str) -> Result<RegistryEntry, ModelError> {
+    registry::find(model_name).ok_or_else(|| ModelError::NotFound(model_name.to_string()))
+}
+
+fn artifact_path(artifact: &ModelArtifact) -> Result<PathBuf, ModelError> {
+    Ok(cache_dir()?.join(&artifact.relative_path))
 }
 
 /// Verify the SHA-256 hash of a file.
@@ -114,6 +175,12 @@ mod tests {
     fn test_model_path_format() {
         let path = model_path("dinov2-vit-l14").unwrap();
         assert!(path.to_str().unwrap().ends_with("dinov2-vit-l14.onnx"));
+    }
+
+    #[test]
+    fn test_external_data_model_path_format() {
+        let path = model_path("ijepa-vit-h14").unwrap();
+        assert!(path.to_str().unwrap().ends_with("ijepa-vit-h14/model.onnx"));
     }
 
     #[test]

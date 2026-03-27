@@ -84,7 +84,10 @@ pub fn run(args: SimilarityArgs) -> Result<(), Error> {
         mat_b.row_mut(i).assign(&patch_rows_b[i]);
     }
 
-    println!("\nRepresentation similarity: {} vs {}", args.model_a, args.model_b);
+    println!(
+        "\nRepresentation similarity: {} vs {}",
+        args.model_a, args.model_b
+    );
     println!("Dataset: {} images", n);
     println!("{}", "═".repeat(55));
 
@@ -107,23 +110,22 @@ pub fn run(args: SimilarityArgs) -> Result<(), Error> {
     match args.metric.as_str() {
         "cosine" | "all" => {
             if !cls_a.is_empty() {
-                let dc = cls_a[0].len();
-                let mut mat_ca = Array2::<f32>::zeros((cls_a.len(), dc));
-                let mut mat_cb = Array2::<f32>::zeros((cls_b.len(), dc.min(cls_b[0].len())));
-                for i in 0..cls_a.len() {
-                    mat_ca.row_mut(i).assign(&cls_a[i]);
-                    let b_len = cls_b[i].len().min(dc);
-                    mat_cb.row_mut(i).slice_mut(ndarray::s![..b_len]).assign(
-                        &cls_b[i].slice(ndarray::s![..b_len]),
+                let same_width = cls_a.iter().zip(&cls_b).all(|(a, b)| a.len() == b.len());
+
+                if same_width {
+                    let mut total_sim = 0.0f32;
+                    for i in 0..cls_a.len() {
+                        total_sim += cls_cosine_similarity(&cls_a[i], &cls_b[i]);
+                    }
+                    let mean_sim = total_sim / cls_a.len() as f32;
+                    println!("  Mean CLS cosine sim: {:.4}", mean_sim);
+                } else {
+                    println!(
+                        "  Mean CLS cosine sim: N/A (embedding dims differ: {} vs {})",
+                        cls_a[0].len(),
+                        cls_b[0].len()
                     );
                 }
-                // Mean cosine similarity
-                let mut total_sim = 0.0f32;
-                for i in 0..cls_a.len() {
-                    total_sim += cls_cosine_similarity(&cls_a[i], &cls_b[i]);
-                }
-                let mean_sim = total_sim / cls_a.len() as f32;
-                println!("  Mean CLS cosine sim: {:.4}", mean_sim);
             }
         }
         _ => {}
