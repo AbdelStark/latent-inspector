@@ -33,7 +33,6 @@ pub fn preprocess(img: &DynamicImage, cfg: &PreprocessConfig) -> Result<Array4<f
             "normalization std must be non-zero for every channel".to_string(),
         ));
     }
-
     let size = cfg.input_size;
 
     // Resize to square

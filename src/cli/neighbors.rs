@@ -29,7 +29,7 @@ pub fn run(args: NeighborsArgs) -> Result<(), Error> {
         args.k, args.image, args.model
     );
 
-    let session = ModelSession::load(&args.model)?;
+    let mut session = ModelSession::load(&args.model)?;
 
     // Embed query image
     let query_img = image::open(&args.image)?;

@@ -32,8 +32,8 @@ pub fn run(args: SimilarityArgs) -> Result<(), Error> {
         args.model_a, args.model_b, args.dataset
     );
 
-    let session_a = ModelSession::load(&args.model_a)?;
-    let session_b = ModelSession::load(&args.model_b)?;
+    let mut session_a = ModelSession::load(&args.model_a)?;
+    let mut session_b = ModelSession::load(&args.model_b)?;
 
     let dataset = crate::dataset::DatasetIterator::new(&args.dataset, true)?;
     let total = dataset.len();
@@ -54,7 +54,6 @@ pub fn run(args: SimilarityArgs) -> Result<(), Error> {
         let feat_a = ExtractedFeatures::from_output(out_a)?;
         let feat_b = ExtractedFeatures::from_output(out_b)?;
 
-        // Collect CLS tokens before partially moving feat_a/feat_b
         let mean_a = feat_a.mean_patch();
         let mean_b = feat_b.mean_patch();
 
@@ -76,7 +75,6 @@ pub fn run(args: SimilarityArgs) -> Result<(), Error> {
     let da = patch_rows_a[0].len();
     let db = patch_rows_b[0].len();
 
-    // Build [N, D] matrices
     let mut mat_a = Array2::<f32>::zeros((n, da));
     let mut mat_b = Array2::<f32>::zeros((n, db));
     for i in 0..n {

@@ -127,11 +127,10 @@ mod tests {
     use tempfile::tempdir;
 
     #[test]
-    fn test_heatmap_color_range() {
-        for v in [0.0, 0.25, 0.5, 0.75, 1.0] {
-            let c = heatmap_color(v);
-            assert_eq!(c.len(), 3);
-        }
+    fn test_heatmap_color_clamps_to_expected_extremes() {
+        assert_eq!(heatmap_color(-1.0), [0, 0, 255]);
+        assert_eq!(heatmap_color(0.5), [0, 255, 0]);
+        assert_eq!(heatmap_color(2.0), [255, 0, 0]);
     }
 
     #[test]

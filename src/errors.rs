@@ -52,14 +52,30 @@ pub enum ModelError {
     #[error("Model not found in registry: {0}")]
     NotFound(String),
 
+    #[error("Model '{name}' is not available in the current implementation: {reason}")]
+    Unavailable { name: String, reason: String },
+
     #[error("Model download failed for '{name}': {reason}")]
     DownloadFailed { name: String, reason: String },
+
+    #[error("Model '{0}' is missing download metadata")]
+    MissingDownloadMetadata(String),
 
     #[error("Hash verification failed for '{name}': expected {expected}, got {actual}")]
     VerificationFailed {
         name: String,
         expected: String,
         actual: String,
+    },
+
+    #[error(
+        "Model graph for '{name}' is missing expected {kind} '{expected}'. Available {kind}s: {available:?}"
+    )]
+    GraphMismatch {
+        name: String,
+        kind: String,
+        expected: String,
+        available: Vec<String>,
     },
 
     #[error("ONNX inference error: {0}")]

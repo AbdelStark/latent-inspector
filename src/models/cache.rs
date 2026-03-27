@@ -1,11 +1,11 @@
 use crate::errors::ModelError;
-use crate::models::registry::{self, ModelArtifact, RegistryEntry};
+use crate::models::registry::{self, Checksum, ModelArtifact, RegistryEntry};
 use indicatif::{ProgressBar, ProgressStyle};
 use sha2::{Digest, Sha256};
 use std::fs;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 
 /// Returns the cache directory: `~/.cache/latent-inspector/`.
 pub fn cache_dir() -> Result<PathBuf, ModelError> {
@@ -20,33 +20,33 @@ pub fn cache_dir() -> Result<PathBuf, ModelError> {
     Ok(dir)
 }
 
-/// Returns the expected path for a model's ONNX file in the cache.
+/// Returns the expected path for a model's primary ONNX file in the cache.
 pub fn model_path(model_name: &str) -> Result<PathBuf, ModelError> {
     let entry = registry_entry(model_name)?;
-    artifact_path(entry.primary_artifact())
+    artifact_path(entry.primary_artifact()?)
 }
 
-/// Returns true if the model is already cached.
+/// Returns true if every required artifact for the model is already cached.
 pub fn is_cached(model_name: &str) -> Result<bool, ModelError> {
-    #[cfg(not(feature = "onnx-inference"))]
-    {
-        let _ = model_name;
-        Ok(true)
+    let entry = registry_entry(model_name)?;
+    if entry.artifacts.is_empty() {
+        return Ok(false);
     }
-    #[cfg(feature = "onnx-inference")]
-    {
-        let entry = registry_entry(model_name)?;
-        for artifact in &entry.artifacts {
-            if !artifact_path(artifact)?.exists() {
-                return Ok(false);
-            }
+
+    for artifact in &entry.artifacts {
+        if !artifact_path(artifact)?.exists() {
+            return Ok(false);
         }
-        Ok(true)
     }
+
+    Ok(true)
 }
 
-/// Download every artifact for a model and verify SHA-256 where configured.
+/// Download every artifact for a model and verify integrity according to each
+/// artifact's checksum policy.
 pub fn download(model_name: &str, entry: &RegistryEntry) -> Result<(), ModelError> {
+    entry.ensure_ready()?;
+
     for artifact in &entry.artifacts {
         let dest = artifact_path(artifact)?;
         if let Some(parent) = dest.parent() {
@@ -54,6 +54,7 @@ pub fn download(model_name: &str, entry: &RegistryEntry) -> Result<(), ModelErro
         }
         download_artifact(model_name, artifact, &dest)?;
     }
+
     Ok(())
 }
 
@@ -67,76 +68,95 @@ fn download_artifact(
         artifact.relative_path, artifact.download_url
     );
 
-    let response =
-        reqwest::blocking::get(&artifact.download_url).map_err(|e| ModelError::DownloadFailed {
-            name: model_name.to_string(),
-            reason: e.to_string(),
-        })?;
-    let response = response
-        .error_for_status()
+    let mut response = reqwest::blocking::get(&artifact.download_url)
+        .and_then(reqwest::blocking::Response::error_for_status)
         .map_err(|e| ModelError::DownloadFailed {
             name: model_name.to_string(),
             reason: e.to_string(),
         })?;
 
-    let total_bytes = response.content_length().unwrap_or(0);
+    let progress = ProgressBar::new(response.content_length().unwrap_or(0));
+    progress.set_style(progress_style(model_name)?);
+    progress.set_message(format!("Downloading {}", artifact.relative_path));
 
-    let pb = ProgressBar::new(total_bytes);
-    pb.set_style(
-        ProgressStyle::default_bar()
-            .template("{msg}\n{spinner:.green} [{elapsed_precise}] [{wide_bar:.cyan/blue}] {bytes}/{total_bytes} ({bytes_per_sec}, {eta})")
-            .unwrap()
-            .progress_chars("#>-"),
-    );
-    pb.set_message(format!("Downloading {}", artifact.relative_path));
-
-    // Write to a temp file first
     let tmp = dest.with_extension("onnx.tmp");
-    let mut file = fs::File::create(&tmp)?;
-    let mut response = response;
-    let mut hasher = (!artifact.sha256.starts_with("placeholder_")).then(Sha256::new);
-    let mut buf = vec![0u8; 1024 * 1024];
+    let result = download_to_file(&mut response, artifact, &tmp, model_name, &progress);
 
-    loop {
-        let n = response
-            .read(&mut buf)
-            .map_err(|e| ModelError::DownloadFailed {
-                name: model_name.to_string(),
-                reason: e.to_string(),
-            })?;
-        if n == 0 {
-            break;
-        }
-
-        file.write_all(&buf[..n])?;
-        if let Some(hasher) = hasher.as_mut() {
-            hasher.update(&buf[..n]);
-        }
-        pb.inc(n as u64);
-    }
-    file.flush()?;
-    drop(file);
-    pb.finish_with_message(format!("Downloaded {}", artifact.relative_path));
-
-    // Verify hash (skip verification for placeholder hashes)
-    if let Some(hasher) = hasher {
-        let actual = hex::encode(hasher.finalize());
-        if actual != artifact.sha256 {
-            return Err(ModelError::VerificationFailed {
-                name: model_name.to_string(),
-                expected: artifact.sha256.clone(),
-                actual,
-            });
-        }
+    if let Err(error) = result {
+        progress.abandon_with_message(format!("Failed {}", artifact.relative_path));
+        let _ = fs::remove_file(&tmp);
+        return Err(error);
     }
 
-    // Atomic rename
+    progress.finish_with_message(format!("Downloaded {}", artifact.relative_path));
     fs::rename(&tmp, dest)?;
     info!(
         "Model artifact {} saved to {}",
         artifact.relative_path,
         dest.display()
     );
+    Ok(())
+}
+
+fn progress_style(model_name: &str) -> Result<ProgressStyle, ModelError> {
+    ProgressStyle::default_bar()
+        .template(
+            "{msg}\n{spinner:.green} [{elapsed_precise}] [{wide_bar:.cyan/blue}] \
+             {bytes}/{total_bytes} ({bytes_per_sec}, {eta})",
+        )
+        .map(|style| style.progress_chars("#>-"))
+        .map_err(|e| ModelError::DownloadFailed {
+            name: model_name.to_string(),
+            reason: e.to_string(),
+        })
+}
+
+fn download_to_file(
+    response: &mut reqwest::blocking::Response,
+    artifact: &ModelArtifact,
+    path: &Path,
+    model_name: &str,
+    progress: &ProgressBar,
+) -> Result<(), ModelError> {
+    let mut file = fs::File::create(path)?;
+    let mut buffer = [0_u8; 64 * 1024];
+    let mut hasher = match &artifact.checksum {
+        Checksum::Sha256(_) => Some(Sha256::new()),
+        Checksum::Pending { reason } => {
+            warn!(
+                "Skipping checksum verification for {} until metadata is pinned: {}",
+                artifact.relative_path, reason
+            );
+            None
+        }
+    };
+
+    loop {
+        let read = response
+            .read(&mut buffer)
+            .map_err(|e| ModelError::DownloadFailed {
+                name: model_name.to_string(),
+                reason: e.to_string(),
+            })?;
+
+        if read == 0 {
+            break;
+        }
+
+        let chunk = &buffer[..read];
+        file.write_all(chunk)?;
+        if let Some(hasher) = hasher.as_mut() {
+            hasher.update(chunk);
+        }
+        progress.inc(read as u64);
+    }
+
+    file.flush()?;
+
+    if let (Checksum::Sha256(expected), Some(hasher)) = (&artifact.checksum, hasher) {
+        let actual = hex::encode(hasher.finalize());
+        verify_sha256_digest(expected, &actual, model_name)?;
+    }
 
     Ok(())
 }
@@ -152,18 +172,35 @@ fn artifact_path(artifact: &ModelArtifact) -> Result<PathBuf, ModelError> {
 /// Verify the SHA-256 hash of a file.
 pub fn verify_sha256(path: &Path, expected: &str, model_name: &str) -> Result<(), ModelError> {
     debug!("Verifying SHA-256 for {}", path.display());
-    let data = fs::read(path)?;
-    let mut hasher = Sha256::new();
-    hasher.update(&data);
-    let actual = hex::encode(hasher.finalize());
+    let actual = digest_file(path)?;
+    verify_sha256_digest(expected, &actual, model_name)
+}
 
+fn digest_file(path: &Path) -> Result<String, ModelError> {
+    let mut file = fs::File::open(path)?;
+    let mut hasher = Sha256::new();
+    let mut buffer = [0_u8; 64 * 1024];
+
+    loop {
+        let read = file.read(&mut buffer)?;
+        if read == 0 {
+            break;
+        }
+        hasher.update(&buffer[..read]);
+    }
+
+    Ok(hex::encode(hasher.finalize()))
+}
+
+fn verify_sha256_digest(expected: &str, actual: &str, model_name: &str) -> Result<(), ModelError> {
     if actual != expected {
         return Err(ModelError::VerificationFailed {
             name: model_name.to_string(),
             expected: expected.to_string(),
-            actual,
+            actual: actual.to_string(),
         });
     }
+
     Ok(())
 }
 
@@ -174,7 +211,6 @@ mod tests {
 
     #[test]
     fn test_cache_dir_created() {
-        // Just ensure the function doesn't panic
         let result = cache_dir();
         assert!(result.is_ok());
     }
@@ -192,16 +228,23 @@ mod tests {
     }
 
     #[test]
-    fn test_sha256_verification() {
+    fn test_sha256_verification_accepts_expected_hash() {
         let dir = tempdir().unwrap();
         let file = dir.path().join("test.bin");
         fs::write(&file, b"hello world").unwrap();
 
-        // sha256 of "hello world"
-        let expected = "b94d27b9934d3e08a52e52d7da7dabfac484efe04294e576a1bde25b24b6a2c5";
-        // This will fail because the hash doesn't match — just verify the function runs
+        let expected = "b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9";
         let result = verify_sha256(&file, expected, "test");
-        // We don't assert Ok here because the hash is wrong, just that it runs
-        assert!(result.is_err() || result.is_ok());
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_sha256_verification_rejects_wrong_hash() {
+        let dir = tempdir().unwrap();
+        let file = dir.path().join("test.bin");
+        fs::write(&file, b"hello world").unwrap();
+
+        let result = verify_sha256(&file, "not-the-right-hash", "test");
+        assert!(matches!(result, Err(ModelError::VerificationFailed { .. })));
     }
 }

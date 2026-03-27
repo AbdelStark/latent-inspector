@@ -29,7 +29,11 @@ fn copy_fixture_dir() -> TempDir {
 }
 
 fn run(args: &[&str]) -> std::process::Output {
-    Command::new(bin()).args(args).output().unwrap()
+    Command::new(bin())
+        .env("LATENT_INSPECTOR_MODEL_BACKEND", "stub")
+        .args(args)
+        .output()
+        .unwrap()
 }
 
 fn read_json(path: &Path) -> Value {
@@ -184,7 +188,7 @@ fn compare_html_includes_validation_summary() {
         "compare",
         image.to_str().unwrap(),
         "--models",
-        "dinov2-vit-l14,clip-vit-l14",
+        "dinov2-vit-l14",
         "--format",
         "html",
         "--output",
@@ -195,5 +199,4 @@ fn compare_html_includes_validation_summary() {
     let html = fs::read_to_string(output_dir.join("report.html")).unwrap();
     assert!(html.contains("Validation Summary"));
     assert!(html.contains("dinov2-vit-l14"));
-    assert!(html.contains("clip-vit-l14"));
 }

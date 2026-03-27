@@ -34,7 +34,7 @@ pub fn run(args: CompareArgs) -> Result<(), Error> {
     let img = image::open(&args.image)?;
 
     // Load all model sessions (parallel)
-    let sessions: Vec<(String, ModelSession)> = args
+    let mut sessions: Vec<(String, ModelSession)> = args
         .models
         .iter()
         .map(|name| {
@@ -44,14 +44,14 @@ pub fn run(args: CompareArgs) -> Result<(), Error> {
         .collect::<Result<Vec<_>, Error>>()?;
 
     let validation_summaries = sessions
-        .iter()
+        .iter_mut()
         .map(|(_, session)| summarize_session_or_unverified(session, None))
         .collect::<Vec<_>>();
 
     // Run inference in parallel
     let outputs: Vec<(String, ExtractedFeatures)> = sessions
-        .par_iter()
-        .map(|(name, session): &(String, ModelSession)| {
+        .par_iter_mut()
+        .map(|(name, session): &mut (String, ModelSession)| {
             info!("Running inference for {name}");
             let output = session.infer(&img)?;
             let features = ExtractedFeatures::from_output(output)?;

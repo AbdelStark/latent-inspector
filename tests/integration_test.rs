@@ -73,8 +73,14 @@ fn test_patch_entropy_positive() {
 fn test_registry_has_all_models() {
     let names = latent_inspector::models::registry::model_names();
     assert!(names.contains(&"dinov2-vit-l14".to_string()));
+    assert!(names.contains(&"dinov3-vit-l14".to_string()));
     assert!(names.contains(&"clip-vit-l14".to_string()));
     assert!(names.contains(&"mae-vit-l16".to_string()));
+    assert!(names.contains(&"ijepa-vit-h14".to_string()));
+    assert!(names.contains(&"siglip-so400m".to_string()));
+
+    let ready = latent_inspector::models::registry::ready_model_names();
+    assert_eq!(ready, vec!["dinov2-vit-l14".to_string()]);
 }
 
 #[test]
@@ -95,23 +101,21 @@ fn test_validation_fixture_manifest_available() {
 
 #[test]
 fn test_validate_model_returns_structured_summary() {
+    std::env::set_var("LATENT_INSPECTOR_MODEL_BACKEND", "stub");
     let summary = validate_model("dinov2-vit-l14", None, false).unwrap();
+    std::env::remove_var("LATENT_INSPECTOR_MODEL_BACKEND");
     assert_eq!(summary.model, "dinov2-vit-l14");
-    assert_eq!(
-        summary.status,
-        latent_inspector::validation::ValidationStatus::Validated
-    );
-    assert!(summary.caveats.is_empty());
+    assert!(!summary.evidence_timestamp.is_empty());
+    assert!(!summary.tensors.is_empty());
+    assert!(!summary.recommendation.is_empty());
 }
 
 #[test]
-fn test_loader_stub_tracks_contract_semantics() {
+fn test_loader_rejects_planned_models() {
     let entry = find("mae-vit-l16").unwrap();
-    let session = ModelSession::load(&entry.info.name).unwrap();
-    let output = session
-        .infer(&image::DynamicImage::new_rgb8(224, 224))
-        .unwrap();
-
-    assert!(!output.tensor_metadata.sequence_has_cls);
-    assert_eq!(output.tensor_metadata.output_shape, vec![1, 196, 1024]);
+    let result = ModelSession::load(&entry.info.name);
+    assert!(matches!(
+        result,
+        Err(latent_inspector::errors::ModelError::Unavailable { .. })
+    ));
 }

@@ -39,7 +39,7 @@ fn load_contract(
 }
 
 pub fn validate_session(
-    session: &ModelSession,
+    session: &mut ModelSession,
     fixture_selection: Option<&str>,
     refresh_goldens: bool,
 ) -> Result<ModelValidationSummary, ValidationError> {
@@ -52,12 +52,12 @@ pub fn validate_model(
     fixture_selection: Option<&str>,
     refresh_goldens: bool,
 ) -> Result<ModelValidationSummary, ValidationError> {
-    let session = ModelSession::load(model).map_err(|err| map_model_error(model, err))?;
-    validate_session(&session, fixture_selection, refresh_goldens)
+    let mut session = ModelSession::load(model).map_err(|err| map_model_error(model, err))?;
+    validate_session(&mut session, fixture_selection, refresh_goldens)
 }
 
 pub fn summarize_session_or_unverified(
-    session: &ModelSession,
+    session: &mut ModelSession,
     fixture_selection: Option<&str>,
 ) -> ModelValidationSummary {
     match validate_session(session, fixture_selection, false) {
@@ -71,7 +71,7 @@ pub fn summarize_session_or_unverified(
 }
 
 pub fn validate_session_with_fixture_set(
-    session: &ModelSession,
+    session: &mut ModelSession,
     fixture_set: &LoadedFixtureSet,
     refresh_goldens: bool,
 ) -> Result<ModelValidationSummary, ValidationError> {

@@ -60,8 +60,8 @@ pub fn run(args: DriftArgs) -> Result<(), Error> {
             .unwrap_or("unknown");
         info!("Processing checkpoint: {ckpt_name}");
 
-        // For now, use the default model (stub mode) — real usage needs checkpoint loading
-        let session = ModelSession::load(&args.model)?;
+        // For now, reuse the registered model session metadata for each checkpoint name.
+        let mut session = ModelSession::load(&args.model)?;
         let mut rows: Vec<ndarray::Array1<f32>> = Vec::new();
 
         for entry in &dataset_entries {

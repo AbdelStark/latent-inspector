@@ -48,7 +48,7 @@ pub fn run(args: ValidateArgs) -> Result<(), Error> {
     let mut summaries = Vec::with_capacity(args.models.len());
 
     for model in &args.models {
-        let session = ModelSession::load(model).map_err(|err| match err {
+        let mut session = ModelSession::load(model).map_err(|err| match err {
             ModelError::NotFound(_) => {
                 ValidationError::Usage(format!("Unknown model identifier: {model}"))
             }
@@ -59,7 +59,7 @@ pub fn run(args: ValidateArgs) -> Result<(), Error> {
         })?;
 
         let validation_result =
-            validate_session_with_fixture_set(&session, &fixture_set, args.refresh_goldens);
+            validate_session_with_fixture_set(&mut session, &fixture_set, args.refresh_goldens);
 
         match validation_result {
             Ok(summary) => summaries.push(summary),

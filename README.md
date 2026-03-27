@@ -1,6 +1,8 @@
 # latent-inspector
 
-A fast CLI for inspecting and comparing learned representations across self-supervised vision models. Feed it an image, get a structured comparison of how DINOv2, MAE, I-JEPA, CLIP, and SigLIP see the world.
+A fast CLI for inspecting and comparing learned representations across self-supervised vision models. Feed it an image, get a structured comparison of how DINOv2, DINOv3, MAE, I-JEPA, CLIP, and SigLIP see the world.
+
+Current implementation status: Phase 1 is focused on DINOv2 model loading and inspection. The other models are listed in the registry as planned targets for the multi-model milestone and are not loadable yet.
 
 ```bash
 cargo install latent-inspector
@@ -61,13 +63,14 @@ For researchers processing thousands of images across multiple models, this matt
 
 ## Supported models
 
-| Model | Architecture | Method | Source |
-|-------|-------------|--------|--------|
-| `dinov2-vit-l14` | ViT-L/14 | Self-distillation + centering | Meta FAIR |
-| `mae-vit-l16` | ViT-L/16 | Masked autoencoder (reconstruction) | Meta FAIR |
-| `ijepa-vit-h14` | ViT-H/14 | Joint embedding predictive (latent prediction) | Meta FAIR |
-| `clip-vit-l14` | ViT-L/14 | Contrastive image-text | OpenAI |
-| `siglip-so400m` | ViT-SO400M/14 | Sigmoid contrastive image-text | Google |
+| Model | Architecture | Method | Source | Status |
+|-------|-------------|--------|--------|--------|
+| DINOv2 | ViT-L/14 | Self-distillation + centering | Meta FAIR | Ready in Phase 1 |
+| DINOv3 | ViT-7B (distilled to ViT-L) | Self-distillation + Gram anchoring | Meta FAIR | Planned |
+| MAE | ViT-L/16 | Masked autoencoder (reconstruction) | Meta FAIR | Planned |
+| I-JEPA | ViT-H/14 | Joint embedding predictive (latent prediction) | Meta FAIR | Planned |
+| CLIP | ViT-L/14 | Contrastive image-text | OpenAI | Planned |
+| SigLIP | ViT-SO400M/14 | Sigmoid contrastive image-text | Google | Planned |
 
 Models are downloaded automatically on first use (~300MB-2GB each) and cached locally.
 
@@ -153,10 +156,12 @@ reqwest = { version = "0.12", features = ["blocking"] }  # Model download
 
 ## How model loading works
 
-1. First run: download ONNX model from HuggingFace Hub to `~/.cache/latent-inspector/`
-2. Load via ONNX Runtime (CPU or GPU, auto-detected)
-3. Extract intermediate representations by hooking into specified layers
-4. All models normalized to a common interface: `image → patch_features [N_patches, D] + cls_token [D]`
+1. First run: for a ready model, download the ONNX artifact from HuggingFace Hub to `~/.cache/latent-inspector/`
+2. Load via ONNX Runtime and validate the declared input/output tensor names against the graph
+3. Preprocess to the model-specific input size and normalization stats
+4. Extract patch features and CLS token into the common `ModelOutput` interface
+
+In the current Phase 1 build, `dinov2-vit-l14` is the only loadable model. The remaining registry entries are intentionally marked as planned so the CLI does not imply support that has not been implemented yet.
 
 ## License
 

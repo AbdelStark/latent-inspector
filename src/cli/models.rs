@@ -26,12 +26,12 @@ fn list_models(verbose: bool) {
     let entries = registry::registry();
 
     println!("\nAvailable models ({}):", entries.len());
-    println!("{}", "═".repeat(70));
+    println!("{}", "═".repeat(88));
     println!(
-        "{:<22} {:<14} {:<8} {:<10} {:<8}",
-        "Name", "Method", "Arch", "Params (M)", "Cached"
+        "{:<22} {:<10} {:<10} {:<14} {:<10} {:<8}",
+        "Name", "Status", "Verify", "Method", "Params (M)", "Cached"
     );
-    println!("{}", "─".repeat(70));
+    println!("{}", "─".repeat(88));
 
     for entry in &entries {
         let cached = cache::is_cached(&entry.info.name)
@@ -39,15 +39,19 @@ fn list_models(verbose: bool) {
             .unwrap_or("?");
 
         println!(
-            "{:<22} {:<14} {:<8} {:<10} {:<8}",
+            "{:<22} {:<10} {:<10} {:<14} {:<10} {:<8}",
             entry.info.name,
-            entry.info.method.to_string(),
-            entry.info.architecture,
+            entry.availability.status.to_string(),
+            entry.verification_label(),
+            entry.info.method,
             entry.info.params_m,
             cached,
         );
 
         if verbose {
+            println!("    Phase: {}", entry.availability.phase);
+            println!("    Note: {}", entry.availability.note);
+            println!("    Arch: {}", entry.info.architecture);
             println!(
                 "    Input: {}×{}",
                 entry.info.input_size, entry.info.input_size
@@ -57,12 +61,20 @@ fn list_models(verbose: bool) {
                 "    Layers: {}, Heads: {}",
                 entry.info.num_layers, entry.info.num_heads
             );
-            println!("    URL: {}", entry.primary_artifact().download_url);
+            if entry.is_ready() {
+                for artifact in &entry.artifacts {
+                    println!("    Artifact: {}", artifact.relative_path);
+                    println!("    URL: {}", artifact.download_url);
+                }
+            }
+            if let Some(note) = entry.verification_note() {
+                println!("    Verify note: {}", note);
+            }
         }
     }
 
-    println!("{}", "═".repeat(70));
-    println!("Run `latent-inspector models --download <name>` to cache a model.");
+    println!("{}", "═".repeat(88));
+    println!("Run `latent-inspector models --download dinov2-vit-l14` to cache the Phase 1 model.");
     let cache_path = cache::cache_dir()
         .map(|p| p.display().to_string())
         .unwrap_or_else(|_| "unknown".to_string());
@@ -75,6 +87,7 @@ fn download_model(name: &str) -> Result<(), Error> {
             "Unknown model '{name}'. Run `latent-inspector models` to see available models."
         ))
     })?;
+    entry.ensure_ready()?;
 
     let dest = cache::model_path(name)?;
 
