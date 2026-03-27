@@ -83,18 +83,12 @@ impl ModelSession {
             });
         }
 
-        let path = cache::model_path(model_name)?;
-
-        if !cache::is_cached(model_name)? {
-            info!("Model '{}' not found in cache, downloading", model_name);
-            cache::download(model_name, &entry)?;
-        } else {
-            info!(
-                "Model '{}' found in cache at {}",
-                model_name,
-                path.display()
-            );
-        }
+        let path = cache::ensure_artifacts(model_name, &entry)?;
+        info!(
+            "Model '{}' is ready from cache bundle rooted at {}",
+            model_name,
+            path.display()
+        );
 
         let inner = Self::create_session(&entry, &path)?;
         Ok(Self { entry, inner })
@@ -334,15 +328,66 @@ fn use_stub_backend() -> bool {
 }
 
 fn validate_artifact_path(entry: &RegistryEntry, artifact_path: &Path) -> Result<(), ModelError> {
-    if artifact_path.is_file() {
+    if !artifact_path.is_file() {
+        return Err(ModelError::InvalidArtifactPath {
+            name: entry.info.name.clone(),
+            path: artifact_path.display().to_string(),
+            reason: "file does not exist".to_string(),
+        });
+    }
+
+    if std::fs::metadata(artifact_path)?.len() == 0 {
+        return Err(ModelError::InvalidArtifactPath {
+            name: entry.info.name.clone(),
+            path: artifact_path.display().to_string(),
+            reason: "file is empty".to_string(),
+        });
+    }
+
+    let missing_companions = checkpoint_companion_paths(entry, artifact_path)
+        .into_iter()
+        .filter(|path| !path.is_file())
+        .map(|path| path.display().to_string())
+        .collect::<Vec<_>>();
+
+    if missing_companions.is_empty() {
         Ok(())
     } else {
         Err(ModelError::InvalidArtifactPath {
             name: entry.info.name.clone(),
             path: artifact_path.display().to_string(),
-            reason: "file does not exist".to_string(),
+            reason: format!(
+                "missing required companion artifacts: {}",
+                missing_companions.join(", ")
+            ),
         })
     }
+}
+
+fn checkpoint_companion_paths(
+    entry: &RegistryEntry,
+    artifact_path: &Path,
+) -> Vec<std::path::PathBuf> {
+    let Ok(primary_artifact) = entry.primary_artifact() else {
+        return Vec::new();
+    };
+
+    let primary_relative = Path::new(&primary_artifact.relative_path);
+    let registry_root = primary_relative.parent();
+    let artifact_dir = artifact_path.parent().unwrap_or_else(|| Path::new("."));
+
+    entry
+        .artifacts
+        .iter()
+        .skip(1)
+        .map(|artifact| {
+            let artifact_relative = Path::new(&artifact.relative_path);
+            let suffix = registry_root
+                .and_then(|root| artifact_relative.strip_prefix(root).ok())
+                .unwrap_or(artifact_relative);
+            artifact_dir.join(suffix)
+        })
+        .collect()
 }
 
 fn stub_seed(path: &Path) -> u64 {
@@ -427,6 +472,7 @@ fn stub_unit(seed: u64, major: usize, minor: usize) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::models::registry::{Checksum, ModelArtifact};
     use std::fs;
     use tempfile::tempdir;
 
@@ -506,5 +552,82 @@ mod tests {
             result,
             Err(ModelError::InvalidArtifactPath { .. })
         ));
+    }
+
+    #[test]
+    fn test_validate_artifact_path_rejects_empty_checkpoint_files() {
+        let dir = tempdir().unwrap();
+        let artifact_path = dir.path().join("model.onnx");
+        fs::write(&artifact_path, []).unwrap();
+        let entry = registry::find("dinov2-vit-l14").unwrap();
+
+        let result = validate_artifact_path(&entry, &artifact_path);
+
+        assert!(matches!(
+            result,
+            Err(ModelError::InvalidArtifactPath { reason, .. }) if reason == "file is empty"
+        ));
+    }
+
+    #[test]
+    fn test_validate_artifact_path_requires_companion_artifacts() {
+        let dir = tempdir().unwrap();
+        let artifact_path = dir.path().join("model.onnx");
+        fs::write(&artifact_path, b"onnx").unwrap();
+
+        let mut entry = registry::find("dinov2-vit-l14").unwrap();
+        entry.artifacts = vec![
+            ModelArtifact {
+                relative_path: "bundle/model.onnx".to_string(),
+                download_url: "https://example.invalid/model.onnx".to_string(),
+                checksum: Checksum::Pending {
+                    reason: "test fixture".to_string(),
+                },
+            },
+            ModelArtifact {
+                relative_path: "bundle/model.onnx_data".to_string(),
+                download_url: "https://example.invalid/model.onnx_data".to_string(),
+                checksum: Checksum::Pending {
+                    reason: "test fixture".to_string(),
+                },
+            },
+        ];
+
+        let result = validate_artifact_path(&entry, &artifact_path);
+
+        assert!(matches!(
+            result,
+            Err(ModelError::InvalidArtifactPath { reason, .. })
+                if reason.contains("model.onnx_data")
+        ));
+    }
+
+    #[test]
+    fn test_validate_artifact_path_accepts_complete_companion_bundle() {
+        let dir = tempdir().unwrap();
+        let artifact_path = dir.path().join("model.onnx");
+        let companion_path = dir.path().join("model.onnx_data");
+        fs::write(&artifact_path, b"onnx").unwrap();
+        fs::write(&companion_path, b"external-data").unwrap();
+
+        let mut entry = registry::find("dinov2-vit-l14").unwrap();
+        entry.artifacts = vec![
+            ModelArtifact {
+                relative_path: "bundle/model.onnx".to_string(),
+                download_url: "https://example.invalid/model.onnx".to_string(),
+                checksum: Checksum::Pending {
+                    reason: "test fixture".to_string(),
+                },
+            },
+            ModelArtifact {
+                relative_path: "bundle/model.onnx_data".to_string(),
+                download_url: "https://example.invalid/model.onnx_data".to_string(),
+                checksum: Checksum::Pending {
+                    reason: "test fixture".to_string(),
+                },
+            },
+        ];
+
+        validate_artifact_path(&entry, &artifact_path).unwrap();
     }
 }

@@ -73,6 +73,11 @@ For researchers processing thousands of images across multiple models, this matt
 | SigLIP | ViT-SO400M/14 | Sigmoid contrastive image-text | Google | Planned |
 
 Models are downloaded automatically on first use (~300MB-2GB each) and cached locally.
+If a cache bundle is partial or contains an empty/corrupt artifact, latent-inspector
+now refreshes only the missing or invalid files before creating the ONNX session.
+
+For CI or isolated local runs, set `LATENT_INSPECTOR_CACHE_DIR=/tmp/latent-inspector-cache`
+to override the default cache root.
 
 ## Validate a model integration
 
