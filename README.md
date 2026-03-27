@@ -50,7 +50,7 @@ latent-inspector makes these differences visible and measurable.
 
 - `validate` checks preprocessing against the approved model contract
 - `validate` verifies the exported ONNX tensor name, shape, and CLS semantics
-- `validate` compares observed outputs against checked-in reference evidence
+- `validate` compares observed outputs against checked-in aggregate and per-fixture reference evidence
 - `compare` and `inspect` now embed the latest validation summary in terminal, JSON, and HTML reports
 
 ## Why Rust?

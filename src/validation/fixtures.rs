@@ -58,7 +58,25 @@ pub struct ReferenceSignals {
     pub embedding_dim: usize,
     pub patch_mean: f32,
     pub patch_std: f32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub patch_rms: Option<f32>,
     pub cls_l2_norm: Option<f32>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub fixtures: Vec<FixtureSignalSummary>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FixtureSignalSummary {
+    pub id: String,
+    pub patch_mean: f32,
+    pub patch_std: f32,
+    pub patch_rms: f32,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub patch_signature: Vec<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cls_l2_norm: Option<f32>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub cls_signature: Vec<f32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

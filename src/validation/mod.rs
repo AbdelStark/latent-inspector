@@ -11,8 +11,8 @@ use report::ModelValidationSummary;
 use semantics::{evaluate_preprocess_contract, evaluate_tensor_semantics};
 
 pub use fixtures::{
-    ContractFixture, FixturePattern, MaterializedFixture, ReferenceArtifact, ReferenceSignals,
-    ValidationFixtureManifest, ValidationFixtureSpec,
+    ContractFixture, FixturePattern, FixtureSignalSummary, MaterializedFixture, ReferenceArtifact,
+    ReferenceSignals, ValidationFixtureManifest, ValidationFixtureSpec,
 };
 pub use report::{
     CheckSummary, ModelValidationSummary as ValidationSummary, ParitySignalDelta,
@@ -100,11 +100,7 @@ pub fn validate_session_with_fixture_set(
     }
 
     let tensors = evaluate_tensor_semantics(session.entry(), &contract, &outputs[0]);
-    let observed = summarize_outputs(
-        &model,
-        &fixture_set.manifest.fixture_set,
-        outputs.as_slice(),
-    );
+    let observed = summarize_outputs(fixtures.as_slice(), outputs.as_slice());
 
     let reference = if refresh_goldens {
         let artifact =

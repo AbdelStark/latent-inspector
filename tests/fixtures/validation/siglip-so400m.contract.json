@@ -25,7 +25,10 @@
       "embedding_dim_abs": 0,
       "patch_mean_abs": 0.001,
       "patch_std_abs": 0.001,
-      "cls_l2_abs": 0.001
+      "cls_l2_abs": 0.001,
+      "patch_rms_abs": 0.001,
+      "patch_signature_abs": 0.001,
+      "cls_signature_abs": 0.001
     }
   }
 }

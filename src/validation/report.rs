@@ -243,8 +243,31 @@ fn build_caveats(
     }
     if !parity.status.is_validated() {
         caveats.push(parity.summary.clone());
+        let detail_count = parity.deltas.len().min(3);
+        for delta in parity.deltas.iter().take(detail_count) {
+            caveats.push(describe_parity_delta(delta));
+        }
+        if parity.deltas.len() > detail_count {
+            caveats.push(format!(
+                "{} additional parity deltas omitted from the summary.",
+                parity.deltas.len() - detail_count
+            ));
+        }
     }
     caveats
+}
+
+fn describe_parity_delta(delta: &ParitySignalDelta) -> String {
+    match (delta.abs_diff, delta.tolerance) {
+        (Some(abs_diff), Some(tolerance)) => format!(
+            "{} drifted (observed {}, expected {}, abs diff {:.6}, tolerance {:.6}).",
+            delta.name, delta.observed, delta.expected, abs_diff, tolerance
+        ),
+        _ => format!(
+            "{} changed (observed {}, expected {}).",
+            delta.name, delta.observed, delta.expected
+        ),
+    }
 }
 
 pub fn recommendation_for(status: ValidationStatus) -> &'static str {

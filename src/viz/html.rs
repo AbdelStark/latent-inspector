@@ -151,6 +151,8 @@ fn render_html(
   .matrix-card {{ border: 1px solid var(--border); border-radius: 12px; padding: 0.9rem 1rem; background: rgba(255,255,255,0.02); }}
   .validation-grid {{ display: grid; gap: 1rem; }}
   .validation-card {{ border: 1px solid var(--border); border-radius: 14px; padding: 1rem; background: rgba(255,255,255,0.02); }}
+  .delta-list {{ margin: 0.5rem 0 0; padding-left: 1.1rem; color: var(--muted); }}
+  .delta-list li {{ margin: 0.25rem 0; }}
   .empty-state {{ color: var(--muted); margin: 0; }}
   code {{ color: #c9d1d9; }}
 </style>
@@ -248,9 +250,29 @@ fn render_validation_row(summary: &ModelValidationSummary) -> String {
             .collect::<Vec<_>>()
             .join("")
     };
+    let parity_deltas = if summary.parity.deltas.is_empty() {
+        String::new()
+    } else {
+        let items = summary
+            .parity
+            .deltas
+            .iter()
+            .take(5)
+            .map(|delta| {
+                format!(
+                    "<li><code>{}</code>: {} vs {}</li>",
+                    escape_html(&delta.name),
+                    escape_html(&delta.observed),
+                    escape_html(&delta.expected),
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("");
+        format!("<ul class=\"delta-list\">{items}</ul>")
+    };
 
     format!(
-        "<article class=\"validation-card\"><div style=\"display:flex;justify-content:space-between;align-items:center;gap:1rem\"><strong>{}</strong><span class=\"badge {}\">{}</span></div><p>{}</p><p><strong>Preprocess:</strong> {}</p><p><strong>Tensor semantics:</strong> {}</p><p><strong>Parity:</strong> {}</p>{}</article>",
+        "<article class=\"validation-card\"><div style=\"display:flex;justify-content:space-between;align-items:center;gap:1rem\"><strong>{}</strong><span class=\"badge {}\">{}</span></div><p>{}</p><p><strong>Preprocess:</strong> {}</p><p><strong>Tensor semantics:</strong> {}</p><p><strong>Parity:</strong> {}</p>{}{}</article>",
         escape_html(&summary.model),
         summary.status.label(),
         summary.status.label(),
@@ -258,7 +280,8 @@ fn render_validation_row(summary: &ModelValidationSummary) -> String {
         escape_html(&summary.preprocess.summary),
         tensor_summary,
         escape_html(&summary.parity.summary),
-        caveats
+        caveats,
+        parity_deltas
     )
 }
 

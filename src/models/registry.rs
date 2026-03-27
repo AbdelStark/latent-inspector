@@ -172,6 +172,12 @@ pub struct ParityTolerances {
     pub patch_mean_abs: f32,
     pub patch_std_abs: f32,
     pub cls_l2_abs: f32,
+    #[serde(default = "default_parity_signal_tolerance")]
+    pub patch_rms_abs: f32,
+    #[serde(default = "default_parity_signal_tolerance")]
+    pub patch_signature_abs: f32,
+    #[serde(default = "default_parity_signal_tolerance")]
+    pub cls_signature_abs: f32,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -254,6 +260,10 @@ impl RegistryEntry {
     }
 }
 
+fn default_parity_signal_tolerance() -> f32 {
+    1e-3
+}
+
 fn default_validation_profile(
     source: &str,
     preprocess: PreprocessContract,
@@ -271,6 +281,9 @@ fn default_validation_profile(
             patch_mean_abs: 1e-3,
             patch_std_abs: 1e-3,
             cls_l2_abs: 1e-3,
+            patch_rms_abs: default_parity_signal_tolerance(),
+            patch_signature_abs: default_parity_signal_tolerance(),
+            cls_signature_abs: default_parity_signal_tolerance(),
         },
     }
 }

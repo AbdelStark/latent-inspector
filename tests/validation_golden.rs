@@ -28,9 +28,12 @@ fn parity_comparison_flags_golden_regressions() {
     let observed = reference.observed.clone();
 
     let mut drifted = reference.clone();
-    drifted.observed.patch_mean = 2.0;
+    drifted.observed.fixtures[0].patch_signature[0] += 2.0;
 
     let parity = compare_against_reference(&observed, &drifted);
     assert_eq!(parity.status, ValidationStatus::Failed);
-    assert!(parity.deltas.iter().any(|delta| delta.name == "patch_mean"));
+    assert!(parity
+        .deltas
+        .iter()
+        .any(|delta| delta.name == "fixtures.gradient-224.patch_signature[0]"));
 }

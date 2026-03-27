@@ -208,6 +208,17 @@ pub fn print_validation_summaries(summaries: &[ModelValidationSummary]) {
         if !summary.caveats.is_empty() {
             println!("  caveats: {}", summary.caveats.join(" | "));
         }
+        if !summary.parity.deltas.is_empty() {
+            let labels = summary
+                .parity
+                .deltas
+                .iter()
+                .take(3)
+                .map(|delta| delta.name.as_str())
+                .collect::<Vec<_>>()
+                .join(" | ");
+            println!("  deltas:  {labels}");
+        }
     }
 
     println!("{}", "═".repeat(100));

@@ -51,19 +51,19 @@ enum SessionInner {
 
 #[derive(Debug, Clone, Copy)]
 struct StubConfig {
-    checkpoint_seed: Option<u64>,
+    seed: u64,
 }
 
 impl StubConfig {
-    fn standard() -> Self {
+    fn standard(model_name: &str) -> Self {
         Self {
-            checkpoint_seed: None,
+            seed: stub_seed_value(model_name),
         }
     }
 
-    fn checkpoint(path: &Path) -> Self {
+    fn checkpoint(model_name: &str, path: &Path) -> Self {
         Self {
-            checkpoint_seed: Some(stub_seed(path)),
+            seed: mix_stub_seeds(stub_seed_value(model_name), stub_seed(path)),
         }
     }
 }
@@ -79,7 +79,7 @@ impl ModelSession {
             );
             return Ok(Self {
                 entry,
-                inner: SessionInner::Stub(StubConfig::standard()),
+                inner: SessionInner::Stub(StubConfig::standard(model_name)),
             });
         }
 
@@ -107,7 +107,7 @@ impl ModelSession {
             );
             return Ok(Self {
                 entry,
-                inner: SessionInner::Stub(StubConfig::checkpoint(artifact_path)),
+                inner: SessionInner::Stub(StubConfig::checkpoint(model_name, artifact_path)),
             });
         }
 
@@ -274,15 +274,7 @@ impl ModelSession {
                 })
             }
             SessionInner::Stub(config) => {
-                let (cls_token, patch_tokens) = match config.checkpoint_seed {
-                    Some(seed) => seeded_stub_features(seed, tensor, contract),
-                    None => (
-                        contract
-                            .cls_expected
-                            .then(|| Array1::from_elem(expected_dim, 0.1_f32)),
-                        Array2::from_elem((expected_patches, expected_dim), 0.1_f32),
-                    ),
-                };
+                let (cls_token, patch_tokens) = seeded_stub_features(config.seed, tensor, contract);
 
                 Ok(ModelOutput {
                     cls_token,
@@ -325,6 +317,12 @@ fn use_stub_backend() -> bool {
     std::env::var("LATENT_INSPECTOR_MODEL_BACKEND")
         .map(|value| value.eq_ignore_ascii_case("stub"))
         .unwrap_or(false)
+}
+
+fn stub_seed_value(value: &str) -> u64 {
+    let mut hasher = DefaultHasher::new();
+    value.hash(&mut hasher);
+    hasher.finish()
 }
 
 fn validate_artifact_path(entry: &RegistryEntry, artifact_path: &Path) -> Result<(), ModelError> {
@@ -391,9 +389,11 @@ fn checkpoint_companion_paths(
 }
 
 fn stub_seed(path: &Path) -> u64 {
-    let mut hasher = DefaultHasher::new();
-    path.to_string_lossy().hash(&mut hasher);
-    hasher.finish()
+    stub_seed_value(&path.to_string_lossy())
+}
+
+fn mix_stub_seeds(base: u64, extra: u64) -> u64 {
+    base.rotate_left(13) ^ extra.rotate_right(7) ^ 0x9E37_79B9_7F4A_7C15
 }
 
 fn seeded_stub_features(
@@ -403,32 +403,53 @@ fn seeded_stub_features(
 ) -> (Option<Array1<f32>>, Array2<f32>) {
     let (mean, stddev) = tensor_moments(tensor);
     let flat_tensor = tensor.iter().copied().collect::<Vec<_>>();
+    let patch_components = (0..contract.patch_count)
+        .map(|patch_idx| {
+            let sample_a = sampled_tensor_value(&flat_tensor, seed ^ 0x1111_1111, patch_idx, 0);
+            let sample_b = sampled_tensor_value(&flat_tensor, seed ^ 0x2222_2222, patch_idx, 1);
+            [
+                sample_a + mean * 0.45,
+                sample_b - stddev * 0.30,
+                stub_wave(seed ^ 0x3333_3333, patch_idx),
+                stub_wave(seed ^ 0x4444_4444, patch_idx * 3 + 1) * (0.35 + stddev.abs()),
+            ]
+        })
+        .collect::<Vec<_>>();
+    let dim_components = (0..contract.embedding_dim)
+        .map(|dim_idx| {
+            let sample_a = sampled_tensor_value(&flat_tensor, seed ^ 0x5555_5555, 0, dim_idx);
+            let sample_b = sampled_tensor_value(&flat_tensor, seed ^ 0x6666_6666, 1, dim_idx);
+            [
+                sample_a + mean * 0.35,
+                sample_b + stddev * 0.20,
+                stub_wave(seed ^ 0x7777_7777, dim_idx),
+                stub_wave(seed ^ 0x8888_8888, dim_idx * 5 + 2) * (0.30 + mean.abs()),
+            ]
+        })
+        .collect::<Vec<_>>();
     let patch_tokens = Array2::from_shape_fn(
         (contract.patch_count, contract.embedding_dim),
         |(patch_idx, dim_idx)| {
-            let primary =
-                sampled_tensor_value(&flat_tensor, seed ^ 0x1111_1111, patch_idx, dim_idx);
-            let secondary =
-                sampled_tensor_value(&flat_tensor, seed ^ 0x2222_2222, dim_idx, patch_idx);
-            let gate = 0.30 + stub_unit(seed ^ 0x3333_3333, patch_idx, dim_idx) * 0.50;
-            let moment_bias = mean * (0.08 + gate * 0.10) + stddev * (0.04 + (1.0 - gate) * 0.08);
-            primary * gate
-                + secondary * (1.0 - gate)
-                + moment_bias
-                + stub_noise(seed, patch_idx, dim_idx)
+            let patch = patch_components[patch_idx];
+            let dim = dim_components[dim_idx];
+            patch[0] * dim[0] * 0.60
+                + patch[1] * dim[1] * 0.25
+                + patch[2] * dim[2] * 0.10
+                + patch[3] * dim[3] * 0.05
+                + mean * 0.12
+                + stddev * 0.08
         },
     );
 
     let cls_token = contract.cls_expected.then(|| {
         Array1::from_shape_fn(contract.embedding_dim, |dim_idx| {
-            let primary = sampled_tensor_value(&flat_tensor, seed ^ 0x4444_4444, 0, dim_idx);
-            let secondary = sampled_tensor_value(&flat_tensor, seed ^ 0x5555_5555, dim_idx, 0);
-            let gate = 0.35 + stub_unit(seed ^ 0x6666_6666, 0, dim_idx) * 0.45;
-            primary * gate
-                + secondary * (1.0 - gate)
-                + mean * 0.15
-                + stddev * 0.10
-                + stub_noise(seed ^ 0xA5A5_A5A5, 0, dim_idx)
+            let dim = dim_components[dim_idx];
+            let cls_source = sampled_tensor_value(&flat_tensor, seed ^ 0x9999_9999, 0, dim_idx);
+            cls_source * 0.50
+                + dim[0] * (mean + 0.40)
+                + dim[1] * 0.15
+                + dim[2] * 0.05
+                + stddev * 0.12
         })
     });
 
@@ -458,8 +479,8 @@ fn sampled_tensor_value(values: &[f32], seed: u64, major: usize, minor: usize) -
     values[index]
 }
 
-fn stub_noise(seed: u64, major: usize, minor: usize) -> f32 {
-    (stub_unit(seed, major, minor) - 0.5) * 0.6
+fn stub_wave(seed: u64, index: usize) -> f32 {
+    (stub_unit(seed, index, 0) - 0.5) * 2.0
 }
 
 fn stub_unit(seed: u64, major: usize, minor: usize) -> f32 {
@@ -479,7 +500,7 @@ mod tests {
     impl ModelSession {
         fn stubbed(entry: RegistryEntry) -> Self {
             Self {
-                inner: SessionInner::Stub(StubConfig::standard()),
+                inner: SessionInner::Stub(StubConfig::standard(&entry.info.name)),
                 entry,
             }
         }
@@ -540,6 +561,27 @@ mod tests {
         assert_ne!(
             first_output.patch_tokens[[0, 0]],
             second_output.patch_tokens[[0, 0]]
+        );
+    }
+
+    #[test]
+    fn test_standard_stub_sessions_vary_by_input_content() {
+        let entry = registry::find("dinov2-vit-l14").unwrap();
+        let mut session = ModelSession::stubbed(entry);
+
+        let dark = image::DynamicImage::new_rgb8(224, 224);
+        let bright = image::DynamicImage::ImageRgb8(image::RgbImage::from_pixel(
+            224,
+            224,
+            image::Rgb([255, 255, 255]),
+        ));
+
+        let dark_output = session.infer(&dark).unwrap();
+        let bright_output = session.infer(&bright).unwrap();
+
+        assert_ne!(
+            dark_output.patch_tokens[[0, 0]],
+            bright_output.patch_tokens[[0, 0]]
         );
     }
 

@@ -15,6 +15,13 @@
       "width": 224,
       "height": 224,
       "pattern": "checkerboard"
+    },
+    {
+      "id": "center-square-224",
+      "description": "Centered foreground square used to catch fixture-specific drift in parity fingerprints.",
+      "width": 224,
+      "height": 224,
+      "pattern": "center-square"
     }
   ],
   "models": {

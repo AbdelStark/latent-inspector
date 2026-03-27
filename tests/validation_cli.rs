@@ -97,7 +97,7 @@ fn validate_detects_reference_drift() {
     let fixtures = copy_fixture_dir();
     let reference_path = fixtures.path().join("dinov2-vit-l14.reference.json");
     let mut reference = read_json(&reference_path);
-    reference["observed"]["patch_mean"] = Value::from(9.9);
+    reference["observed"]["fixtures"][0]["patch_signature"][0] = Value::from(9.9);
     fs::write(
         &reference_path,
         serde_json::to_string_pretty(&reference).unwrap(),
@@ -126,15 +126,16 @@ fn validate_detects_reference_drift() {
         .as_array()
         .unwrap()
         .iter()
-        .any(|delta| delta["name"] == "patch_mean"));
+        .any(|delta| delta["name"] == "fixtures.gradient-224.patch_signature[0]"));
 }
 
 #[test]
 fn validate_refresh_goldens_rewrites_reference_artifact() {
     let fixtures = copy_fixture_dir();
     let reference_path = fixtures.path().join("dinov2-vit-l14.reference.json");
+    let original = read_json(&reference_path);
     let mut reference = read_json(&reference_path);
-    reference["observed"]["patch_mean"] = Value::from(9.9);
+    reference["observed"]["fixtures"][0]["patch_signature"][0] = Value::from(9.9);
     fs::write(
         &reference_path,
         serde_json::to_string_pretty(&reference).unwrap(),
@@ -152,12 +153,7 @@ fn validate_refresh_goldens_rewrites_reference_artifact() {
 
     assert_eq!(output.status.code(), Some(0));
     let refreshed = read_json(&reference_path);
-    let patch_mean = refreshed["observed"]["patch_mean"].as_f64().unwrap();
-    assert!((patch_mean - 0.1).abs() < 1e-4);
-    assert_eq!(
-        refreshed["artifact_id"],
-        Value::from("dinov2-vit-l14:standard:2026-03-27T12:00:00Z")
-    );
+    assert_eq!(refreshed, original);
 }
 
 #[test]
