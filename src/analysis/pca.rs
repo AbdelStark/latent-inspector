@@ -44,7 +44,8 @@ pub fn pca(data: &Array2<f32>, k: usize, max_iter: usize) -> Result<PcaResult, A
 
     for i in 0..k {
         // Random init (deterministic: use a fixed pattern)
-        let mut v: Array1<f32> = Array1::from_iter((0..d).map(|j| if j == i % d { 1.0 } else { 0.0 }));
+        let mut v: Array1<f32> =
+            Array1::from_iter((0..d).map(|j| if j == i % d { 1.0 } else { 0.0 }));
         normalize_inplace(&mut v);
 
         let mut prev_lambda = 0.0_f32;

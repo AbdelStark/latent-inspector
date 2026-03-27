@@ -20,10 +20,7 @@ pub struct VarianceSpectrum {
 }
 
 /// Compute the variance spectrum of `data` `[N, D]` using `k` PCA components.
-pub fn variance_spectrum(
-    data: &Array2<f32>,
-    k: usize,
-) -> Result<VarianceSpectrum, AnalysisError> {
+pub fn variance_spectrum(data: &Array2<f32>, k: usize) -> Result<VarianceSpectrum, AnalysisError> {
     let result = pca::pca(data, k, 500)?;
     let ratios = result.explained_variance_ratio;
 
@@ -60,7 +57,6 @@ pub fn variance_spectrum(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use approx::assert_relative_eq;
 
     #[test]
     fn test_spectrum_shape() {

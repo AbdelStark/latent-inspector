@@ -1,0 +1,26 @@
+{
+  "model": "dinov2-vit-l14",
+  "status": "validated",
+  "evidence_timestamp": "2026-03-27T12:00:00Z",
+  "preprocess": {
+    "status": "validated",
+    "summary": "Input size, normalization, resize filter, and channel layout match the approved source-model contract."
+  },
+  "tensors": [
+    {
+      "name": "last_hidden_state",
+      "role": "patch+cls sequence",
+      "status": "validated",
+      "summary": "last_hidden_state matches the expected patch+cls sequence contract for 256 patch tokens."
+    }
+  ],
+  "parity": {
+    "status": "validated",
+    "summary": "Compared signals stayed within approved tolerance on the standard validation fixture set.",
+    "artifact_id": "dinov2-vit-l14:standard:2026-03-27T12:00:00Z",
+    "fixture_set": "standard",
+    "deltas": []
+  },
+  "caveats": [],
+  "recommendation": "Safe to interpret as source-aligned for supported report features."
+}

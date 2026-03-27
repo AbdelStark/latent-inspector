@@ -1,0 +1,42 @@
+{
+  "fixture_set": "standard",
+  "evidence_timestamp": "2026-03-27T12:00:00Z",
+  "fixtures": [
+    {
+      "id": "gradient-224",
+      "description": "RGB gradient image for deterministic preprocessing and parity checks.",
+      "width": 224,
+      "height": 224,
+      "pattern": "gradient"
+    },
+    {
+      "id": "checkerboard-224",
+      "description": "High-contrast checkerboard for deterministic preprocessing and parity checks.",
+      "width": 224,
+      "height": 224,
+      "pattern": "checkerboard"
+    }
+  ],
+  "models": {
+    "dinov2-vit-l14": {
+      "contract": "dinov2-vit-l14.contract.json",
+      "reference": "dinov2-vit-l14.reference.json"
+    },
+    "mae-vit-l16": {
+      "contract": "mae-vit-l16.contract.json",
+      "reference": "mae-vit-l16.reference.json"
+    },
+    "clip-vit-l14": {
+      "contract": "clip-vit-l14.contract.json",
+      "reference": "clip-vit-l14.reference.json"
+    },
+    "ijepa-vit-h14": {
+      "contract": "ijepa-vit-h14.contract.json",
+      "reference": "ijepa-vit-h14.reference.json"
+    },
+    "siglip-so400m": {
+      "contract": "siglip-so400m.contract.json",
+      "reference": "siglip-so400m.reference.json"
+    }
+  }
+}

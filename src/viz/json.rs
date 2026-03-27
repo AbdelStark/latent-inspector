@@ -1,5 +1,7 @@
 use crate::analysis::{ComparisonMetrics, ModelMetrics};
 use crate::errors::VizError;
+use crate::validation::report::ModelValidationSummary;
+use serde::Serialize;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::path::Path;
@@ -20,10 +22,41 @@ pub fn print_comparison(comparisons: &[ComparisonMetrics]) -> Result<(), VizErro
     Ok(())
 }
 
+pub fn print_validation_summaries(summaries: &[ModelValidationSummary]) -> Result<(), VizError> {
+    let json = serde_json::to_string_pretty(summaries)
+        .map_err(|e| VizError::Html(format!("JSON serialization failed: {e}")))?;
+    println!("{json}");
+    Ok(())
+}
+
+pub fn print_report(
+    metrics: &[ModelMetrics],
+    comparisons: &[ComparisonMetrics],
+    validation: Option<&[ModelValidationSummary]>,
+) -> Result<(), VizError> {
+    let json = serde_json::to_string_pretty(&JsonReport {
+        metrics,
+        comparisons,
+        validation,
+    })
+    .map_err(|e| VizError::Html(format!("JSON serialization failed: {e}")))?;
+    println!("{json}");
+    Ok(())
+}
+
 /// Write a combined report (metrics + comparisons) to a JSON file.
 pub fn write_report(
     metrics: &[ModelMetrics],
     comparisons: &[ComparisonMetrics],
+    path: &Path,
+) -> Result<(), VizError> {
+    write_report_with_validation(metrics, comparisons, None, path)
+}
+
+pub fn write_report_with_validation(
+    metrics: &[ModelMetrics],
+    comparisons: &[ComparisonMetrics],
+    validation: Option<&[ModelValidationSummary]>,
     path: &Path,
 ) -> Result<(), VizError> {
     let mut report: HashMap<&str, Value> = HashMap::new();
@@ -35,6 +68,12 @@ pub fn write_report(
         "comparisons",
         serde_json::to_value(comparisons).map_err(|e| VizError::Html(e.to_string()))?,
     );
+    if let Some(validation) = validation {
+        report.insert(
+            "validation",
+            serde_json::to_value(validation).map_err(|e| VizError::Html(e.to_string()))?,
+        );
+    }
 
     let json = serde_json::to_string_pretty(&report)
         .map_err(|e| VizError::Html(format!("JSON serialization failed: {e}")))?;
@@ -43,6 +82,25 @@ pub fn write_report(
         .map_err(|e| VizError::Html(format!("Failed to write {}: {e}", path.display())))?;
 
     Ok(())
+}
+
+pub fn write_validation_report(
+    summaries: &[ModelValidationSummary],
+    path: &Path,
+) -> Result<(), VizError> {
+    let json = serde_json::to_string_pretty(summaries)
+        .map_err(|e| VizError::Html(format!("JSON serialization failed: {e}")))?;
+    std::fs::write(path, json)
+        .map_err(|e| VizError::Html(format!("Failed to write {}: {e}", path.display())))?;
+    Ok(())
+}
+
+#[derive(Serialize)]
+struct JsonReport<'a> {
+    metrics: &'a [ModelMetrics],
+    comparisons: &'a [ComparisonMetrics],
+    #[serde(skip_serializing_if = "Option::is_none")]
+    validation: Option<&'a [ModelValidationSummary]>,
 }
 
 #[cfg(test)]

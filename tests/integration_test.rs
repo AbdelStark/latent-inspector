@@ -1,7 +1,8 @@
-use latent_inspector::analysis::{compute_metrics, linear_cka, knn_overlap, patch_entropy};
+use latent_inspector::analysis::{compute_metrics, knn_overlap, linear_cka, patch_entropy};
 use latent_inspector::extract::ExtractedFeatures;
-use latent_inspector::models::registry::{ModelInfo, SSLMethod};
-use latent_inspector::models::ModelOutput;
+use latent_inspector::models::registry::{find, ModelInfo, SSLMethod};
+use latent_inspector::models::{ModelOutput, ModelSession, OutputTensorMetadata};
+use latent_inspector::validation::{fixtures::load_fixture_set, validate_model};
 use ndarray::{Array1, Array2};
 
 fn make_output(model_name: &str, n_patches: usize, embed_dim: usize) -> ModelOutput {
@@ -21,6 +22,15 @@ fn make_output(model_name: &str, n_patches: usize, embed_dim: usize) -> ModelOut
             method: SSLMethod::DINO,
             input_size: 224,
             params_m: 304,
+        },
+        tensor_metadata: OutputTensorMetadata {
+            input_name: "pixel_values".into(),
+            input_shape: vec![1, 3, 224, 224],
+            output_name: "last_hidden_state".into(),
+            output_shape: vec![1, n_patches + 1, embed_dim],
+            sequence_has_cls: true,
+            observed_patch_count: n_patches,
+            embedding_dim: embed_dim,
         },
     }
 }
@@ -74,4 +84,34 @@ fn test_preprocess_shape() {
     let cfg = PreprocessConfig::new(224, [0.485, 0.456, 0.406], [0.229, 0.224, 0.225]);
     let tensor = preprocess(&img, &cfg).unwrap();
     assert_eq!(tensor.shape(), &[1, 3, 224, 224]);
+}
+
+#[test]
+fn test_validation_fixture_manifest_available() {
+    let fixture_set = load_fixture_set(None).unwrap();
+    assert_eq!(fixture_set.manifest.fixture_set, "standard");
+    assert!(fixture_set.manifest.models.contains_key("dinov2-vit-l14"));
+}
+
+#[test]
+fn test_validate_model_returns_structured_summary() {
+    let summary = validate_model("dinov2-vit-l14", None, false).unwrap();
+    assert_eq!(summary.model, "dinov2-vit-l14");
+    assert_eq!(
+        summary.status,
+        latent_inspector::validation::ValidationStatus::Validated
+    );
+    assert!(summary.caveats.is_empty());
+}
+
+#[test]
+fn test_loader_stub_tracks_contract_semantics() {
+    let entry = find("mae-vit-l16").unwrap();
+    let session = ModelSession::load(&entry.info.name).unwrap();
+    let output = session
+        .infer(&image::DynamicImage::new_rgb8(224, 224))
+        .unwrap();
+
+    assert!(!output.tensor_metadata.sequence_has_cls);
+    assert_eq!(output.tensor_metadata.output_shape, vec![1, 196, 1024]);
 }

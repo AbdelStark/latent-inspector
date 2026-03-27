@@ -84,7 +84,9 @@ pub fn save_pca_rgb(
         let min = vals.iter().cloned().fold(f32::INFINITY, f32::min);
         let max = vals.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
         let range = (max - min).max(1e-8);
-        vals.iter().map(|&v| ((v - min) / range * 255.0) as u8).collect()
+        vals.iter()
+            .map(|&v| ((v - min) / range * 255.0) as u8)
+            .collect()
     };
 
     let r_ch = make_channel(0);
@@ -102,10 +104,7 @@ pub fn save_pca_rgb(
 }
 
 /// Save a square similarity matrix `[N, N]` as a heatmap PNG.
-pub fn save_similarity_heatmap(
-    matrix: &Array2<f32>,
-    output_path: &Path,
-) -> Result<(), VizError> {
+pub fn save_similarity_heatmap(matrix: &Array2<f32>, output_path: &Path) -> Result<(), VizError> {
     let n = matrix.shape()[0];
     let norm = normalize(matrix);
     let mut img: RgbImage = ImageBuffer::new(n as u32, n as u32);
@@ -131,7 +130,7 @@ mod tests {
     fn test_heatmap_color_range() {
         for v in [0.0, 0.25, 0.5, 0.75, 1.0] {
             let c = heatmap_color(v);
-            assert!(c[0] <= 255 && c[1] <= 255 && c[2] <= 255);
+            assert_eq!(c.len(), 3);
         }
     }
 

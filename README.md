@@ -1,21 +1,24 @@
 # latent-inspector
 
-A fast CLI for inspecting and comparing learned representations across self-supervised vision models. Feed it an image, get a structured comparison of how DINOv2, DINOv3, MAE, I-JEPA, CLIP, and SigLIP see the world.
+A fast CLI for inspecting and comparing learned representations across self-supervised vision models. Feed it an image, get a structured comparison of how DINOv2, MAE, I-JEPA, CLIP, and SigLIP see the world.
 
 ```bash
 cargo install latent-inspector
 
 # Compare representations across models
-latent-inspector compare photo.jpg --models dinov2,dinov3,mae,ijepa,clip
+latent-inspector compare photo.jpg --models dinov2-vit-l14,mae-vit-l16,ijepa-vit-h14,clip-vit-l14
 
 # Inspect a single model's representation
-latent-inspector inspect photo.jpg --model dinov2 --output report/
+latent-inspector inspect photo.jpg --model dinov2-vit-l14 --output report/
+
+# Validate preprocessing, tensor semantics, and reference parity
+latent-inspector validate --model dinov2-vit-l14 --format json --output validation/
 
 # Find nearest neighbors across a dataset
-latent-inspector neighbors photo.jpg --model dinov2 --dataset imagenet-val/
+latent-inspector neighbors photo.jpg --model dinov2-vit-l14 --dataset imagenet-val/
 
 # Measure representation similarity between two models
-latent-inspector similarity --model-a dinov2 --model-b ijepa --dataset images/
+latent-inspector similarity --model-a dinov2-vit-l14 --model-b ijepa-vit-h14 --dataset images/
 ```
 
 ## What it does
@@ -39,7 +42,14 @@ latent-inspector makes these differences visible and measurable.
 - **Terminal** — Rich inline display with colored Unicode blocks (default)
 - **PNG** — Side-by-side comparison images
 - **JSON** — Raw metrics for scripting and analysis
-- **HTML** — Interactive report with hover-to-compare
+- **HTML** — Interactive report with embedded validation and trust summaries
+
+### Validation workflow:
+
+- `validate` checks preprocessing against the approved model contract
+- `validate` verifies the exported ONNX tensor name, shape, and CLS semantics
+- `validate` compares observed outputs against checked-in reference evidence
+- `compare` and `inspect` now embed the latest validation summary in terminal, JSON, and HTML reports
 
 ## Why Rust?
 
@@ -53,14 +63,28 @@ For researchers processing thousands of images across multiple models, this matt
 
 | Model | Architecture | Method | Source |
 |-------|-------------|--------|--------|
-| DINOv2 | ViT-L/14 | Self-distillation + centering | Meta FAIR |
-| DINOv3 | ViT-7B (distilled to ViT-L) | Self-distillation + Gram anchoring | Meta FAIR |
-| MAE | ViT-L/16 | Masked autoencoder (reconstruction) | Meta FAIR |
-| I-JEPA | ViT-H/14 | Joint embedding predictive (latent prediction) | Meta FAIR |
-| CLIP | ViT-L/14 | Contrastive image-text | OpenAI |
-| SigLIP | ViT-SO400M/14 | Sigmoid contrastive image-text | Google |
+| `dinov2-vit-l14` | ViT-L/14 | Self-distillation + centering | Meta FAIR |
+| `mae-vit-l16` | ViT-L/16 | Masked autoencoder (reconstruction) | Meta FAIR |
+| `ijepa-vit-h14` | ViT-H/14 | Joint embedding predictive (latent prediction) | Meta FAIR |
+| `clip-vit-l14` | ViT-L/14 | Contrastive image-text | OpenAI |
+| `siglip-so400m` | ViT-SO400M/14 | Sigmoid contrastive image-text | Google |
 
 Models are downloaded automatically on first use (~300MB-2GB each) and cached locally.
+
+## Validate a model integration
+
+Run the dedicated validation command whenever you update an export or want to
+confirm that a report is still source-aligned:
+
+```bash
+cargo run -- validate --model dinov2-vit-l14
+cargo run -- validate --model dinov2-vit-l14 --format json --output tmp/validation
+cargo run -- validate --model dinov2-vit-l14 --refresh-goldens
+```
+
+The validation summary reports preprocessing status, tensor semantics, approved
+reference parity, caveats, and a plain-language recommendation for whether the
+model is safe to interpret as source-aligned.
 
 ## Example: How different models see a street scene
 

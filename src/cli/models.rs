@@ -48,16 +48,24 @@ fn list_models(verbose: bool) {
         );
 
         if verbose {
-            println!("    Input: {}×{}", entry.info.input_size, entry.info.input_size);
+            println!(
+                "    Input: {}×{}",
+                entry.info.input_size, entry.info.input_size
+            );
             println!("    Embed dim: {}", entry.info.embed_dim);
-            println!("    Layers: {}, Heads: {}", entry.info.num_layers, entry.info.num_heads);
-            println!("    URL: {}", entry.download_url);
+            println!(
+                "    Layers: {}, Heads: {}",
+                entry.info.num_layers, entry.info.num_heads
+            );
+            println!("    URL: {}", entry.primary_artifact().download_url);
         }
     }
 
     println!("{}", "═".repeat(70));
     println!("Run `latent-inspector models --download <name>` to cache a model.");
-    let cache_path = cache::cache_dir().map(|p| p.display().to_string()).unwrap_or_else(|_| "unknown".to_string());
+    let cache_path = cache::cache_dir()
+        .map(|p| p.display().to_string())
+        .unwrap_or_else(|_| "unknown".to_string());
     println!("Cache dir: {}", cache_path);
 }
 
@@ -70,13 +78,13 @@ fn download_model(name: &str) -> Result<(), Error> {
 
     let dest = cache::model_path(name)?;
 
-    if dest.exists() {
+    if cache::is_cached(name)? {
         println!("Model '{name}' is already cached at {}.", dest.display());
         return Ok(());
     }
 
     println!("Downloading {name} ({} M params)…", entry.info.params_m);
-    cache::download(name, &entry.download_url, &dest, &entry.sha256)?;
+    cache::download(name, &entry)?;
     println!("✓ {name} saved to {}.", dest.display());
     Ok(())
 }

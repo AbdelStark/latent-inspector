@@ -8,7 +8,10 @@ use pathfinding::prelude::kuhn_munkres_min;
 /// Compute cosine similarity between each pair of patches from `a` and `b`.
 ///
 /// `a`: `[Na, D]`, `b`: `[Nb, D]` → returns `[Na, Nb]`.
-pub fn patch_cosine_similarity(a: &Array2<f32>, b: &Array2<f32>) -> Result<Array2<f32>, AnalysisError> {
+pub fn patch_cosine_similarity(
+    a: &Array2<f32>,
+    b: &Array2<f32>,
+) -> Result<Array2<f32>, AnalysisError> {
     let (na, da) = (a.shape()[0], a.shape()[1]);
     let (nb, db) = (b.shape()[0], b.shape()[1]);
 
@@ -71,8 +74,7 @@ pub fn patch_correspondence(
             cost_flat.push(((1.0 - sim[[i, j]]) * scale as f32) as i64);
         }
     }
-    let cost_matrix = Matrix::from_vec(n, n, cost_flat)
-        .unwrap_or_else(|_| Matrix::new(n, n, 0i64));
+    let cost_matrix = Matrix::from_vec(n, n, cost_flat).unwrap_or_else(|_| Matrix::new(n, n, 0i64));
 
     let (_total_cost, assignments): (i64, Vec<usize>) = kuhn_munkres_min(&cost_matrix);
 

@@ -23,7 +23,10 @@ pub struct DriftArgs {
 }
 
 pub fn run(args: DriftArgs) -> Result<(), Error> {
-    info!("Measuring drift for {} on {:?}", args.model, args.checkpoints);
+    info!(
+        "Measuring drift for {} on {:?}",
+        args.model, args.checkpoints
+    );
 
     // Scan checkpoint directory for ONNX files
     let mut ckpt_paths: Vec<PathBuf> = std::fs::read_dir(&args.checkpoints)?
@@ -33,7 +36,10 @@ pub fn run(args: DriftArgs) -> Result<(), Error> {
         .collect();
 
     if ckpt_paths.is_empty() {
-        println!("No .onnx checkpoint files found in {}", args.checkpoints.display());
+        println!(
+            "No .onnx checkpoint files found in {}",
+            args.checkpoints.display()
+        );
         return Ok(());
     }
 

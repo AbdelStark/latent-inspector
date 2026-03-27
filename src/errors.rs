@@ -25,6 +25,26 @@ pub enum Error {
 
     #[error("HTTP error: {0}")]
     Http(#[from] reqwest::Error),
+
+    #[error("Validation error: {0}")]
+    Validation(#[from] ValidationError),
+}
+
+impl Error {
+    pub fn exit_code(&self) -> i32 {
+        match self {
+            Error::Validation(ValidationError::Usage(_))
+            | Error::Validation(ValidationError::MissingFixtures(_)) => 2,
+            _ => 1,
+        }
+    }
+
+    pub fn should_print(&self) -> bool {
+        !matches!(
+            self,
+            Error::Validation(ValidationError::FailedValidation { .. })
+        )
+    }
 }
 
 #[derive(Error, Debug)]
@@ -98,4 +118,25 @@ pub enum DatasetError {
 
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
+}
+
+#[derive(Error, Debug)]
+pub enum ValidationError {
+    #[error("Usage error: {0}")]
+    Usage(String),
+
+    #[error("Validation fixtures are missing or invalid: {0}")]
+    MissingFixtures(String),
+
+    #[error("Validation contract mismatch for '{model}': {reason}")]
+    ContractMismatch { model: String, reason: String },
+
+    #[error("Validation failed for '{model}': {reason}")]
+    FailedValidation { model: String, reason: String },
+
+    #[error("IO error: {0}")]
+    Io(#[from] std::io::Error),
+
+    #[error("JSON error: {0}")]
+    Json(#[from] serde_json::Error),
 }

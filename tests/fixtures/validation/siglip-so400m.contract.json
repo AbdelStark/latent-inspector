@@ -1,0 +1,31 @@
+{
+  "model": "siglip-so400m",
+  "profile": {
+    "source": "google/siglip-so400m-patch14-224",
+    "evidence_timestamp": "2026-03-27T12:00:00Z",
+    "fixture_set": "standard",
+    "preprocess": {
+      "input_size": 224,
+      "resize_filter": "lanczos3",
+      "color_space": "rgb",
+      "layout": "nchw",
+      "mean": [0.5, 0.5, 0.5],
+      "std": [0.5, 0.5, 0.5]
+    },
+    "tensor": {
+      "name": "last_hidden_state",
+      "role": "patch-and-cls-sequence",
+      "cls_expected": true,
+      "batch_size": 1,
+      "patch_count": 256,
+      "embedding_dim": 1152
+    },
+    "tolerances": {
+      "patch_count_abs": 0,
+      "embedding_dim_abs": 0,
+      "patch_mean_abs": 0.001,
+      "patch_std_abs": 0.001,
+      "cls_l2_abs": 0.001
+    }
+  }
+}
