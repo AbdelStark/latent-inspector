@@ -111,6 +111,10 @@ pub fn run(args: InspectArgs) -> Result<(), Error> {
             let grid = (features.n_patches as f32).sqrt() as usize;
             let path = outdir.join(format!("{}_pca.png", args.model));
             crate::viz::png::save_pca_rgb(&projected, grid, &path)?;
+            crate::viz::png::save_variance_spectrum_chart(
+                &spectrum.ratios.to_vec(),
+                &outdir.join(format!("{}_variance.png", args.model)),
+            )?;
             println!("PNG saved to {}", outdir.display());
         }
         OutputFormat::Html => {

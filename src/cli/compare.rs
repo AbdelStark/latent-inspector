@@ -6,6 +6,7 @@ use crate::validation::summarize_session_or_unverified;
 use crate::viz::OutputFormat;
 use clap::Args;
 use rayon::prelude::*;
+use std::collections::HashMap;
 use std::path::PathBuf;
 use tracing::info;
 
@@ -32,37 +33,45 @@ pub fn run(args: CompareArgs) -> Result<(), Error> {
 
     // Load and preprocess image
     let img = image::open(&args.image)?;
+    let display_labels = disambiguate_labels(&args.models);
 
     // Load all model sessions (parallel)
-    let mut sessions: Vec<(String, ModelSession)> = args
+    let mut sessions: Vec<(String, String, ModelSession)> = args
         .models
         .iter()
-        .map(|name| {
+        .zip(display_labels.iter())
+        .map(|(name, display_label)| {
             let session = ModelSession::load(name)?;
-            Ok((name.clone(), session))
+            Ok((display_label.clone(), name.clone(), session))
         })
         .collect::<Result<Vec<_>, Error>>()?;
 
     let validation_summaries = sessions
         .iter_mut()
-        .map(|(_, session)| summarize_session_or_unverified(session, None))
+        .map(|(display_label, _, session)| {
+            let mut summary = summarize_session_or_unverified(session, None);
+            summary.model = display_label.clone();
+            summary
+        })
         .collect::<Vec<_>>();
 
     // Run inference in parallel
     let outputs: Vec<(String, ExtractedFeatures)> = sessions
         .par_iter_mut()
-        .map(|(name, session): &mut (String, ModelSession)| {
-            info!("Running inference for {name}");
-            let output = session.infer(&img)?;
-            let features = ExtractedFeatures::from_output(output)?;
-            Ok((name.clone(), features))
-        })
+        .map(
+            |(display_label, _, session): &mut (String, String, ModelSession)| {
+                info!("Running inference for {display_label}");
+                let output = session.infer(&img)?;
+                let features = ExtractedFeatures::from_output(output)?;
+                Ok((display_label.clone(), features))
+            },
+        )
         .collect::<Result<Vec<_>, Error>>()?;
 
     // Compute per-model metrics
     let metrics: Vec<ModelMetrics> = outputs
         .iter()
-        .map(|(name, feat)| compute_metrics(feat, name))
+        .map(|(display_label, feat)| compute_metrics(feat, display_label))
         .collect::<Result<Vec<_>, _>>()?;
 
     // Compute pairwise comparisons
@@ -76,12 +85,13 @@ pub fn run(args: CompareArgs) -> Result<(), Error> {
         }
     }
 
+    let overview = crate::viz::report::build_compare_overview(&metrics, &comparisons);
+
     // Render output
-    let model_name_refs: Vec<&str> = args.models.iter().map(String::as_str).collect();
     match args.format {
         OutputFormat::Terminal => {
             crate::viz::terminal::print_metrics_table(&metrics);
-            crate::viz::terminal::print_cls_similarity_matrix(&comparisons, &model_name_refs);
+            crate::viz::terminal::print_compare_overview(&overview);
             crate::viz::terminal::print_validation_summaries(&validation_summaries);
         }
         OutputFormat::Json => {
@@ -116,12 +126,97 @@ pub fn run(args: CompareArgs) -> Result<(), Error> {
                 let pca_result = crate::analysis::pca(&feat.patch_tokens, 3, 300)?;
                 let projected = crate::analysis::transform(&feat.patch_tokens, &pca_result);
                 let grid = (feat.n_patches as f32).sqrt() as usize;
-                let path = outdir.join(format!("{name}_pca.png"));
+                let path = outdir.join(format!("{}_pca.png", slugify(name)));
                 crate::viz::png::save_pca_rgb(&projected, grid, &path)?;
             }
+            save_pairwise_heatmaps(&outdir, &overview)?;
             println!("PNG outputs saved to {}", outdir.display());
         }
     }
 
     Ok(())
+}
+
+fn disambiguate_labels(models: &[String]) -> Vec<String> {
+    let mut totals: HashMap<&str, usize> = HashMap::new();
+    for model in models {
+        *totals.entry(model.as_str()).or_insert(0) += 1;
+    }
+
+    let mut seen: HashMap<&str, usize> = HashMap::new();
+    models
+        .iter()
+        .map(|model| {
+            let count = totals.get(model.as_str()).copied().unwrap_or(1);
+            if count == 1 {
+                return model.clone();
+            }
+
+            let entry = seen.entry(model.as_str()).or_insert(0);
+            *entry += 1;
+            format!("{model}#{}", *entry)
+        })
+        .collect()
+}
+
+fn slugify(label: &str) -> String {
+    let mut slug = String::with_capacity(label.len());
+    for ch in label.chars() {
+        if ch.is_ascii_alphanumeric() {
+            slug.push(ch.to_ascii_lowercase());
+        } else if matches!(ch, '-' | '_') {
+            slug.push(ch);
+        } else {
+            slug.push('_');
+        }
+    }
+    slug.trim_matches('_').to_string()
+}
+
+fn save_pairwise_heatmaps(
+    outdir: &std::path::Path,
+    overview: &crate::viz::report::CompareOverview,
+) -> Result<(), Error> {
+    let heatmaps = [
+        ("cls_cosine", &overview.cls_cosine_matrix),
+        ("linear_cka", &overview.linear_cka_matrix),
+        ("knn_overlap_k10", &overview.knn_overlap_matrix),
+        ("patch_correspondence", &overview.correspondence_matrix),
+    ];
+
+    for (name, matrix) in heatmaps {
+        if matrix.len() >= 2 && matrix.has_off_diagonal_values() {
+            crate::viz::png::save_pairwise_heatmap(matrix, &outdir.join(format!("{name}.png")))?;
+        }
+    }
+
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn duplicate_models_receive_stable_suffixes() {
+        let labels = disambiguate_labels(&[
+            "dinov2-vit-l14".to_string(),
+            "clip-vit-l14".to_string(),
+            "dinov2-vit-l14".to_string(),
+        ]);
+
+        assert_eq!(
+            labels,
+            vec![
+                "dinov2-vit-l14#1".to_string(),
+                "clip-vit-l14".to_string(),
+                "dinov2-vit-l14#2".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn slugify_replaces_non_filename_characters() {
+        assert_eq!(slugify("dinov2-vit-l14#2"), "dinov2-vit-l14_2");
+    }
 }

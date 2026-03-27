@@ -3,7 +3,7 @@ latent-inspector — Fast Rust CLI for inspecting and comparing learned represen
 </identity>
 
 <status>
-PROJECT STATUS: Specification phase. No source code exists yet. Implementation follows the 6-phase plan in IMPLEMENTATION_PLAN.md. Begin with Phase 1 (ONNX Runtime + DINOv2 model loading).
+PROJECT STATUS: Rust CLI and library implementation are present. Phase 1 is the active runtime scope: `dinov2-vit-l14` is the only ready model, validation evidence is implemented, and compare/inspect/drift reporting are wired through terminal, JSON, HTML, and PNG surfaces. Planned models remain registered but intentionally unavailable until their integrations are validated.
 </status>
 
 <stack>

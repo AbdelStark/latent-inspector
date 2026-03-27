@@ -2,6 +2,7 @@
 
 use crate::analysis::{ComparisonMetrics, ModelMetrics};
 use crate::validation::report::ModelValidationSummary;
+use crate::viz::report::{CompareOverview, PairwiseMatrix};
 use ndarray::Array2;
 
 const BLOCK_CHARS: &[char] = &[' ', '░', '▒', '▓', '█'];
@@ -115,6 +116,70 @@ pub fn print_cls_similarity_matrix(comparisons: &[ComparisonMetrics], model_name
                     .unwrap_or_else(|| "-".into());
                 print!("{:<width$}", val, width = w);
             }
+        }
+        println!();
+    }
+}
+
+pub fn print_compare_overview(overview: &CompareOverview) {
+    if !overview.model_highlights.is_empty() {
+        println!();
+        println!("Highlights");
+        println!("{}", "═".repeat(80));
+        for highlight in &overview.model_highlights {
+            println!(
+                "{:<28} {:<22} {}",
+                truncate(&highlight.label, 27),
+                truncate(&highlight.model, 21),
+                highlight.value
+            );
+        }
+        println!("{}", "═".repeat(80));
+    }
+
+    if !overview.comparison_highlights.is_empty() {
+        println!();
+        println!("Comparison Highlights");
+        println!("{}", "═".repeat(80));
+        for highlight in &overview.comparison_highlights {
+            println!(
+                "{:<28} {:<20} ↔ {:<20} {:.3}",
+                truncate(&highlight.label, 27),
+                truncate(&highlight.model_a, 19),
+                truncate(&highlight.model_b, 19),
+                highlight.value
+            );
+        }
+        println!("{}", "═".repeat(80));
+    }
+
+    print_pairwise_matrix("CLS cosine similarity", &overview.cls_cosine_matrix);
+    print_pairwise_matrix("Linear CKA", &overview.linear_cka_matrix);
+    print_pairwise_matrix("k-NN overlap (k=10)", &overview.knn_overlap_matrix);
+    print_pairwise_matrix("Mean patch correspondence", &overview.correspondence_matrix);
+}
+
+pub fn print_pairwise_matrix(title: &str, matrix: &PairwiseMatrix) {
+    if matrix.len() < 2 || !matrix.has_off_diagonal_values() {
+        return;
+    }
+
+    println!();
+    println!("{title}:");
+    let width = 12;
+    print!("{:<14}", "");
+    for name in &matrix.labels {
+        print!("{:<width$}", truncate(name, width - 1), width = width);
+    }
+    println!();
+
+    for (row_idx, name) in matrix.labels.iter().enumerate() {
+        print!("{:<14}", truncate(name, 13));
+        for value in &matrix.rows[row_idx] {
+            let rendered = value
+                .map(|value| format!("{value:.3}"))
+                .unwrap_or_else(|| "N/A".to_string());
+            print!("{:<width$}", rendered, width = width);
         }
         println!();
     }

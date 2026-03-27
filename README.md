@@ -42,9 +42,9 @@ latent-inspector makes these differences visible and measurable.
 ### Output formats:
 
 - **Terminal** — Rich inline display with colored Unicode blocks (default)
-- **PNG** — Side-by-side comparison images
-- **JSON** — Raw metrics for scripting and analysis
-- **HTML** — Interactive report with embedded validation and trust summaries
+- **PNG** — PCA projections plus comparison heatmaps or inspection variance charts
+- **JSON** — Raw metrics plus pairwise overview matrices and highlights
+- **HTML** — Interactive report with pairwise matrices, highlights, and embedded validation summaries
 
 ### Validation workflow:
 
@@ -120,10 +120,10 @@ I-JEPA: 0.58 (moderate)  CLIP: 0.81 (very focused)
 ## Analysis modes
 
 ### `compare` — Side-by-side model comparison
-The main command. Takes an image and a list of models. Produces attention maps, PCA projections, similarity matrices, and summary metrics. The default output everyone uses.
+The main command. Takes an image and a list of models. Produces PCA projections, pairwise similarity matrices, highlight summaries, and validation-aware reports. `--format png` writes per-model PCA images plus pairwise heatmaps for CKA, k-NN overlap, and direct patch correspondence.
 
 ### `inspect` — Deep dive into a single model
-Detailed analysis of one model's representation: per-layer attention maps, feature histograms, dead neuron count, representation collapse detection, per-head analysis for multi-head models.
+Detailed analysis of one model's representation: rank/entropy metrics, dead dimension counts, variance spectrum, validation status, and exportable PCA + variance artefacts.
 
 ### `neighbors` — k-NN retrieval across a dataset
 Given an image and a dataset directory, find the most similar images according to each model. Reveals what each model considers "similar." DINO finds visually similar objects. CLIP finds semantically similar concepts. I-JEPA finds structurally similar scenes.

@@ -1,9 +1,8 @@
 use crate::analysis::{ComparisonMetrics, ModelMetrics};
 use crate::errors::VizError;
 use crate::validation::report::ModelValidationSummary;
+use crate::viz::report::CompareOverview;
 use serde::Serialize;
-use serde_json::Value;
-use std::collections::HashMap;
 use std::path::Path;
 
 /// Render model metrics as pretty-printed JSON to stdout.
@@ -34,9 +33,11 @@ pub fn print_report(
     comparisons: &[ComparisonMetrics],
     validation: Option<&[ModelValidationSummary]>,
 ) -> Result<(), VizError> {
+    let overview = crate::viz::report::build_compare_overview(metrics, comparisons);
     let json = serde_json::to_string_pretty(&JsonReport {
         metrics,
         comparisons,
+        overview,
         validation,
     })
     .map_err(|e| VizError::Html(format!("JSON serialization failed: {e}")))?;
@@ -59,24 +60,14 @@ pub fn write_report_with_validation(
     validation: Option<&[ModelValidationSummary]>,
     path: &Path,
 ) -> Result<(), VizError> {
-    let mut report: HashMap<&str, Value> = HashMap::new();
-    report.insert(
-        "metrics",
-        serde_json::to_value(metrics).map_err(|e| VizError::Html(e.to_string()))?,
-    );
-    report.insert(
-        "comparisons",
-        serde_json::to_value(comparisons).map_err(|e| VizError::Html(e.to_string()))?,
-    );
-    if let Some(validation) = validation {
-        report.insert(
-            "validation",
-            serde_json::to_value(validation).map_err(|e| VizError::Html(e.to_string()))?,
-        );
-    }
-
-    let json = serde_json::to_string_pretty(&report)
-        .map_err(|e| VizError::Html(format!("JSON serialization failed: {e}")))?;
+    let overview = crate::viz::report::build_compare_overview(metrics, comparisons);
+    let json = serde_json::to_string_pretty(&JsonReport {
+        metrics,
+        comparisons,
+        overview,
+        validation,
+    })
+    .map_err(|e| VizError::Html(format!("JSON serialization failed: {e}")))?;
 
     std::fs::write(path, json)
         .map_err(|e| VizError::Html(format!("Failed to write {}: {e}", path.display())))?;
@@ -99,6 +90,7 @@ pub fn write_validation_report(
 struct JsonReport<'a> {
     metrics: &'a [ModelMetrics],
     comparisons: &'a [ComparisonMetrics],
+    overview: CompareOverview,
     #[serde(skip_serializing_if = "Option::is_none")]
     validation: Option<&'a [ModelValidationSummary]>,
 }

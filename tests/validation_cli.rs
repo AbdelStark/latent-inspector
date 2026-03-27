@@ -200,3 +200,71 @@ fn compare_html_includes_validation_summary() {
     assert!(html.contains("Validation Summary"));
     assert!(html.contains("dinov2-vit-l14"));
 }
+
+#[test]
+fn compare_json_includes_pairwise_overview() {
+    let dir = tempdir().unwrap();
+    let image = write_test_image(dir.path());
+    let output = run(&[
+        "compare",
+        image.to_str().unwrap(),
+        "--models",
+        "dinov2-vit-l14,dinov2-vit-l14",
+        "--format",
+        "json",
+    ]);
+
+    assert_eq!(output.status.code(), Some(0));
+    let payload: Value = serde_json::from_slice(&output.stdout).unwrap();
+    let labels = payload["overview"]["linear_cka_matrix"]["labels"]
+        .as_array()
+        .unwrap();
+    assert_eq!(labels[0], Value::from("dinov2-vit-l14#1"));
+    assert_eq!(labels[1], Value::from("dinov2-vit-l14#2"));
+    assert!(payload["overview"]["comparison_highlights"].is_array());
+}
+
+#[test]
+fn compare_png_writes_pairwise_heatmaps() {
+    let dir = tempdir().unwrap();
+    let image = write_test_image(dir.path());
+    let output_dir = dir.path().join("compare-png");
+    let output = run(&[
+        "compare",
+        image.to_str().unwrap(),
+        "--models",
+        "dinov2-vit-l14,dinov2-vit-l14",
+        "--format",
+        "png",
+        "--output",
+        output_dir.to_str().unwrap(),
+    ]);
+
+    assert_eq!(output.status.code(), Some(0));
+    assert!(output_dir.join("dinov2-vit-l14_1_pca.png").exists());
+    assert!(output_dir.join("dinov2-vit-l14_2_pca.png").exists());
+    assert!(output_dir.join("linear_cka.png").exists());
+    assert!(output_dir.join("knn_overlap_k10.png").exists());
+    assert!(output_dir.join("patch_correspondence.png").exists());
+}
+
+#[test]
+fn inspect_png_writes_variance_chart() {
+    let dir = tempdir().unwrap();
+    let image = write_test_image(dir.path());
+    let output_dir = dir.path().join("inspect-png");
+    let output = run(&[
+        "inspect",
+        image.to_str().unwrap(),
+        "--model",
+        "dinov2-vit-l14",
+        "--format",
+        "png",
+        "--output",
+        output_dir.to_str().unwrap(),
+    ]);
+
+    assert_eq!(output.status.code(), Some(0));
+    assert!(output_dir.join("dinov2-vit-l14_pca.png").exists());
+    assert!(output_dir.join("dinov2-vit-l14_variance.png").exists());
+}

@@ -1,6 +1,7 @@
 pub mod html;
 pub mod json;
 pub mod png;
+pub mod report;
 pub mod terminal;
 
 use serde::{Deserialize, Serialize};

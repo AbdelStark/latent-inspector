@@ -1,6 +1,7 @@
 //! PNG export: attention overlays, PCA RGB projections, heatmaps.
 
 use crate::errors::VizError;
+use crate::viz::report::PairwiseMatrix;
 use image::{DynamicImage, ImageBuffer, Rgb, RgbImage};
 use ndarray::Array2;
 use std::path::Path;
@@ -121,6 +122,91 @@ pub fn save_similarity_heatmap(matrix: &Array2<f32>, output_path: &Path) -> Resu
     Ok(())
 }
 
+pub fn save_pairwise_heatmap(matrix: &PairwiseMatrix, output_path: &Path) -> Result<(), VizError> {
+    if matrix.is_empty() {
+        return Err(VizError::Png(
+            "Cannot render an empty pairwise heatmap".to_string(),
+        ));
+    }
+
+    let present_values = matrix
+        .rows
+        .iter()
+        .flat_map(|row| row.iter().flatten().copied())
+        .collect::<Vec<_>>();
+    let min = present_values
+        .iter()
+        .copied()
+        .fold(f32::INFINITY, f32::min)
+        .min(1.0);
+    let max = present_values
+        .iter()
+        .copied()
+        .fold(f32::NEG_INFINITY, f32::max)
+        .max(1.0);
+    let range = (max - min).max(1e-8);
+    let cell_size = 48u32;
+    let gap = 2u32;
+    let n = matrix.len() as u32;
+    let width = n * cell_size + n.saturating_sub(1) * gap;
+    let height = width;
+    let mut img = RgbImage::from_pixel(width, height, Rgb([18, 23, 33]));
+
+    for (row_idx, row) in matrix.rows.iter().enumerate() {
+        for (col_idx, value) in row.iter().enumerate() {
+            let color = value
+                .map(|value| heatmap_color((value - min) / range))
+                .unwrap_or([72, 78, 88]);
+            let x0 = col_idx as u32 * (cell_size + gap);
+            let y0 = row_idx as u32 * (cell_size + gap);
+
+            for y in y0..(y0 + cell_size) {
+                for x in x0..(x0 + cell_size) {
+                    img.put_pixel(x, y, Rgb(color));
+                }
+            }
+        }
+    }
+
+    img.save(output_path)
+        .map_err(|e| VizError::Png(format!("Failed to save {}: {e}", output_path.display())))?;
+    Ok(())
+}
+
+pub fn save_variance_spectrum_chart(ratios: &[f32], output_path: &Path) -> Result<(), VizError> {
+    if ratios.is_empty() {
+        return Err(VizError::Png(
+            "Cannot render a variance spectrum without ratios".to_string(),
+        ));
+    }
+
+    let bar_width = 18u32;
+    let gap = 6u32;
+    let padding = 16u32;
+    let chart_height = 180u32;
+    let width =
+        padding * 2 + ratios.len() as u32 * bar_width + ratios.len().saturating_sub(1) as u32 * gap;
+    let height = chart_height + padding * 2;
+    let mut img = RgbImage::from_pixel(width, height, Rgb([13, 17, 23]));
+
+    for (index, ratio) in ratios.iter().enumerate() {
+        let bar_height = (ratio.clamp(0.0, 1.0) * chart_height as f32).round() as u32;
+        let x0 = padding + index as u32 * (bar_width + gap);
+        let y0 = padding + chart_height.saturating_sub(bar_height);
+        let color = heatmap_color((index as f32 + 1.0) / ratios.len() as f32);
+
+        for y in y0..(padding + chart_height) {
+            for x in x0..(x0 + bar_width) {
+                img.put_pixel(x, y, Rgb(color));
+            }
+        }
+    }
+
+    img.save(output_path)
+        .map_err(|e| VizError::Png(format!("Failed to save {}: {e}", output_path.display())))?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -139,6 +225,28 @@ mod tests {
         let path = dir.path().join("sim.png");
         let matrix = Array2::from_shape_fn((8, 8), |(i, j)| if i == j { 1.0 } else { 0.0 });
         save_similarity_heatmap(&matrix, &path).unwrap();
+        assert!(path.exists());
+    }
+
+    #[test]
+    fn test_save_pairwise_heatmap() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("pairwise.png");
+        let matrix = PairwiseMatrix {
+            labels: vec!["a".into(), "b".into()],
+            rows: vec![vec![Some(1.0), Some(0.5)], vec![Some(0.5), Some(1.0)]],
+        };
+
+        save_pairwise_heatmap(&matrix, &path).unwrap();
+        assert!(path.exists());
+    }
+
+    #[test]
+    fn test_save_variance_spectrum_chart() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("variance.png");
+
+        save_variance_spectrum_chart(&[0.4, 0.25, 0.2, 0.1], &path).unwrap();
         assert!(path.exists());
     }
 }
