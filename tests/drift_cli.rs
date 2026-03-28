@@ -127,10 +127,22 @@ fn drift_json_and_png_outputs_are_written() {
 
     let payload = read_json(&json_output_dir.join("drift.json"));
     assert_eq!(payload["model"], "dinov2-vit-l14");
-    assert_eq!(payload["checkpoint_names"].as_array().unwrap().len(), 3);
+    assert_eq!(
+        payload["checkpoint_names"],
+        Value::Array(vec![
+            Value::from("step-1"),
+            Value::from("step-2"),
+            Value::from("step-10"),
+        ])
+    );
     assert_eq!(payload["drift"].as_array().unwrap().len(), 2);
     assert_eq!(payload["dataset_summary"]["skipped"], 1);
     assert_eq!(payload["largest_shift"]["from_checkpoint"], "step-2");
+    assert_eq!(payload["largest_shift"]["to_checkpoint"], "step-10");
+    assert!(
+        payload["drift"][0]["linear_cka"].as_f64().unwrap()
+            > payload["drift"][1]["linear_cka"].as_f64().unwrap()
+    );
 
     let png_output_dir = dir.path().join("drift-png");
     let png_output = Command::new(bin())

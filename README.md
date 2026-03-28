@@ -155,6 +155,8 @@ capture.
 
 ### `drift` — Track representation changes across checkpoints
 Point it at a directory of `.onnx` checkpoints (different training stages). Each file is loaded as its own session while reusing the selected model's registered preprocessing and tensor contract, then the command reports consecutive checkpoint CKA scores across the dataset. This is useful for understanding when representations materially shift during training.
+Checkpoint filenames are evaluated in natural numeric order, so names such as
+`step-2.onnx` are processed before `step-10.onnx`.
 If a supported image file in the dataset is unreadable or corrupt, the command
 now skips that file, continues processing the rest of the dataset, and reports
 the skipped paths in the terminal summary instead of aborting the whole run.

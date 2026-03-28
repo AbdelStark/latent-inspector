@@ -52,18 +52,24 @@ enum SessionInner {
 #[derive(Debug, Clone, Copy)]
 struct StubConfig {
     seed: u64,
+    checkpoint_progress: Option<f32>,
+    variant_seed: u64,
 }
 
 impl StubConfig {
     fn standard(model_name: &str) -> Self {
         Self {
             seed: stub_seed_value(model_name),
+            checkpoint_progress: None,
+            variant_seed: 0,
         }
     }
 
     fn checkpoint(model_name: &str, path: &Path) -> Self {
         Self {
-            seed: mix_stub_seeds(stub_seed_value(model_name), stub_seed(path)),
+            seed: stub_seed_value(model_name),
+            checkpoint_progress: checkpoint_progress_value(path),
+            variant_seed: stub_seed(path),
         }
     }
 }
@@ -274,7 +280,7 @@ impl ModelSession {
                 })
             }
             SessionInner::Stub(config) => {
-                let (cls_token, patch_tokens) = seeded_stub_features(config.seed, tensor, contract);
+                let (cls_token, patch_tokens) = seeded_stub_features(*config, tensor, contract);
 
                 Ok(ModelOutput {
                     cls_token,
@@ -392,21 +398,45 @@ fn stub_seed(path: &Path) -> u64 {
     stub_seed_value(&path.to_string_lossy())
 }
 
-fn mix_stub_seeds(base: u64, extra: u64) -> u64 {
-    base.rotate_left(13) ^ extra.rotate_right(7) ^ 0x9E37_79B9_7F4A_7C15
+fn checkpoint_progress_value(path: &Path) -> Option<f32> {
+    path.file_stem()
+        .and_then(|stem| stem.to_str())
+        .and_then(checkpoint_progress_from_label)
 }
 
 fn seeded_stub_features(
-    seed: u64,
+    config: StubConfig,
     tensor: &Array4<f32>,
     contract: &registry::TensorContract,
 ) -> (Option<Array1<f32>>, Array2<f32>) {
+    let seed = config.seed;
+    let checkpoint_position = config.checkpoint_progress.unwrap_or(0.0);
+    let checkpoint_sample_offset = checkpoint_position.max(0.0).round() as usize;
+    let checkpoint_progress = config
+        .checkpoint_progress
+        .map(|progress| (progress.max(0.0) + 1.0).ln())
+        .unwrap_or(0.0);
+    let checkpoint_drift = [
+        checkpoint_progress * 0.16,
+        checkpoint_progress.powi(2) * 0.02,
+        checkpoint_progress.sqrt() * 0.05,
+    ];
     let (mean, stddev) = tensor_moments(tensor);
     let flat_tensor = tensor.iter().copied().collect::<Vec<_>>();
     let patch_components = (0..contract.patch_count)
         .map(|patch_idx| {
-            let sample_a = sampled_tensor_value(&flat_tensor, seed ^ 0x1111_1111, patch_idx, 0);
-            let sample_b = sampled_tensor_value(&flat_tensor, seed ^ 0x2222_2222, patch_idx, 1);
+            let sample_a = sampled_tensor_value(
+                &flat_tensor,
+                seed ^ 0x1111_1111,
+                patch_idx + checkpoint_sample_offset,
+                checkpoint_sample_offset,
+            );
+            let sample_b = sampled_tensor_value(
+                &flat_tensor,
+                seed ^ 0x2222_2222,
+                patch_idx,
+                checkpoint_sample_offset + 1,
+            );
             [
                 sample_a + mean * 0.45,
                 sample_b - stddev * 0.30,
@@ -417,8 +447,18 @@ fn seeded_stub_features(
         .collect::<Vec<_>>();
     let dim_components = (0..contract.embedding_dim)
         .map(|dim_idx| {
-            let sample_a = sampled_tensor_value(&flat_tensor, seed ^ 0x5555_5555, 0, dim_idx);
-            let sample_b = sampled_tensor_value(&flat_tensor, seed ^ 0x6666_6666, 1, dim_idx);
+            let sample_a = sampled_tensor_value(
+                &flat_tensor,
+                seed ^ 0x5555_5555,
+                checkpoint_sample_offset,
+                dim_idx + checkpoint_sample_offset,
+            );
+            let sample_b = sampled_tensor_value(
+                &flat_tensor,
+                seed ^ 0x6666_6666,
+                checkpoint_sample_offset + 1,
+                dim_idx,
+            );
             [
                 sample_a + mean * 0.35,
                 sample_b + stddev * 0.20,
@@ -432,28 +472,108 @@ fn seeded_stub_features(
         |(patch_idx, dim_idx)| {
             let patch = patch_components[patch_idx];
             let dim = dim_components[dim_idx];
-            patch[0] * dim[0] * 0.60
-                + patch[1] * dim[1] * 0.25
-                + patch[2] * dim[2] * 0.10
-                + patch[3] * dim[3] * 0.05
+            let patch_axis = normalized_axis(patch_idx, contract.patch_count);
+            let dim_axis = normalized_axis(dim_idx, contract.embedding_dim);
+            let checkpoint_mix_a = 0.60 + checkpoint_drift[0] * patch_axis;
+            let checkpoint_mix_b = 0.25 - checkpoint_drift[0] * dim_axis;
+            let checkpoint_mix_c = 0.10 + checkpoint_drift[1] * zero_mean_quadratic(dim_axis);
+            let checkpoint_mix_d = 0.05 + checkpoint_drift[1] * zero_mean_quadratic(patch_axis);
+            let structured_checkpoint_drift = checkpoint_drift[0] * patch_axis * dim_axis
+                + checkpoint_drift[1]
+                    * zero_mean_quadratic(patch_axis)
+                    * zero_mean_quadratic(dim_axis)
+                + checkpoint_drift[2]
+                    * stub_wave(seed ^ 0xABCD_EF01, patch_idx * 7 + dim_idx * 3 + 1)
+                    * stub_wave(seed ^ 0x1020_3040, dim_idx * 11 + patch_idx + 3);
+            let variant_jitter =
+                checkpoint_variant_jitter(config.variant_seed, 0x0F0F_F0F0, patch_idx, dim_idx);
+            patch[0] * dim[0] * checkpoint_mix_a
+                + patch[1] * dim[1] * checkpoint_mix_b
+                + patch[2] * dim[2] * checkpoint_mix_c
+                + patch[3] * dim[3] * checkpoint_mix_d
                 + mean * 0.12
                 + stddev * 0.08
+                + structured_checkpoint_drift
+                + variant_jitter
         },
     );
 
     let cls_token = contract.cls_expected.then(|| {
         Array1::from_shape_fn(contract.embedding_dim, |dim_idx| {
             let dim = dim_components[dim_idx];
-            let cls_source = sampled_tensor_value(&flat_tensor, seed ^ 0x9999_9999, 0, dim_idx);
+            let cls_source = sampled_tensor_value(
+                &flat_tensor,
+                seed ^ 0x9999_9999,
+                checkpoint_sample_offset,
+                dim_idx + checkpoint_sample_offset * 2,
+            );
+            let dim_axis = normalized_axis(dim_idx, contract.embedding_dim);
+            let structured_checkpoint_drift = checkpoint_drift[0] * dim_axis
+                + checkpoint_drift[1] * zero_mean_quadratic(dim_axis)
+                + checkpoint_drift[2] * stub_wave(seed ^ 0x5566_7788, dim_idx * 13 + 5);
             cls_source * 0.50
                 + dim[0] * (mean + 0.40)
                 + dim[1] * 0.15
                 + dim[2] * 0.05
                 + stddev * 0.12
+                + structured_checkpoint_drift
+                + checkpoint_variant_jitter(config.variant_seed, 0xDEAD_BEEF, 0, dim_idx)
         })
     });
 
     (cls_token, patch_tokens)
+}
+
+fn checkpoint_progress_from_label(label: &str) -> Option<f32> {
+    let mut value = 0_u64;
+    let mut current = 0_u64;
+    let mut in_digits = false;
+    let mut found = false;
+
+    for byte in label.bytes() {
+        if byte.is_ascii_digit() {
+            in_digits = true;
+            current = current
+                .saturating_mul(10)
+                .saturating_add(u64::from(byte - b'0'));
+        } else if in_digits {
+            found = true;
+            value = value
+                .saturating_mul(1_000_000)
+                .saturating_add(current.min(999_999));
+            current = 0;
+            in_digits = false;
+        }
+    }
+
+    if in_digits {
+        found = true;
+        value = value
+            .saturating_mul(1_000_000)
+            .saturating_add(current.min(999_999));
+    }
+
+    found.then_some(value as f32)
+}
+
+fn normalized_axis(index: usize, len: usize) -> f32 {
+    if len <= 1 {
+        0.0
+    } else {
+        index as f32 / (len - 1) as f32 - 0.5
+    }
+}
+
+fn zero_mean_quadratic(value: f32) -> f32 {
+    value * value - (1.0 / 12.0)
+}
+
+fn checkpoint_variant_jitter(seed: u64, salt: u64, major: usize, minor: usize) -> f32 {
+    if seed == 0 {
+        0.0
+    } else {
+        (stub_unit(seed ^ salt, major, minor) - 0.5) * 0.01
+    }
 }
 
 fn tensor_moments(tensor: &Array4<f32>) -> (f32, f32) {
@@ -493,6 +613,8 @@ fn stub_unit(seed: u64, major: usize, minor: usize) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::analysis::linear_cka;
+    use crate::extract::ExtractedFeatures;
     use crate::models::registry::{Checksum, ModelArtifact};
     use std::fs;
     use tempfile::tempdir;
@@ -561,6 +683,59 @@ mod tests {
         assert_ne!(
             first_output.patch_tokens[[0, 0]],
             second_output.patch_tokens[[0, 0]]
+        );
+    }
+
+    #[test]
+    fn test_checkpoint_progress_from_label_uses_numeric_segments() {
+        assert_eq!(checkpoint_progress_from_label("step-10"), Some(10.0));
+        assert_eq!(
+            checkpoint_progress_from_label("epoch-2-step-10"),
+            Some(2_000_010.0)
+        );
+        assert_eq!(checkpoint_progress_from_label("checkpoint-final"), None);
+    }
+
+    #[test]
+    fn test_checkpoint_stub_sessions_reflect_numeric_progression() {
+        let dir = tempdir().unwrap();
+        let first_path = dir.path().join("step-1.onnx");
+        let second_path = dir.path().join("step-2.onnx");
+        let third_path = dir.path().join("step-10.onnx");
+        fs::write(&first_path, b"stub checkpoint").unwrap();
+        fs::write(&second_path, b"stub checkpoint").unwrap();
+        fs::write(&third_path, b"stub checkpoint").unwrap();
+
+        std::env::set_var("LATENT_INSPECTOR_MODEL_BACKEND", "stub");
+
+        let mut first = ModelSession::load_checkpoint("dinov2-vit-l14", &first_path).unwrap();
+        let mut second = ModelSession::load_checkpoint("dinov2-vit-l14", &second_path).unwrap();
+        let mut third = ModelSession::load_checkpoint("dinov2-vit-l14", &third_path).unwrap();
+        let images = [
+            image::DynamicImage::ImageRgb8(image::RgbImage::from_pixel(
+                224,
+                224,
+                image::Rgb([8, 32, 64]),
+            )),
+            image::DynamicImage::ImageRgb8(image::RgbImage::from_pixel(
+                224,
+                224,
+                image::Rgb([220, 120, 40]),
+            )),
+        ];
+
+        let first_matrix = checkpoint_embedding_matrix(&mut first, &images);
+        let second_matrix = checkpoint_embedding_matrix(&mut second, &images);
+        let third_matrix = checkpoint_embedding_matrix(&mut third, &images);
+
+        std::env::remove_var("LATENT_INSPECTOR_MODEL_BACKEND");
+
+        let cka_12 = linear_cka(&first_matrix, &second_matrix).unwrap();
+        let cka_2_10 = linear_cka(&second_matrix, &third_matrix).unwrap();
+
+        assert!(
+            cka_12 > cka_2_10,
+            "expected later checkpoint gap to drift more: step-1->2={cka_12:.4}, step-2->10={cka_2_10:.4}"
         );
     }
 
@@ -671,5 +846,24 @@ mod tests {
         ];
 
         validate_artifact_path(&entry, &artifact_path).unwrap();
+    }
+
+    fn checkpoint_embedding_matrix(
+        session: &mut ModelSession,
+        images: &[image::DynamicImage],
+    ) -> Array2<f32> {
+        let mut rows = Vec::new();
+        for image in images {
+            let output = session.infer(image).unwrap();
+            let features = ExtractedFeatures::from_output(output).unwrap();
+            rows.push(features.mean_patch());
+        }
+
+        let dim = rows.first().map(|row| row.len()).unwrap_or(0);
+        let mut matrix = Array2::<f32>::zeros((rows.len(), dim));
+        for (index, row) in rows.iter().enumerate() {
+            matrix.row_mut(index).assign(row);
+        }
+        matrix
     }
 }
