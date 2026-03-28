@@ -48,9 +48,10 @@ latent-inspector makes these differences visible and measurable.
 
 When a command writes files to an output directory, latent-inspector now also
 emits `artifacts.json` in that directory. The manifest records the command,
-requested format, primary report path when there is one, every generated asset,
-and any attached validation statuses so automation can discover outputs without
-hard-coding filenames.
+requested format, the command context that produced the bundle, a top-line
+summary of the run, primary report path when there is one, every generated
+asset, and any attached validation statuses so automation can discover outputs
+without hard-coding filenames or reverse-engineering the full report payload.
 For HTML exports, the output directory now also includes the equivalent
 structured JSON payload alongside the human-readable page, so a single run can
 serve both people and downstream automation.

@@ -163,6 +163,17 @@ fn drift_json_and_png_outputs_are_written() {
     assert_eq!(json_manifest["command"], "drift");
     assert_eq!(json_manifest["format"], "json");
     assert_eq!(json_manifest["primary_artifact"], "drift.json");
+    assert_eq!(json_manifest["context"]["model"], "dinov2-vit-l14");
+    assert_eq!(
+        json_manifest["context"]["checkpoints"],
+        Value::from(checkpoints_dir.display().to_string())
+    );
+    assert_eq!(json_manifest["summary"]["checkpoint_count"], 3);
+    assert_eq!(json_manifest["summary"]["dataset_summary"]["skipped"], 1);
+    assert_eq!(
+        json_manifest["validation_summary"]["overall_status"],
+        "unverified"
+    );
     assert_eq!(json_manifest["validation"].as_array().unwrap().len(), 3);
 
     let png_output_dir = dir.path().join("drift-png");
@@ -245,6 +256,8 @@ fn drift_html_output_embeds_chart_and_validation_summary() {
     assert_eq!(manifest["command"], "drift");
     assert_eq!(manifest["format"], "html");
     assert_eq!(manifest["primary_artifact"], "report.html");
+    assert_eq!(manifest["summary"]["checkpoint_count"], 2);
+    assert_eq!(manifest["summary"]["dataset_summary"]["loaded"], 2);
     assert!(manifest["artifacts"]
         .as_array()
         .unwrap()

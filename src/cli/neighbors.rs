@@ -6,6 +6,7 @@ use crate::viz::manifest::{ArtifactKind, OutputArtifactManifest};
 use crate::viz::report::{NeighborMatch, NeighborsReport};
 use crate::viz::OutputFormat;
 use clap::Args;
+use serde_json::json;
 use std::path::PathBuf;
 use tracing::info;
 
@@ -145,6 +146,8 @@ fn render_output(args: &NeighborsArgs, report: &NeighborsReport) -> Result<(), E
                 crate::viz::json::write_neighbors_report(report, &path)?;
                 OutputArtifactManifest::new("neighbors", OutputFormat::Json)
                     .with_primary_artifact("neighbors.json")
+                    .with_context(neighbors_manifest_context(args))
+                    .with_summary(neighbors_manifest_summary(report))
                     .add_artifact("neighbors.json", ArtifactKind::Json, "Neighbors report")
                     .with_validation(std::slice::from_ref(&report.validation))
                     .write_to_dir(outdir)?;
@@ -165,6 +168,8 @@ fn render_output(args: &NeighborsArgs, report: &NeighborsReport) -> Result<(), E
             crate::viz::html::write_neighbors_report_with_assets(report, &assets, &path)?;
             let mut manifest = OutputArtifactManifest::new("neighbors", OutputFormat::Html)
                 .with_primary_artifact("report.html")
+                .with_context(neighbors_manifest_context(args))
+                .with_summary(neighbors_manifest_summary(report))
                 .add_artifact("report.html", ArtifactKind::Html, "Neighbors report")
                 .add_artifact(
                     "neighbors.json",
@@ -192,6 +197,8 @@ fn render_output(args: &NeighborsArgs, report: &NeighborsReport) -> Result<(), E
             crate::viz::png::save_series_chart(&report.similarity_series(), &path)?;
             OutputArtifactManifest::new("neighbors", OutputFormat::Png)
                 .with_primary_artifact("neighbors.png")
+                .with_context(neighbors_manifest_context(args))
+                .with_summary(neighbors_manifest_summary(report))
                 .add_artifact(
                     "neighbors.png",
                     ArtifactKind::Png,
@@ -204,6 +211,24 @@ fn render_output(args: &NeighborsArgs, report: &NeighborsReport) -> Result<(), E
     }
 
     Ok(())
+}
+
+fn neighbors_manifest_context(args: &NeighborsArgs) -> serde_json::Value {
+    json!({
+        "query_image": args.image.display().to_string(),
+        "dataset": args.dataset.display().to_string(),
+        "model": args.model,
+        "requested_k": args.k,
+    })
+}
+
+fn neighbors_manifest_summary(report: &NeighborsReport) -> serde_json::Value {
+    json!({
+        "returned_neighbors": report.neighbors.len(),
+        "embedding_basis": report.embedding_basis,
+        "dataset_summary": report.dataset_summary,
+        "top_neighbor": report.neighbors.first(),
+    })
 }
 
 fn render_neighbors_assets(

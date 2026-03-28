@@ -8,6 +8,7 @@ use crate::viz::report::{DriftReport, DriftStep};
 use crate::viz::{terminal, OutputFormat};
 use clap::Args;
 use ndarray::Array2;
+use serde_json::json;
 use std::cmp::Ordering;
 use std::path::{Path, PathBuf};
 use tracing::info;
@@ -131,6 +132,8 @@ fn render_output(args: &DriftArgs, report: &DriftReport) -> Result<(), Error> {
                 crate::viz::json::write_drift_report(report, &path)?;
                 OutputArtifactManifest::new("drift", OutputFormat::Json)
                     .with_primary_artifact("drift.json")
+                    .with_context(drift_manifest_context(args))
+                    .with_summary(drift_manifest_summary(report))
                     .add_artifact("drift.json", ArtifactKind::Json, "Drift report")
                     .with_validation(&report.validation)
                     .write_to_dir(outdir)?;
@@ -151,6 +154,8 @@ fn render_output(args: &DriftArgs, report: &DriftReport) -> Result<(), Error> {
             crate::viz::html::write_drift_report_with_assets(report, &assets, &path)?;
             let mut manifest = OutputArtifactManifest::new("drift", OutputFormat::Html)
                 .with_primary_artifact("report.html")
+                .with_context(drift_manifest_context(args))
+                .with_summary(drift_manifest_summary(report))
                 .add_artifact("report.html", ArtifactKind::Html, "Drift report")
                 .add_artifact("drift.json", ArtifactKind::Json, "Drift report data")
                 .with_validation(&report.validation);
@@ -174,6 +179,8 @@ fn render_output(args: &DriftArgs, report: &DriftReport) -> Result<(), Error> {
             crate::viz::png::save_series_chart(&report.cka_series(), &path)?;
             OutputArtifactManifest::new("drift", OutputFormat::Png)
                 .with_primary_artifact("consecutive_cka.png")
+                .with_context(drift_manifest_context(args))
+                .with_summary(drift_manifest_summary(report))
                 .add_artifact(
                     "consecutive_cka.png",
                     ArtifactKind::Png,
@@ -186,6 +193,24 @@ fn render_output(args: &DriftArgs, report: &DriftReport) -> Result<(), Error> {
     }
 
     Ok(())
+}
+
+fn drift_manifest_context(args: &DriftArgs) -> serde_json::Value {
+    json!({
+        "model": args.model,
+        "checkpoints": args.checkpoints.display().to_string(),
+        "dataset": args.dataset.display().to_string(),
+    })
+}
+
+fn drift_manifest_summary(report: &DriftReport) -> serde_json::Value {
+    json!({
+        "checkpoint_count": report.checkpoint_names.len(),
+        "dataset_embedding_basis": report.dataset_embedding_basis,
+        "dataset_summary": report.dataset_summary,
+        "mean_consecutive_cka": report.mean_consecutive_cka,
+        "largest_shift": report.largest_shift,
+    })
 }
 
 fn render_drift_assets(

@@ -167,6 +167,18 @@ fn neighbors_json_output_writes_structured_report() {
     assert_eq!(manifest["command"], "neighbors");
     assert_eq!(manifest["format"], "json");
     assert_eq!(manifest["primary_artifact"], "neighbors.json");
+    assert_eq!(
+        manifest["context"]["query_image"],
+        Value::from(query_path.display().to_string())
+    );
+    assert_eq!(manifest["context"]["model"], "dinov2-vit-l14");
+    assert_eq!(manifest["context"]["requested_k"], 2);
+    assert_eq!(manifest["summary"]["returned_neighbors"], 2);
+    assert_eq!(manifest["summary"]["dataset_summary"]["loaded"], 2);
+    assert_eq!(
+        manifest["validation_summary"]["overall_status"],
+        "unverified"
+    );
     assert_eq!(manifest["validation"][0]["status"], "unverified");
 }
 
@@ -287,6 +299,16 @@ fn similarity_json_output_writes_structured_report() {
     assert_eq!(manifest["command"], "similarity");
     assert_eq!(manifest["format"], "json");
     assert_eq!(manifest["primary_artifact"], "similarity.json");
+    assert_eq!(manifest["context"]["model_a"], "dinov2-vit-l14");
+    assert_eq!(manifest["context"]["model_b"], "dinov2-vit-l14");
+    assert_eq!(manifest["context"]["requested_metric"], "all");
+    assert_eq!(manifest["summary"]["sample_count"], 2);
+    assert_eq!(manifest["summary"]["dataset_summary"]["skipped"], 1);
+    assert!(manifest["summary"]["metrics"]["linear_cka"].is_number());
+    assert_eq!(
+        manifest["validation_summary"]["overall_status"],
+        "unverified"
+    );
     assert_eq!(manifest["validation"].as_array().unwrap().len(), 2);
     assert_eq!(manifest["validation"][0]["status"], "unverified");
 }

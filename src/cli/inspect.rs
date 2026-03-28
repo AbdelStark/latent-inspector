@@ -6,6 +6,7 @@ use crate::validation::summarize_session_or_unverified;
 use crate::viz::manifest::{ArtifactKind, OutputArtifactManifest};
 use crate::viz::OutputFormat;
 use clap::Args;
+use serde_json::json;
 use std::path::{Path, PathBuf};
 use tracing::info;
 
@@ -109,6 +110,8 @@ pub fn run(args: InspectArgs) -> Result<(), Error> {
                 crate::viz::json::write_inspect_report(&report, &path)?;
                 OutputArtifactManifest::new("inspect", OutputFormat::Json)
                     .with_primary_artifact("inspect.json")
+                    .with_context(inspect_manifest_context(&args, requested_components))
+                    .with_summary(inspect_manifest_summary(&report))
                     .add_artifact("inspect.json", ArtifactKind::Json, "Inspect report")
                     .with_validation(std::slice::from_ref(&report.validation))
                     .write_to_dir(outdir)?;
@@ -120,16 +123,23 @@ pub fn run(args: InspectArgs) -> Result<(), Error> {
         OutputFormat::Png => {
             let outdir = args
                 .output
+                .clone()
                 .unwrap_or_else(|| PathBuf::from("inspect_output"));
             std::fs::create_dir_all(&outdir)?;
             let assets = write_inspect_visual_artifacts(&features, &report, &outdir)?;
-            let manifest = build_inspect_manifest(&report, Some(&assets), OutputFormat::Png);
+            let manifest = build_inspect_manifest(
+                &report,
+                Some(&assets),
+                OutputFormat::Png,
+                inspect_manifest_context(&args, requested_components),
+            );
             manifest.write_to_dir(&outdir)?;
             println!("PNG saved to {}", outdir.display());
         }
         OutputFormat::Html => {
             let outdir = args
                 .output
+                .clone()
                 .unwrap_or_else(|| PathBuf::from("inspect_output"));
             std::fs::create_dir_all(&outdir)?;
             let assets = write_inspect_visual_artifacts(&features, &report, &outdir)?;
@@ -139,10 +149,15 @@ pub fn run(args: InspectArgs) -> Result<(), Error> {
                 &assets,
                 &outdir.join("report.html"),
             )?;
-            let manifest = build_inspect_manifest(&report, Some(&assets), OutputFormat::Html)
-                .add_artifact("inspect.json", ArtifactKind::Json, "Inspect report data")
-                .add_artifact("report.html", ArtifactKind::Html, "Inspect report")
-                .with_primary_artifact("report.html");
+            let manifest = build_inspect_manifest(
+                &report,
+                Some(&assets),
+                OutputFormat::Html,
+                inspect_manifest_context(&args, requested_components),
+            )
+            .add_artifact("inspect.json", ArtifactKind::Json, "Inspect report data")
+            .add_artifact("report.html", ArtifactKind::Html, "Inspect report")
+            .with_primary_artifact("report.html");
             manifest.write_to_dir(&outdir)?;
             println!("Report written to {}/report.html", outdir.display());
         }
@@ -179,8 +194,11 @@ fn build_inspect_manifest(
     report: &crate::viz::report::InspectReport,
     assets: Option<&crate::viz::html::InspectHtmlAssets>,
     format: OutputFormat,
+    context: serde_json::Value,
 ) -> OutputArtifactManifest {
     let mut manifest = OutputArtifactManifest::new("inspect", format)
+        .with_context(context)
+        .with_summary(inspect_manifest_summary(report))
         .with_validation(std::slice::from_ref(&report.validation));
 
     if let Some(assets) = assets {
@@ -201,6 +219,24 @@ fn build_inspect_manifest(
     }
 
     manifest
+}
+
+fn inspect_manifest_context(args: &InspectArgs, requested_components: usize) -> serde_json::Value {
+    json!({
+        "image": args.image.display().to_string(),
+        "model": args.model,
+        "pca_components": requested_components,
+    })
+}
+
+fn inspect_manifest_summary(report: &crate::viz::report::InspectReport) -> serde_json::Value {
+    json!({
+        "effective_rank": report.metrics.effective_rank,
+        "patch_entropy": report.metrics.patch_entropy,
+        "components_90pct": report.metrics.components_90pct,
+        "components_99pct": report.variance_spectrum.components_99pct,
+        "top10_variance_pct": report.metrics.top10_variance_pct,
+    })
 }
 
 fn slugify(label: &str) -> String {

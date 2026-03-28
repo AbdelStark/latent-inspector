@@ -6,6 +6,7 @@ use crate::validation::validate_session_with_fixture_set;
 use crate::viz::manifest::{ArtifactKind, OutputArtifactManifest};
 use crate::viz::OutputFormat;
 use clap::Args;
+use serde_json::json;
 use std::path::PathBuf;
 
 #[derive(Args, Debug)]
@@ -119,6 +120,8 @@ fn render_validate_output(
                 crate::viz::json::write_validation_report(summaries, &path)?;
                 OutputArtifactManifest::new("validate", OutputFormat::Json)
                     .with_primary_artifact("validation.json")
+                    .with_context(validate_manifest_context(args))
+                    .with_summary(validate_manifest_summary(args, summaries))
                     .add_artifact("validation.json", ArtifactKind::Json, "Validation report")
                     .with_validation(summaries)
                     .write_to_dir(outdir)?;
@@ -140,6 +143,8 @@ fn render_validate_output(
             crate::viz::html::write_validation_report(summaries, &outdir.join("validation.html"))?;
             OutputArtifactManifest::new("validate", OutputFormat::Html)
                 .with_primary_artifact("validation.html")
+                .with_context(validate_manifest_context(args))
+                .with_summary(validate_manifest_summary(args, summaries))
                 .add_artifact("validation.html", ArtifactKind::Html, "Validation report")
                 .add_artifact(
                     "validation.json",
@@ -157,4 +162,30 @@ fn render_validate_output(
     }
 
     Ok(())
+}
+
+fn validate_manifest_context(args: &ValidateArgs) -> serde_json::Value {
+    json!({
+        "models": args.models,
+        "fixture_set": args.fixture_set,
+        "refresh_goldens": args.refresh_goldens,
+    })
+}
+
+fn validate_manifest_summary(
+    args: &ValidateArgs,
+    summaries: &[ModelValidationSummary],
+) -> serde_json::Value {
+    let failed_models = summaries
+        .iter()
+        .filter(|summary| !matches!(summary.status, ValidationStatus::Validated))
+        .map(|summary| summary.model.clone())
+        .collect::<Vec<_>>();
+
+    json!({
+        "model_count": summaries.len(),
+        "refresh_goldens": args.refresh_goldens,
+        "evidence_timestamp": summaries.first().map(|summary| summary.evidence_timestamp.clone()),
+        "failed_models": failed_models,
+    })
 }

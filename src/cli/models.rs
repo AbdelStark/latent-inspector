@@ -3,6 +3,7 @@ use crate::models::{build_model_catalog, cache, registry};
 use crate::viz::manifest::{ArtifactKind, OutputArtifactManifest};
 use crate::viz::OutputFormat;
 use clap::Args;
+use serde_json::json;
 use std::path::PathBuf;
 
 #[derive(Args, Debug)]
@@ -61,6 +62,8 @@ fn list_models(args: &ModelsArgs) -> Result<(), Error> {
                 crate::viz::json::write_model_catalog(&report, &path)?;
                 OutputArtifactManifest::new("models", OutputFormat::Json)
                     .with_primary_artifact("models.json")
+                    .with_context(models_manifest_context(args))
+                    .with_summary(models_manifest_summary(&report))
                     .add_artifact("models.json", ArtifactKind::Json, "Model catalog")
                     .write_to_dir(outdir)?;
                 println!("Model catalog written to {}", path.display());
@@ -79,6 +82,8 @@ fn list_models(args: &ModelsArgs) -> Result<(), Error> {
             crate::viz::html::write_model_catalog_report(&report, &path)?;
             OutputArtifactManifest::new("models", OutputFormat::Html)
                 .with_primary_artifact("models.html")
+                .with_context(models_manifest_context(args))
+                .with_summary(models_manifest_summary(&report))
                 .add_artifact("models.html", ArtifactKind::Html, "Model catalog")
                 .add_artifact("models.json", ArtifactKind::Json, "Model catalog data")
                 .write_to_dir(&outdir)?;
@@ -109,4 +114,22 @@ fn download_model(name: &str) -> Result<(), Error> {
     cache::download(name, &entry)?;
     println!("✓ {name} saved to {}.", dest.display());
     Ok(())
+}
+
+fn models_manifest_context(args: &ModelsArgs) -> serde_json::Value {
+    json!({
+        "verbose": args.verbose,
+        "mode": "catalog",
+    })
+}
+
+fn models_manifest_summary(
+    report: &crate::models::inventory::ModelCatalogReport,
+) -> serde_json::Value {
+    json!({
+        "fixture_set": report.fixture_set,
+        "evidence_timestamp": report.evidence_timestamp,
+        "fixture_error": report.fixture_error,
+        "summary": report.summary,
+    })
 }

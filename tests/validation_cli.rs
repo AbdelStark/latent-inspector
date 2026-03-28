@@ -101,7 +101,21 @@ fn validate_json_output_matches_contract_shape() {
     assert_eq!(manifest["command"], "validate");
     assert_eq!(manifest["format"], "json");
     assert_eq!(manifest["primary_artifact"], "validation.json");
+    assert_eq!(
+        manifest["context"]["models"],
+        Value::from(vec!["dinov2-vit-l14"])
+    );
+    assert_eq!(manifest["context"]["refresh_goldens"], false);
     assert_eq!(manifest["artifacts"][0]["path"], "validation.json");
+    assert_eq!(manifest["summary"]["model_count"], 1);
+    assert_eq!(
+        manifest["summary"]["failed_models"],
+        Value::from(vec!["dinov2-vit-l14"])
+    );
+    assert_eq!(
+        manifest["validation_summary"]["overall_status"],
+        "unverified"
+    );
     assert_eq!(manifest["validation"][0]["status"], "unverified");
 }
 
@@ -133,6 +147,11 @@ fn validate_html_output_writes_companion_json_bundle() {
     assert_eq!(manifest["command"], "validate");
     assert_eq!(manifest["format"], "html");
     assert_eq!(manifest["primary_artifact"], "validation.html");
+    assert_eq!(
+        manifest["context"]["models"],
+        Value::from(vec!["dinov2-vit-l14"])
+    );
+    assert_eq!(manifest["summary"]["model_count"], 1);
     assert!(manifest["artifacts"]
         .as_array()
         .unwrap()
@@ -333,6 +352,13 @@ fn inspect_html_includes_variance_spectrum_and_validation_summary() {
     assert_eq!(manifest["command"], "inspect");
     assert_eq!(manifest["format"], "html");
     assert_eq!(manifest["primary_artifact"], "report.html");
+    assert_eq!(manifest["context"]["model"], "dinov2-vit-l14");
+    assert_eq!(manifest["context"]["pca_components"], 32);
+    assert_eq!(
+        manifest["summary"]["components_99pct"],
+        payload["variance_spectrum"]["components_99pct"]
+    );
+    assert!(manifest["summary"]["effective_rank"].is_number());
     assert!(manifest["artifacts"]
         .as_array()
         .unwrap()
@@ -399,6 +425,12 @@ fn compare_html_embeds_visual_assets_and_validation_summary() {
     assert_eq!(manifest["command"], "compare");
     assert_eq!(manifest["format"], "html");
     assert_eq!(manifest["primary_artifact"], "report.html");
+    assert_eq!(
+        manifest["context"]["models"],
+        Value::from(vec!["dinov2-vit-l14", "dinov2-vit-l14"])
+    );
+    assert_eq!(manifest["summary"]["model_count"], 2);
+    assert_eq!(manifest["summary"]["comparison_count"], 1);
     assert!(manifest["artifacts"]
         .as_array()
         .unwrap()
@@ -473,6 +505,16 @@ fn compare_json_output_writes_structured_report() {
     assert_eq!(manifest["command"], "compare");
     assert_eq!(manifest["format"], "json");
     assert_eq!(manifest["primary_artifact"], "compare.json");
+    assert_eq!(
+        manifest["context"]["image"],
+        Value::from(image.display().to_string())
+    );
+    assert_eq!(manifest["summary"]["model_count"], 2);
+    assert_eq!(manifest["summary"]["comparison_count"], 1);
+    assert_eq!(
+        manifest["validation_summary"]["overall_status"],
+        "unverified"
+    );
     assert_eq!(manifest["validation"].as_array().unwrap().len(), 2);
 }
 
@@ -564,6 +606,8 @@ fn compare_png_writes_pairwise_heatmaps() {
     assert_eq!(manifest["command"], "compare");
     assert_eq!(manifest["format"], "png");
     assert!(manifest["primary_artifact"].is_null());
+    assert_eq!(manifest["summary"]["model_count"], 2);
+    assert_eq!(manifest["summary"]["comparison_count"], 1);
     assert!(manifest["artifacts"]
         .as_array()
         .unwrap()
@@ -598,6 +642,8 @@ fn inspect_png_writes_variance_chart() {
     let manifest = read_artifact_manifest(&output_dir);
     assert_eq!(manifest["command"], "inspect");
     assert_eq!(manifest["format"], "png");
+    assert_eq!(manifest["context"]["model"], "dinov2-vit-l14");
+    assert!(manifest["summary"]["components_90pct"].is_number());
     assert!(manifest["artifacts"]
         .as_array()
         .unwrap()
@@ -641,5 +687,17 @@ fn inspect_json_output_writes_structured_report() {
     assert_eq!(manifest["command"], "inspect");
     assert_eq!(manifest["format"], "json");
     assert_eq!(manifest["primary_artifact"], "inspect.json");
+    assert_eq!(
+        manifest["context"]["image"],
+        Value::from(image.display().to_string())
+    );
+    assert_eq!(
+        manifest["summary"]["components_99pct"],
+        payload["variance_spectrum"]["components_99pct"]
+    );
+    assert_eq!(
+        manifest["validation_summary"]["overall_status"],
+        "unverified"
+    );
     assert_eq!(manifest["validation"][0]["status"], "unverified");
 }

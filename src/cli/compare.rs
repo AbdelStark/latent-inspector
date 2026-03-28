@@ -7,6 +7,7 @@ use crate::viz::manifest::{ArtifactKind, OutputArtifactManifest};
 use crate::viz::OutputFormat;
 use clap::Args;
 use rayon::prelude::*;
+use serde_json::json;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use tracing::info;
@@ -109,6 +110,8 @@ pub fn run(args: CompareArgs) -> Result<(), Error> {
                 crate::viz::json::write_compare_report(&report, &path)?;
                 OutputArtifactManifest::new("compare", OutputFormat::Json)
                     .with_primary_artifact("compare.json")
+                    .with_context(compare_manifest_context(&args))
+                    .with_summary(compare_manifest_summary(&report))
                     .add_artifact("compare.json", ArtifactKind::Json, "Compare report")
                     .with_validation(&report.validation)
                     .write_to_dir(outdir)?;
@@ -120,6 +123,7 @@ pub fn run(args: CompareArgs) -> Result<(), Error> {
         OutputFormat::Html => {
             let outdir = args
                 .output
+                .clone()
                 .unwrap_or_else(|| PathBuf::from("compare_output"));
             std::fs::create_dir_all(&outdir)?;
             let pca_artifacts = render_pca_artifacts(&outputs, &outdir)?;
@@ -150,6 +154,8 @@ pub fn run(args: CompareArgs) -> Result<(), Error> {
             )?;
             let mut manifest = OutputArtifactManifest::new("compare", OutputFormat::Html)
                 .with_primary_artifact("report.html")
+                .with_context(compare_manifest_context(&args))
+                .with_summary(compare_manifest_summary(&report))
                 .add_artifact("report.html", ArtifactKind::Html, "Compare report")
                 .add_artifact("compare.json", ArtifactKind::Json, "Compare report data")
                 .with_validation(&report.validation);
@@ -161,11 +167,14 @@ pub fn run(args: CompareArgs) -> Result<(), Error> {
         OutputFormat::Png => {
             let outdir = args
                 .output
+                .clone()
                 .unwrap_or_else(|| PathBuf::from("compare_output"));
             std::fs::create_dir_all(&outdir)?;
             let pca_artifacts = render_pca_artifacts(&outputs, &outdir)?;
             let heatmap_artifacts = render_pairwise_heatmap_artifacts(&report.overview, &outdir)?;
             let mut manifest = OutputArtifactManifest::new("compare", OutputFormat::Png)
+                .with_context(compare_manifest_context(&args))
+                .with_summary(compare_manifest_summary(&report))
                 .with_validation(&report.validation);
             manifest = add_png_artifacts(manifest, &pca_artifacts);
             manifest = add_png_artifacts(manifest, &heatmap_artifacts);
@@ -313,6 +322,22 @@ fn add_png_artifacts(
         );
     }
     manifest
+}
+
+fn compare_manifest_context(args: &CompareArgs) -> serde_json::Value {
+    json!({
+        "image": args.image.display().to_string(),
+        "models": args.models,
+    })
+}
+
+fn compare_manifest_summary(report: &crate::viz::report::CompareReport) -> serde_json::Value {
+    json!({
+        "model_count": report.metrics.len(),
+        "comparison_count": report.comparisons.len(),
+        "model_highlights": report.overview.model_highlights,
+        "comparison_highlights": report.overview.comparison_highlights,
+    })
 }
 
 #[cfg(test)]

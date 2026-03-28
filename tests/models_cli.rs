@@ -91,7 +91,12 @@ fn models_json_output_writes_structured_catalog() {
     assert_eq!(manifest["command"], "models");
     assert_eq!(manifest["format"], "json");
     assert_eq!(manifest["primary_artifact"], "models.json");
+    assert_eq!(manifest["context"]["mode"], "catalog");
+    assert_eq!(manifest["context"]["verbose"], false);
     assert_eq!(manifest["artifacts"][0]["path"], "models.json");
+    assert_eq!(manifest["summary"]["summary"]["total_models"], 6);
+    assert_eq!(manifest["summary"]["summary"]["ready_models"], 1);
+    assert!(manifest["validation_summary"].is_null());
 }
 
 #[test]
@@ -123,6 +128,8 @@ fn models_html_output_writes_shareable_catalog() {
     assert_eq!(manifest["command"], "models");
     assert_eq!(manifest["format"], "html");
     assert_eq!(manifest["primary_artifact"], "models.html");
+    assert_eq!(manifest["context"]["mode"], "catalog");
+    assert_eq!(manifest["summary"]["fixture_set"], "standard");
     assert!(manifest["artifacts"]
         .as_array()
         .unwrap()

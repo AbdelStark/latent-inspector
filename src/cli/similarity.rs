@@ -8,6 +8,7 @@ use crate::viz::report::{SimilarityMetricValue, SimilarityReport};
 use crate::viz::OutputFormat;
 use clap::Args;
 use ndarray::Array2;
+use serde_json::{json, Map, Value};
 use std::path::PathBuf;
 use tracing::info;
 
@@ -191,6 +192,8 @@ fn render_output(args: &SimilarityArgs, report: &SimilarityReport) -> Result<(),
                 crate::viz::json::write_similarity_report(report, &path)?;
                 OutputArtifactManifest::new("similarity", OutputFormat::Json)
                     .with_primary_artifact("similarity.json")
+                    .with_context(similarity_manifest_context(args))
+                    .with_summary(similarity_manifest_summary(report))
                     .add_artifact("similarity.json", ArtifactKind::Json, "Similarity report")
                     .with_validation(&report.validation)
                     .write_to_dir(outdir)?;
@@ -211,6 +214,8 @@ fn render_output(args: &SimilarityArgs, report: &SimilarityReport) -> Result<(),
             crate::viz::html::write_similarity_report_with_assets(report, &assets, &path)?;
             let mut manifest = OutputArtifactManifest::new("similarity", OutputFormat::Html)
                 .with_primary_artifact("report.html")
+                .with_context(similarity_manifest_context(args))
+                .with_summary(similarity_manifest_summary(report))
                 .add_artifact("report.html", ArtifactKind::Html, "Similarity report")
                 .add_artifact(
                     "similarity.json",
@@ -238,6 +243,8 @@ fn render_output(args: &SimilarityArgs, report: &SimilarityReport) -> Result<(),
             crate::viz::png::save_series_chart(&report.metric_series(), &path)?;
             OutputArtifactManifest::new("similarity", OutputFormat::Png)
                 .with_primary_artifact("similarity.png")
+                .with_context(similarity_manifest_context(args))
+                .with_summary(similarity_manifest_summary(report))
                 .add_artifact(
                     "similarity.png",
                     ArtifactKind::Png,
@@ -250,6 +257,35 @@ fn render_output(args: &SimilarityArgs, report: &SimilarityReport) -> Result<(),
     }
 
     Ok(())
+}
+
+fn similarity_manifest_context(args: &SimilarityArgs) -> serde_json::Value {
+    json!({
+        "model_a": args.model_a,
+        "model_b": args.model_b,
+        "dataset": args.dataset.display().to_string(),
+        "requested_metric": args.metric,
+    })
+}
+
+fn similarity_manifest_summary(report: &SimilarityReport) -> serde_json::Value {
+    let metrics = report
+        .metrics
+        .iter()
+        .map(metric_summary_entry)
+        .collect::<Map<String, Value>>();
+
+    json!({
+        "sample_count": report.sample_count,
+        "dataset_embedding_basis": report.dataset_embedding_basis,
+        "dataset_summary": report.dataset_summary,
+        "metrics": Value::Object(metrics),
+        "note": report.note,
+    })
+}
+
+fn metric_summary_entry(metric: &SimilarityMetricValue) -> (String, Value) {
+    (metric.key.clone(), json!(metric.value))
 }
 
 fn render_similarity_assets(
