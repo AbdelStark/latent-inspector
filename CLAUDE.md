@@ -215,7 +215,7 @@ tests/                # Integration tests [agent: create/modify]
   | PCA eigenvalues not sorted                  | Power method convergence       | Increase iterations or switch to full SVD feature  |
   | Attention weights not in ONNX graph         | Model wasn't exported with them| Need ONNX graph surgery to expose attention nodes  |
   | `ndarray` shape mismatch                    | Wrong reshape dimensions       | Print actual shapes, compare with ModelInfo params |
-  | Download fails mid-file                     | Network interruption           | Implement resume with HTTP Range headers           |
+  | Download fails mid-file                     | Network interruption           | Partial `.download-part` files resume automatically when the host supports HTTP Range; otherwise the cache restarts cleanly |
   | Terminal rendering garbled                   | Terminal doesn't support Unicode| Detect capabilities, fall back to ASCII           |
 </known_issues>
 

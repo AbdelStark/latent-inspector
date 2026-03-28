@@ -75,6 +75,9 @@ For researchers processing thousands of images across multiple models, this matt
 Models are downloaded automatically on first use (~300MB-2GB each) and cached locally.
 If a cache bundle is partial or contains an empty/corrupt artifact, latent-inspector
 now refreshes only the missing or invalid files before creating the ONNX session.
+Interrupted downloads keep their `.download-part` payloads and resume from the
+last completed byte when the host supports HTTP range requests; otherwise the
+cache layer falls back to a clean restart automatically.
 
 For CI or isolated local runs, set `LATENT_INSPECTOR_CACHE_DIR=/tmp/latent-inspector-cache`
 to override the default cache root.
@@ -174,6 +177,10 @@ reqwest = { version = "0.12", features = ["blocking"] }  # Model download
 2. Load via ONNX Runtime and validate the declared input/output tensor names against the graph
 3. Preprocess to the model-specific input size and normalization stats
 4. Extract patch features and CLS token into the common `ModelOutput` interface
+
+If a download is interrupted mid-transfer, the cache keeps the partial file and
+attempts to resume on the next run instead of restarting from zero whenever the
+remote host honors byte-range requests.
 
 In the current Phase 1 build, `dinov2-vit-l14` is the only loadable model. The remaining registry entries are intentionally marked as planned so the CLI does not imply support that has not been implemented yet.
 

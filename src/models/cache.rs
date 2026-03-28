@@ -1,6 +1,7 @@
 use crate::errors::ModelError;
 use crate::models::registry::{self, Checksum, ModelArtifact, RegistryEntry};
 use indicatif::{ProgressBar, ProgressStyle};
+use reqwest::header::{CONTENT_RANGE, RANGE};
 use sha2::{Digest, Sha256};
 use std::fs;
 use std::io::{Read, Write};
@@ -208,23 +209,15 @@ fn download_artifact(
         artifact.relative_path, artifact.download_url
     );
 
-    let mut response = reqwest::blocking::get(&artifact.download_url)
-        .and_then(reqwest::blocking::Response::error_for_status)
-        .map_err(|e| ModelError::DownloadFailed {
-            name: model_name.to_string(),
-            reason: e.to_string(),
-        })?;
-
-    let progress = ProgressBar::new(response.content_length().unwrap_or(0));
+    let progress = ProgressBar::new(0);
     progress.set_style(progress_style(model_name)?);
     progress.set_message(format!("Downloading {}", artifact.relative_path));
 
     let tmp = temp_download_path(dest)?;
-    let result = download_to_file(&mut response, artifact, &tmp, model_name, &progress);
+    let result = download_to_file(artifact, &tmp, model_name, &progress);
 
     if let Err(error) = result {
         progress.abandon_with_message(format!("Failed {}", artifact.relative_path));
-        let _ = fs::remove_file(&tmp);
         return Err(error);
     }
 
@@ -255,53 +248,232 @@ fn progress_style(model_name: &str) -> Result<ProgressStyle, ModelError> {
 }
 
 fn download_to_file(
-    response: &mut reqwest::blocking::Response,
     artifact: &ModelArtifact,
     path: &Path,
     model_name: &str,
     progress: &ProgressBar,
 ) -> Result<(), ModelError> {
-    let mut file = fs::File::create(path)?;
-    let mut buffer = [0_u8; 64 * 1024];
-    let mut hasher = match &artifact.checksum {
-        Checksum::Sha256(_) => Some(Sha256::new()),
+    let client = reqwest::blocking::Client::new();
+    let mut response = open_download_stream(&client, artifact, path, model_name, progress)?;
+    let mut file = open_download_file(path, response.mode)?;
+    stream_response_to_file(
+        &mut response.inner,
+        &mut file,
+        model_name,
+        progress,
+        artifact.relative_path.as_str(),
+    )?;
+    file.flush()?;
+    drop(file);
+
+    match &artifact.checksum {
+        Checksum::Sha256(expected) => {
+            if let Err(error) = verify_sha256(path, expected, model_name) {
+                let _ = fs::remove_file(path);
+                return Err(error);
+            }
+        }
         Checksum::Pending { reason } => {
             warn!(
                 "Skipping checksum verification for {} until metadata is pinned: {}",
                 artifact.relative_path, reason
             );
-            None
         }
-    };
+    }
+
+    Ok(())
+}
+
+#[derive(Debug, Clone, Copy)]
+enum DownloadMode {
+    Fresh,
+    Resume,
+}
+
+struct DownloadResponse {
+    inner: reqwest::blocking::Response,
+    mode: DownloadMode,
+}
+
+fn open_download_stream(
+    client: &reqwest::blocking::Client,
+    artifact: &ModelArtifact,
+    path: &Path,
+    model_name: &str,
+    progress: &ProgressBar,
+) -> Result<DownloadResponse, ModelError> {
+    let partial_len = partial_download_len(path)?;
+    if partial_len > 0 {
+        info!(
+            "Resuming {} from byte {}",
+            artifact.relative_path, partial_len
+        );
+        let request = client
+            .get(&artifact.download_url)
+            .header(RANGE, format!("bytes={partial_len}-"));
+        let response = send_download_request(request, model_name)?;
+
+        match response.status() {
+            reqwest::StatusCode::PARTIAL_CONTENT => {
+                if content_range_start(response.headers()) == Some(partial_len) {
+                    set_progress_bounds(progress, partial_len, response.content_length());
+                    return Ok(DownloadResponse {
+                        inner: response,
+                        mode: DownloadMode::Resume,
+                    });
+                }
+
+                warn!(
+                    "Server returned unexpected Content-Range while resuming {}; restarting from scratch",
+                    artifact.relative_path
+                );
+                reset_partial_download(path)?;
+                return fresh_download_stream(client, artifact, model_name, progress);
+            }
+            reqwest::StatusCode::OK => {
+                warn!(
+                    "Server ignored Range request for {}; restarting download from scratch",
+                    artifact.relative_path
+                );
+                reset_partial_download(path)?;
+                set_progress_bounds(progress, 0, response.content_length());
+                return Ok(DownloadResponse {
+                    inner: response,
+                    mode: DownloadMode::Fresh,
+                });
+            }
+            reqwest::StatusCode::RANGE_NOT_SATISFIABLE => {
+                warn!(
+                    "Partial download for {} is no longer valid; restarting from scratch",
+                    artifact.relative_path
+                );
+                reset_partial_download(path)?;
+                return fresh_download_stream(client, artifact, model_name, progress);
+            }
+            _ => {
+                return Err(download_status_error(response, model_name));
+            }
+        }
+    }
+
+    fresh_download_stream(client, artifact, model_name, progress)
+}
+
+fn fresh_download_stream(
+    client: &reqwest::blocking::Client,
+    artifact: &ModelArtifact,
+    model_name: &str,
+    progress: &ProgressBar,
+) -> Result<DownloadResponse, ModelError> {
+    let response = send_download_request(client.get(&artifact.download_url), model_name)?;
+    set_progress_bounds(progress, 0, response.content_length());
+    Ok(DownloadResponse {
+        inner: response,
+        mode: DownloadMode::Fresh,
+    })
+}
+
+fn send_download_request(
+    request: reqwest::blocking::RequestBuilder,
+    model_name: &str,
+) -> Result<reqwest::blocking::Response, ModelError> {
+    request.send().map_err(|e| ModelError::DownloadFailed {
+        name: model_name.to_string(),
+        reason: e.to_string(),
+    })
+}
+
+fn download_status_error(response: reqwest::blocking::Response, model_name: &str) -> ModelError {
+    let status = response.status();
+    ModelError::DownloadFailed {
+        name: model_name.to_string(),
+        reason: format!("HTTP {status} while downloading artifact"),
+    }
+}
+
+fn open_download_file(path: &Path, mode: DownloadMode) -> Result<fs::File, ModelError> {
+    match mode {
+        DownloadMode::Fresh => fs::File::create(path).map_err(ModelError::from),
+        DownloadMode::Resume => fs::OpenOptions::new()
+            .append(true)
+            .open(path)
+            .map_err(ModelError::from),
+    }
+}
+
+fn stream_response_to_file(
+    response: &mut reqwest::blocking::Response,
+    file: &mut fs::File,
+    model_name: &str,
+    progress: &ProgressBar,
+    artifact_name: &str,
+) -> Result<(), ModelError> {
+    let mut buffer = [0_u8; 64 * 1024];
 
     loop {
         let read = response
             .read(&mut buffer)
             .map_err(|e| ModelError::DownloadFailed {
                 name: model_name.to_string(),
-                reason: e.to_string(),
+                reason: format!("failed to read {artifact_name}: {e}"),
             })?;
 
         if read == 0 {
             break;
         }
 
-        let chunk = &buffer[..read];
-        file.write_all(chunk)?;
-        if let Some(hasher) = hasher.as_mut() {
-            hasher.update(chunk);
-        }
+        file.write_all(&buffer[..read])?;
         progress.inc(read as u64);
     }
 
-    file.flush()?;
-
-    if let (Checksum::Sha256(expected), Some(hasher)) = (&artifact.checksum, hasher) {
-        let actual = hex::encode(hasher.finalize());
-        verify_sha256_digest(expected, &actual, model_name)?;
-    }
-
     Ok(())
+}
+
+fn partial_download_len(path: &Path) -> Result<u64, ModelError> {
+    match fs::metadata(path) {
+        Ok(metadata) => {
+            if !metadata.is_file() {
+                return Err(ModelError::InvalidArtifactPath {
+                    name: "cache".to_string(),
+                    path: path.display().to_string(),
+                    reason: "partial download path exists but is not a file".to_string(),
+                });
+            }
+            Ok(metadata.len())
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(0),
+        Err(error) => Err(error.into()),
+    }
+}
+
+fn reset_partial_download(path: &Path) -> Result<(), ModelError> {
+    match fs::remove_file(path) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(error.into()),
+    }
+}
+
+fn set_progress_bounds(progress: &ProgressBar, offset: u64, remaining: Option<u64>) {
+    let total = remaining
+        .map(|remaining| remaining + offset)
+        .unwrap_or(offset);
+    progress.set_length(total);
+    progress.set_position(offset);
+}
+
+fn content_range_start(headers: &reqwest::header::HeaderMap) -> Option<u64> {
+    headers
+        .get(CONTENT_RANGE)
+        .and_then(|value| value.to_str().ok())
+        .and_then(parse_content_range_start)
+}
+
+fn parse_content_range_start(value: &str) -> Option<u64> {
+    let range = value.strip_prefix("bytes ")?;
+    let (span, _) = range.split_once('/')?;
+    let (start, _) = span.split_once('-')?;
+    start.parse().ok()
 }
 
 fn registry_entry(model_name: &str) -> Result<RegistryEntry, ModelError> {
@@ -409,7 +581,10 @@ fn verify_sha256_digest(expected: &str, actual: &str, model_name: &str) -> Resul
 mod tests {
     use super::*;
     use std::ffi::OsString;
-    use std::sync::{LazyLock, Mutex};
+    use std::io::{BufRead, BufReader};
+    use std::net::TcpListener;
+    use std::sync::{Arc, LazyLock, Mutex};
+    use std::thread;
     use tempfile::tempdir;
 
     static CACHE_ENV_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
@@ -431,6 +606,144 @@ mod tests {
             match &self.previous {
                 Some(path) => std::env::set_var(CACHE_DIR_ENV, path),
                 None => std::env::remove_var(CACHE_DIR_ENV),
+            }
+        }
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    struct RequestLog {
+        path: String,
+        range: Option<String>,
+    }
+
+    #[derive(Debug, Clone)]
+    struct ResponseScenario {
+        status_code: u16,
+        body: Vec<u8>,
+        content_range: Option<String>,
+        cut_after: Option<usize>,
+    }
+
+    impl ResponseScenario {
+        fn ok(body: Vec<u8>) -> Self {
+            Self {
+                status_code: 200,
+                body,
+                content_range: None,
+                cut_after: None,
+            }
+        }
+
+        fn partial(body: Vec<u8>, content_range: String) -> Self {
+            Self {
+                status_code: 206,
+                body,
+                content_range: Some(content_range),
+                cut_after: None,
+            }
+        }
+
+        fn interrupted(body: Vec<u8>, cut_after: usize) -> Self {
+            Self {
+                status_code: 200,
+                body,
+                content_range: None,
+                cut_after: Some(cut_after),
+            }
+        }
+    }
+
+    struct TestServer {
+        base_url: String,
+        requests: Arc<Mutex<Vec<RequestLog>>>,
+        join_handle: Option<thread::JoinHandle<()>>,
+    }
+
+    impl TestServer {
+        fn spawn(scenarios: Vec<ResponseScenario>) -> Self {
+            let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+            let addr = listener.local_addr().unwrap();
+            let requests = Arc::new(Mutex::new(Vec::new()));
+            let request_log = Arc::clone(&requests);
+
+            let join_handle = thread::spawn(move || {
+                for scenario in scenarios {
+                    let (mut stream, _) = listener.accept().unwrap();
+                    let reader = stream.try_clone().unwrap();
+                    let mut reader = BufReader::new(reader);
+                    let mut request_line = String::new();
+                    reader.read_line(&mut request_line).unwrap();
+
+                    let path = request_line
+                        .split_whitespace()
+                        .nth(1)
+                        .unwrap_or("/")
+                        .to_string();
+
+                    let mut range = None;
+                    loop {
+                        let mut line = String::new();
+                        let bytes = reader.read_line(&mut line).unwrap();
+                        if bytes == 0 || line == "\r\n" {
+                            break;
+                        }
+
+                        if let Some((name, value)) = line.split_once(':') {
+                            if name.eq_ignore_ascii_case("range") {
+                                range = Some(value.trim().to_string());
+                            }
+                        }
+                    }
+
+                    request_log.lock().unwrap().push(RequestLog { path, range });
+
+                    let reason = match scenario.status_code {
+                        200 => "OK",
+                        206 => "Partial Content",
+                        416 => "Range Not Satisfiable",
+                        _ => "Test Response",
+                    };
+
+                    let mut headers = vec![
+                        format!("HTTP/1.1 {} {}", scenario.status_code, reason),
+                        format!("Content-Length: {}", scenario.body.len()),
+                        "Connection: close".to_string(),
+                    ];
+                    if let Some(content_range) = &scenario.content_range {
+                        headers.push(format!("Content-Range: {content_range}"));
+                    }
+                    headers.push(String::new());
+                    headers.push(String::new());
+                    stream.write_all(headers.join("\r\n").as_bytes()).unwrap();
+
+                    let bytes_to_send = scenario.cut_after.unwrap_or(scenario.body.len());
+                    stream
+                        .write_all(&scenario.body[..bytes_to_send.min(scenario.body.len())])
+                        .unwrap();
+                    stream.flush().unwrap();
+                }
+            });
+
+            Self {
+                base_url: format!("http://{addr}"),
+                requests,
+                join_handle: Some(join_handle),
+            }
+        }
+
+        fn url(&self, path: &str) -> String {
+            format!("{}{}", self.base_url, path)
+        }
+
+        fn requests(&self) -> Vec<RequestLog> {
+            self.requests.lock().unwrap().clone()
+        }
+    }
+
+    impl Drop for TestServer {
+        fn drop(&mut self) {
+            if let Some(handle) = self.join_handle.take() {
+                handle.join().unwrap();
             }
         }
     }
@@ -555,5 +868,96 @@ mod tests {
 
         let inspection = inspect_artifact("test-model", artifact).unwrap();
         assert!(matches!(inspection.state, ArtifactCacheState::Invalid(_)));
+    }
+
+    #[test]
+    fn test_parse_content_range_start() {
+        assert_eq!(
+            parse_content_range_start("bytes 4096-8191/16384"),
+            Some(4096)
+        );
+        assert_eq!(parse_content_range_start("items 1-2/3"), None);
+    }
+
+    #[test]
+    fn test_download_artifact_resumes_partial_transfer() {
+        let dir = tempdir().unwrap();
+        let dest = dir.path().join("bundle/model.onnx");
+        fs::create_dir_all(dest.parent().unwrap()).unwrap();
+
+        let content = (0..160_000)
+            .map(|index| (index % 251) as u8)
+            .collect::<Vec<_>>();
+        let expected_checksum = hex::encode(Sha256::digest(&content));
+        let cut_after = 48_000;
+        let server = TestServer::spawn(vec![
+            ResponseScenario::interrupted(content.clone(), cut_after),
+            ResponseScenario::partial(
+                content[cut_after..].to_vec(),
+                format!("bytes {cut_after}-159999/160000"),
+            ),
+        ]);
+
+        let artifact = ModelArtifact {
+            relative_path: "bundle/model.onnx".to_string(),
+            download_url: server.url("/model.onnx"),
+            checksum: Checksum::Sha256(expected_checksum),
+        };
+
+        let first = download_artifact("test-model", &artifact, &dest);
+        assert!(matches!(first, Err(ModelError::DownloadFailed { .. })));
+
+        let temp_path = temp_download_path(&dest).unwrap();
+        let partial_len = fs::metadata(&temp_path).unwrap().len();
+        assert!(partial_len >= cut_after as u64);
+        assert!(partial_len < content.len() as u64);
+
+        download_artifact("test-model", &artifact, &dest).unwrap();
+
+        assert_eq!(fs::read(&dest).unwrap(), content);
+        let requests = server.requests();
+        assert_eq!(requests.len(), 2);
+        assert_eq!(requests[0].range, None);
+        assert_eq!(requests[1].range, Some(format!("bytes={partial_len}-")));
+    }
+
+    #[test]
+    fn test_download_artifact_restarts_when_range_is_ignored() {
+        let dir = tempdir().unwrap();
+        let dest = dir.path().join("bundle/model.onnx");
+        fs::create_dir_all(dest.parent().unwrap()).unwrap();
+
+        let content = (0..96_000)
+            .map(|index| (index % 241) as u8)
+            .collect::<Vec<_>>();
+        let expected_checksum = hex::encode(Sha256::digest(&content));
+        let cut_after = 24_000;
+        let server = TestServer::spawn(vec![
+            ResponseScenario::interrupted(content.clone(), cut_after),
+            ResponseScenario::ok(content.clone()),
+        ]);
+
+        let artifact = ModelArtifact {
+            relative_path: "bundle/model.onnx".to_string(),
+            download_url: server.url("/model.onnx"),
+            checksum: Checksum::Sha256(expected_checksum),
+        };
+
+        let first = download_artifact("test-model", &artifact, &dest);
+        assert!(matches!(first, Err(ModelError::DownloadFailed { .. })));
+
+        let temp_path = temp_download_path(&dest).unwrap();
+        let partial_len = fs::metadata(&temp_path).unwrap().len();
+        assert!(partial_len >= cut_after as u64);
+
+        download_artifact("test-model", &artifact, &dest).unwrap();
+
+        assert_eq!(fs::read(&dest).unwrap(), content);
+        assert!(!temp_path.exists());
+
+        let requests = server.requests();
+        assert_eq!(requests.len(), 2);
+        assert_eq!(requests[0].range, None);
+        assert_eq!(requests[1].range, Some(format!("bytes={partial_len}-")));
     }
 }
