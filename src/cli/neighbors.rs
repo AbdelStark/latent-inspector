@@ -1,7 +1,9 @@
+use crate::dataset::ImageEntry;
 use crate::errors::Error;
 use crate::extract::{EmbeddingBasis, ExtractedFeatures};
 use crate::models::ModelSession;
 use crate::validation::summarize_session_or_unverified;
+use crate::viz::assets;
 use crate::viz::manifest::{ArtifactKind, OutputArtifactManifest};
 use crate::viz::report::{NeighborMatch, NeighborsReport};
 use crate::viz::OutputFormat;
@@ -51,12 +53,12 @@ pub fn run(args: NeighborsArgs) -> Result<(), Error> {
     let query_features = ExtractedFeatures::from_output(query_output)?;
     let (embedding_basis, query_embedding) = query_features.preferred_global_embedding();
 
-    let mut embeddings: Vec<(String, ndarray::Array1<f32>)> = Vec::new();
+    let mut embeddings: Vec<(ImageEntry, ndarray::Array1<f32>)> = Vec::new();
     let dataset_summary = crate::dataset::for_each_image(&args.dataset, true, |entry, img| {
         let output = session.infer(&img)?;
         let features = ExtractedFeatures::from_output(output)?;
         let embedding = extract_neighbor_embedding(&features, embedding_basis);
-        embeddings.push((entry.stem, embedding));
+        embeddings.push((entry, embedding));
         Ok::<(), Error>(())
     })?;
     info!(
@@ -79,9 +81,9 @@ pub fn run(args: NeighborsArgs) -> Result<(), Error> {
     }
 
     // Build similarity scores between query and all dataset entries
-    let mut scores: Vec<(f32, &str)> = embeddings
+    let mut scores: Vec<(f32, ImageEntry)> = embeddings
         .iter()
-        .map(|(name, emb)| {
+        .map(|(entry, emb)| {
             let dot: f32 = query_embedding
                 .iter()
                 .zip(emb.iter())
@@ -94,19 +96,29 @@ pub fn run(args: NeighborsArgs) -> Result<(), Error> {
                 .sqrt()
                 .max(1e-8);
             let nb = emb.iter().map(|x| x * x).sum::<f32>().sqrt().max(1e-8);
-            (dot / (na * nb), name.as_str())
+            (dot / (na * nb), entry.clone())
         })
         .collect();
 
     scores.sort_by(|a, b| b.0.total_cmp(&a.0));
 
+    let preview_sources = scores
+        .iter()
+        .take(args.k.min(4))
+        .enumerate()
+        .map(|(rank, (similarity, entry))| NeighborPreviewSource {
+            rank: rank + 1,
+            similarity: *similarity,
+            entry: entry.clone(),
+        })
+        .collect::<Vec<_>>();
     let neighbors = scores
         .iter()
         .take(args.k)
         .enumerate()
-        .map(|(rank, (similarity, name))| NeighborMatch {
+        .map(|(rank, (similarity, entry))| NeighborMatch {
             rank: rank + 1,
-            image: (*name).to_string(),
+            image: entry.stem.clone(),
             similarity: *similarity,
         })
         .collect::<Vec<_>>();
@@ -120,9 +132,16 @@ pub fn run(args: NeighborsArgs) -> Result<(), Error> {
         neighbors,
         validation,
     };
-    render_output(&args, &report)?;
+    render_output(&args, &report, &query_img, &preview_sources)?;
 
     Ok(())
+}
+
+#[derive(Debug, Clone)]
+struct NeighborPreviewSource {
+    rank: usize,
+    similarity: f32,
+    entry: ImageEntry,
 }
 
 fn extract_neighbor_embedding(
@@ -136,7 +155,12 @@ fn extract_neighbor_embedding(
     }
 }
 
-fn render_output(args: &NeighborsArgs, report: &NeighborsReport) -> Result<(), Error> {
+fn render_output(
+    args: &NeighborsArgs,
+    report: &NeighborsReport,
+    query_image: &image::DynamicImage,
+    preview_sources: &[NeighborPreviewSource],
+) -> Result<(), Error> {
     match args.format {
         OutputFormat::Terminal => crate::viz::terminal::print_neighbors_report(report),
         OutputFormat::Json => {
@@ -162,7 +186,7 @@ fn render_output(args: &NeighborsArgs, report: &NeighborsReport) -> Result<(), E
                 .clone()
                 .unwrap_or_else(|| PathBuf::from("neighbors_output"));
             std::fs::create_dir_all(&outdir)?;
-            let assets = render_neighbors_assets(report, &outdir)?;
+            let assets = render_neighbors_assets(report, query_image, preview_sources, &outdir)?;
             crate::viz::json::write_neighbors_report(report, &outdir.join("neighbors.json"))?;
             let path = outdir.join("report.html");
             crate::viz::html::write_neighbors_report_with_assets(report, &assets, &path)?;
@@ -233,17 +257,43 @@ fn neighbors_manifest_summary(report: &NeighborsReport) -> serde_json::Value {
 
 fn render_neighbors_assets(
     report: &NeighborsReport,
+    query_image: &image::DynamicImage,
+    preview_sources: &[NeighborPreviewSource],
     outdir: &std::path::Path,
 ) -> Result<crate::viz::html::GalleryAssets, Error> {
+    let mut visuals = vec![assets::write_preview_image(
+        query_image,
+        outdir,
+        "query_image.png",
+        "Query image",
+        format!("Source query image searched against {}.", report.dataset),
+    )?];
+
+    for preview in preview_sources {
+        let filename = format!(
+            "neighbor_{:02}_{}.png",
+            preview.rank,
+            assets::slugify_filename(&preview.entry.stem)
+        );
+        visuals.push(assets::write_preview_from_path(
+            &preview.entry.path,
+            outdir,
+            &filename,
+            format!("Neighbor #{}: {}", preview.rank, preview.entry.stem),
+            format!(
+                "Dataset match ranked #{} with cosine similarity {:.4}.",
+                preview.rank, preview.similarity
+            ),
+        )?);
+    }
+
     let filename = "neighbors.png";
     crate::viz::png::save_series_chart(&report.similarity_series(), &outdir.join(filename))?;
-    Ok(crate::viz::html::GalleryAssets {
-        visuals: vec![crate::viz::html::VisualAsset {
-            title: "Neighbor similarity chart".to_string(),
-            path: filename.to_string(),
-            alt: "Neighbor similarity chart".to_string(),
-            description: "Rank-ordered cosine similarity for the returned neighbor set."
-                .to_string(),
-        }],
-    })
+    visuals.push(assets::visual_asset(
+        filename,
+        "Neighbor similarity chart",
+        "Rank-ordered cosine similarity for the returned neighbor set.",
+    ));
+
+    Ok(crate::viz::html::GalleryAssets { visuals })
 }

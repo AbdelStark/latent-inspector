@@ -1,8 +1,10 @@
 use crate::analysis::linear_cka;
+use crate::dataset::ImageEntry;
 use crate::errors::Error;
 use crate::extract::{EmbeddingBasis, ExtractedFeatures};
 use crate::models::ModelSession;
 use crate::validation::summarize_session_or_unverified;
+use crate::viz::assets;
 use crate::viz::manifest::{ArtifactKind, OutputArtifactManifest};
 use crate::viz::report::{DriftReport, DriftStep};
 use crate::viz::{terminal, OutputFormat};
@@ -60,7 +62,7 @@ pub fn run(args: DriftArgs) -> Result<(), Error> {
             Vec::new(),
             Vec::new(),
         );
-        render_output(&args, &report)?;
+        render_output(&args, &report, &[])?;
         return Ok(());
     }
 
@@ -75,6 +77,7 @@ pub fn run(args: DriftArgs) -> Result<(), Error> {
     let mut all_embeddings: Vec<(String, Array2<f32>)> = Vec::new();
     let mut dataset_summary = None;
     let mut validation = Vec::with_capacity(ckpt_paths.len());
+    let mut preview_entries = Vec::new();
 
     for ckpt_path in &ckpt_paths {
         let ckpt_name = checkpoint_name(ckpt_path);
@@ -88,9 +91,10 @@ pub fn run(args: DriftArgs) -> Result<(), Error> {
                 .to_string(),
         );
         validation.push(summary);
-        let (embedding, summary) = embed_dataset(&mut session, &args.dataset)?;
+        let (embedding, summary, previews) = embed_dataset(&mut session, &args.dataset)?;
         if dataset_summary.is_none() {
             dataset_summary = Some(summary);
+            preview_entries = previews;
         }
         all_embeddings.push((ckpt_name, embedding));
     }
@@ -117,12 +121,16 @@ pub fn run(args: DriftArgs) -> Result<(), Error> {
         drift_rows,
         validation,
     );
-    render_output(&args, &report)?;
+    render_output(&args, &report, &preview_entries)?;
 
     Ok(())
 }
 
-fn render_output(args: &DriftArgs, report: &DriftReport) -> Result<(), Error> {
+fn render_output(
+    args: &DriftArgs,
+    report: &DriftReport,
+    preview_entries: &[ImageEntry],
+) -> Result<(), Error> {
     match args.format {
         OutputFormat::Terminal => terminal::print_drift_report(report),
         OutputFormat::Json => {
@@ -148,7 +156,7 @@ fn render_output(args: &DriftArgs, report: &DriftReport) -> Result<(), Error> {
                 .clone()
                 .unwrap_or_else(|| PathBuf::from("drift_output"));
             std::fs::create_dir_all(&outdir)?;
-            let assets = render_drift_assets(report, &outdir)?;
+            let assets = render_drift_assets(report, preview_entries, &outdir)?;
             crate::viz::json::write_drift_report(report, &outdir.join("drift.json"))?;
             let path = outdir.join("report.html");
             crate::viz::html::write_drift_report_with_assets(report, &assets, &path)?;
@@ -215,34 +223,62 @@ fn drift_manifest_summary(report: &DriftReport) -> serde_json::Value {
 
 fn render_drift_assets(
     report: &DriftReport,
+    preview_entries: &[ImageEntry],
     outdir: &Path,
 ) -> Result<crate::viz::html::GalleryAssets, Error> {
-    if report.drift.is_empty() {
+    if report.drift.is_empty() && preview_entries.is_empty() {
         return Ok(crate::viz::html::GalleryAssets::default());
     }
 
-    let filename = "consecutive_cka.png";
-    crate::viz::png::save_series_chart(&report.cka_series(), &outdir.join(filename))?;
-    Ok(crate::viz::html::GalleryAssets {
-        visuals: vec![crate::viz::html::VisualAsset {
-            title: "Consecutive checkpoint CKA".to_string(),
-            path: filename.to_string(),
-            alt: "Consecutive checkpoint CKA chart".to_string(),
-            description: "Linear CKA for each consecutive checkpoint transition in the drift run."
-                .to_string(),
-        }],
-    })
+    let mut visuals = Vec::new();
+    if !report.drift.is_empty() {
+        let filename = "consecutive_cka.png";
+        crate::viz::png::save_series_chart(&report.cka_series(), &outdir.join(filename))?;
+        visuals.push(assets::visual_asset(
+            filename,
+            "Consecutive checkpoint CKA",
+            "Linear CKA for each consecutive checkpoint transition in the drift run.",
+        ));
+    }
+
+    for (index, entry) in preview_entries.iter().enumerate() {
+        let filename = format!(
+            "dataset_sample_{:02}_{}.png",
+            index + 1,
+            assets::slugify_filename(&entry.stem)
+        );
+        visuals.push(assets::write_preview_from_path(
+            &entry.path,
+            outdir,
+            &filename,
+            format!("Dataset sample #{}: {}", index + 1, entry.stem),
+            "Representative dataset image used for the drift run.",
+        )?);
+    }
+
+    Ok(crate::viz::html::GalleryAssets { visuals })
 }
 
 fn embed_dataset(
     session: &mut ModelSession,
     dataset_dir: &Path,
-) -> Result<(Array2<f32>, crate::dataset::DatasetProcessingSummary), Error> {
+) -> Result<
+    (
+        Array2<f32>,
+        crate::dataset::DatasetProcessingSummary,
+        Vec<ImageEntry>,
+    ),
+    Error,
+> {
     let mut rows = Vec::new();
-    let summary = crate::dataset::for_each_image(dataset_dir, true, |_, img| {
+    let mut preview_entries = Vec::new();
+    let summary = crate::dataset::for_each_image(dataset_dir, true, |entry, img| {
         let output = session.infer(&img)?;
         let features = ExtractedFeatures::from_output(output)?;
         rows.push(features.mean_patch());
+        if preview_entries.len() < 4 {
+            preview_entries.push(entry);
+        }
         Ok::<(), Error>(())
     })?;
 
@@ -258,7 +294,7 @@ fn embed_dataset(
     for (index, row) in rows.iter().enumerate() {
         matrix.row_mut(index).assign(row);
     }
-    Ok((matrix, summary))
+    Ok((matrix, summary, preview_entries))
 }
 
 fn checkpoint_name(path: &Path) -> String {

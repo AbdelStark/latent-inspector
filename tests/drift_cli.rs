@@ -244,6 +244,7 @@ fn drift_html_output_embeds_chart_and_validation_summary() {
 
     let html = fs::read_to_string(output_dir.join("report.html")).unwrap();
     assert!(html.contains("Visual Artefacts"));
+    assert!(html.contains("dataset_sample_01_sample-a.png"));
     assert!(html.contains("consecutive_cka.png"));
     assert!(html.contains("Validation Summary"));
     assert!(html.contains("step-1"));
@@ -251,6 +252,7 @@ fn drift_html_output_embeds_chart_and_validation_summary() {
     let payload = read_json(&output_dir.join("drift.json"));
     assert_eq!(payload["model"], "dinov2-vit-l14");
     assert_eq!(payload["validation"].as_array().unwrap().len(), 2);
+    assert!(output_dir.join("dataset_sample_01_sample-a.png").exists());
     assert!(output_dir.join("consecutive_cka.png").exists());
     let manifest = read_artifact_manifest(&output_dir);
     assert_eq!(manifest["command"], "drift");
@@ -263,6 +265,11 @@ fn drift_html_output_embeds_chart_and_validation_summary() {
         .unwrap()
         .iter()
         .any(|artifact| artifact["path"] == "drift.json"));
+    assert!(manifest["artifacts"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|artifact| artifact["path"] == "dataset_sample_01_sample-a.png"));
     assert!(manifest["artifacts"]
         .as_array()
         .unwrap()

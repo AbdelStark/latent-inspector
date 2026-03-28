@@ -3,6 +3,7 @@ use crate::errors::Error;
 use crate::extract::ExtractedFeatures;
 use crate::models::ModelSession;
 use crate::validation::summarize_session_or_unverified;
+use crate::viz::assets;
 use crate::viz::manifest::{ArtifactKind, OutputArtifactManifest};
 use crate::viz::OutputFormat;
 use clap::Args;
@@ -128,15 +129,17 @@ pub fn run(args: CompareArgs) -> Result<(), Error> {
             std::fs::create_dir_all(&outdir)?;
             let pca_artifacts = render_pca_artifacts(&outputs, &outdir)?;
             let heatmap_artifacts = render_pairwise_heatmap_artifacts(&report.overview, &outdir)?;
+            let source_preview = assets::write_preview_image(
+                &img,
+                &outdir,
+                "input_image.png",
+                "Input image",
+                "Source image used for this compare report.",
+            )?;
             let assets = crate::viz::html::CompareHtmlAssets {
-                pca_images: pca_artifacts
-                    .iter()
-                    .map(RenderedImageArtifact::to_visual_asset)
-                    .collect(),
-                heatmaps: heatmap_artifacts
-                    .iter()
-                    .map(RenderedImageArtifact::to_visual_asset)
-                    .collect(),
+                source_images: vec![source_preview],
+                pca_images: pca_artifacts,
+                heatmaps: heatmap_artifacts,
             };
             let image_name = args
                 .image
@@ -159,8 +162,9 @@ pub fn run(args: CompareArgs) -> Result<(), Error> {
                 .add_artifact("report.html", ArtifactKind::Html, "Compare report")
                 .add_artifact("compare.json", ArtifactKind::Json, "Compare report data")
                 .with_validation(&report.validation);
-            manifest = add_png_artifacts(manifest, &pca_artifacts);
-            manifest = add_png_artifacts(manifest, &heatmap_artifacts);
+            manifest = add_visual_artifacts(manifest, &assets.source_images);
+            manifest = add_visual_artifacts(manifest, &assets.pca_images);
+            manifest = add_visual_artifacts(manifest, &assets.heatmaps);
             manifest.write_to_dir(&outdir)?;
             println!("Report written to {}/report.html", outdir.display());
         }
@@ -176,8 +180,8 @@ pub fn run(args: CompareArgs) -> Result<(), Error> {
                 .with_context(compare_manifest_context(&args))
                 .with_summary(compare_manifest_summary(&report))
                 .with_validation(&report.validation);
-            manifest = add_png_artifacts(manifest, &pca_artifacts);
-            manifest = add_png_artifacts(manifest, &heatmap_artifacts);
+            manifest = add_visual_artifacts(manifest, &pca_artifacts);
+            manifest = add_visual_artifacts(manifest, &heatmap_artifacts);
             manifest.write_to_dir(&outdir)?;
             println!("PNG outputs saved to {}", outdir.display());
         }
@@ -208,57 +212,25 @@ fn disambiguate_labels(models: &[String]) -> Vec<String> {
         .collect()
 }
 
-fn slugify(label: &str) -> String {
-    let mut slug = String::with_capacity(label.len());
-    for ch in label.chars() {
-        if ch.is_ascii_alphanumeric() {
-            slug.push(ch.to_ascii_lowercase());
-        } else if matches!(ch, '-' | '_') {
-            slug.push(ch);
-        } else {
-            slug.push('_');
-        }
-    }
-    slug.trim_matches('_').to_string()
-}
-
-#[derive(Debug, Clone)]
-struct RenderedImageArtifact {
-    filename: String,
-    title: String,
-    description: String,
-}
-
-impl RenderedImageArtifact {
-    fn to_visual_asset(&self) -> crate::viz::html::VisualAsset {
-        crate::viz::html::VisualAsset {
-            title: self.title.clone(),
-            path: self.filename.clone(),
-            alt: self.title.clone(),
-            description: self.description.clone(),
-        }
-    }
-}
-
 fn render_pca_artifacts(
     outputs: &[(String, ExtractedFeatures)],
     outdir: &std::path::Path,
-) -> Result<Vec<RenderedImageArtifact>, Error> {
+) -> Result<Vec<crate::viz::html::VisualAsset>, Error> {
     let mut artifacts = Vec::with_capacity(outputs.len());
     for (name, feat) in outputs {
         let pca_result = crate::analysis::pca(&feat.patch_tokens, 3, 300)?;
         let projected = crate::analysis::transform(&feat.patch_tokens, &pca_result);
         let grid = (feat.n_patches as f32).sqrt() as usize;
-        let filename = format!("{}_pca.png", slugify(name));
+        let filename = format!("{}_pca.png", assets::slugify_filename(name));
         let path = outdir.join(&filename);
         crate::viz::png::save_pca_rgb(&projected, grid, &path)?;
-        artifacts.push(RenderedImageArtifact {
+        artifacts.push(assets::visual_asset(
             filename,
-            title: format!("{name} PCA projection"),
-            description: format!(
+            format!("{name} PCA projection"),
+            format!(
                 "Patch-space RGB projection derived from the top three PCA components for {name}."
             ),
-        });
+        ));
     }
     Ok(artifacts)
 }
@@ -266,7 +238,7 @@ fn render_pca_artifacts(
 fn render_pairwise_heatmap_artifacts(
     overview: &crate::viz::report::CompareOverview,
     outdir: &std::path::Path,
-) -> Result<Vec<RenderedImageArtifact>, Error> {
+) -> Result<Vec<crate::viz::html::VisualAsset>, Error> {
     let heatmaps = [
         (
             "cls_cosine.png",
@@ -300,23 +272,19 @@ fn render_pairwise_heatmap_artifacts(
             continue;
         }
         crate::viz::png::save_pairwise_heatmap(matrix, &outdir.join(filename))?;
-        artifacts.push(RenderedImageArtifact {
-            filename: filename.to_string(),
-            title: title.to_string(),
-            description: description.to_string(),
-        });
+        artifacts.push(assets::visual_asset(filename, title, description));
     }
 
     Ok(artifacts)
 }
 
-fn add_png_artifacts(
+fn add_visual_artifacts(
     mut manifest: OutputArtifactManifest,
-    artifacts: &[RenderedImageArtifact],
+    artifacts: &[crate::viz::html::VisualAsset],
 ) -> OutputArtifactManifest {
     for artifact in artifacts {
         manifest = manifest.add_artifact(
-            artifact.filename.clone(),
+            artifact.path.clone(),
             ArtifactKind::Png,
             artifact.description.clone(),
         );
@@ -364,6 +332,9 @@ mod tests {
 
     #[test]
     fn slugify_replaces_non_filename_characters() {
-        assert_eq!(slugify("dinov2-vit-l14#2"), "dinov2-vit-l14_2");
+        assert_eq!(
+            crate::viz::assets::slugify_filename("dinov2-vit-l14#2"),
+            "dinov2-vit-l14_2"
+        );
     }
 }

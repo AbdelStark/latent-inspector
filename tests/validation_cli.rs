@@ -337,6 +337,7 @@ fn inspect_html_includes_variance_spectrum_and_validation_summary() {
     assert!(html.contains("Representation Inspect"));
     assert!(html.contains("Variance Spectrum"));
     assert!(html.contains("Visual Artefacts"));
+    assert!(html.contains("input_image.png"));
     assert!(html.contains("dinov2-vit-l14_pca.png"));
     assert!(html.contains("dinov2-vit-l14_variance.png"));
     assert!(html.contains("Components @ 99%"));
@@ -346,6 +347,7 @@ fn inspect_html_includes_variance_spectrum_and_validation_summary() {
     let payload = read_json(&output_dir.join("inspect.json"));
     assert_eq!(payload["model"], "dinov2-vit-l14");
     assert_eq!(payload["validation"]["status"], "unverified");
+    assert!(output_dir.join("input_image.png").exists());
     assert!(output_dir.join("dinov2-vit-l14_pca.png").exists());
     assert!(output_dir.join("dinov2-vit-l14_variance.png").exists());
     let manifest = read_artifact_manifest(&output_dir);
@@ -369,6 +371,11 @@ fn inspect_html_includes_variance_spectrum_and_validation_summary() {
         .unwrap()
         .iter()
         .any(|artifact| artifact["path"] == "inspect.json"));
+    assert!(manifest["artifacts"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|artifact| artifact["path"] == "input_image.png"));
     assert!(manifest["artifacts"]
         .as_array()
         .unwrap()
@@ -401,6 +408,8 @@ fn compare_html_embeds_visual_assets_and_validation_summary() {
     assert_eq!(output.status.code(), Some(0));
     let html = fs::read_to_string(output_dir.join("report.html")).unwrap();
     assert!(html.contains("Visual Artefacts"));
+    assert!(html.contains("Source image"));
+    assert!(html.contains("input_image.png"));
     assert!(html.contains("Per-model PCA projections"));
     assert!(html.contains("Pairwise metric heatmaps"));
     assert!(html.contains("Validation Summary"));
@@ -415,6 +424,7 @@ fn compare_html_embeds_visual_assets_and_validation_summary() {
         Value::from(vec!["dinov2-vit-l14", "dinov2-vit-l14"])
     );
     assert_eq!(payload["validation"].as_array().unwrap().len(), 2);
+    assert!(output_dir.join("input_image.png").exists());
     assert!(output_dir.join("dinov2-vit-l14_1_pca.png").exists());
     assert!(output_dir.join("dinov2-vit-l14_2_pca.png").exists());
     assert!(output_dir.join("cls_cosine.png").exists());
@@ -436,6 +446,11 @@ fn compare_html_embeds_visual_assets_and_validation_summary() {
         .unwrap()
         .iter()
         .any(|artifact| artifact["path"] == "compare.json"));
+    assert!(manifest["artifacts"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|artifact| artifact["path"] == "input_image.png"));
     assert!(manifest["artifacts"]
         .as_array()
         .unwrap()

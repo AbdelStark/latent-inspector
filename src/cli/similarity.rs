@@ -1,8 +1,10 @@
 use crate::analysis::{cls_cosine_similarity, knn_overlap, linear_cka};
+use crate::dataset::ImageEntry;
 use crate::errors::Error;
 use crate::extract::{EmbeddingBasis, ExtractedFeatures};
 use crate::models::ModelSession;
 use crate::validation::summarize_session_or_unverified;
+use crate::viz::assets;
 use crate::viz::manifest::{ArtifactKind, OutputArtifactManifest};
 use crate::viz::report::{SimilarityMetricValue, SimilarityReport};
 use crate::viz::OutputFormat;
@@ -59,8 +61,9 @@ pub fn run(args: SimilarityArgs) -> Result<(), Error> {
 
     let mut patch_rows_a: Vec<ndarray::Array1<f32>> = Vec::new();
     let mut patch_rows_b: Vec<ndarray::Array1<f32>> = Vec::new();
+    let mut preview_entries: Vec<ImageEntry> = Vec::new();
 
-    let dataset_summary = crate::dataset::for_each_image(&args.dataset, true, |_, img| {
+    let dataset_summary = crate::dataset::for_each_image(&args.dataset, true, |entry, img| {
         let out_a = session_a.infer(&img)?;
         let out_b = session_b.infer(&img)?;
 
@@ -77,6 +80,9 @@ pub fn run(args: SimilarityArgs) -> Result<(), Error> {
 
         patch_rows_a.push(mean_a);
         patch_rows_b.push(mean_b);
+        if preview_entries.len() < 4 {
+            preview_entries.push(entry);
+        }
         Ok::<(), Error>(())
     })?;
     info!("Dataset: {} supported images", dataset_summary.discovered);
@@ -144,7 +150,7 @@ pub fn run(args: SimilarityArgs) -> Result<(), Error> {
         note,
         validation: vec![validation_a, validation_b],
     };
-    render_output(&args, &report)?;
+    render_output(&args, &report, &preview_entries)?;
 
     Ok(())
 }
@@ -182,7 +188,11 @@ fn mean_cls_cosine(
     Ok(total / cls_a.len() as f32)
 }
 
-fn render_output(args: &SimilarityArgs, report: &SimilarityReport) -> Result<(), Error> {
+fn render_output(
+    args: &SimilarityArgs,
+    report: &SimilarityReport,
+    preview_entries: &[ImageEntry],
+) -> Result<(), Error> {
     match args.format {
         OutputFormat::Terminal => crate::viz::terminal::print_similarity_report(report),
         OutputFormat::Json => {
@@ -208,7 +218,7 @@ fn render_output(args: &SimilarityArgs, report: &SimilarityReport) -> Result<(),
                 .clone()
                 .unwrap_or_else(|| PathBuf::from("similarity_output"));
             std::fs::create_dir_all(&outdir)?;
-            let assets = render_similarity_assets(report, &outdir)?;
+            let assets = render_similarity_assets(report, preview_entries, &outdir)?;
             crate::viz::json::write_similarity_report(report, &outdir.join("similarity.json"))?;
             let path = outdir.join("report.html");
             crate::viz::html::write_similarity_report_with_assets(report, &assets, &path)?;
@@ -290,24 +300,40 @@ fn metric_summary_entry(metric: &SimilarityMetricValue) -> (String, Value) {
 
 fn render_similarity_assets(
     report: &SimilarityReport,
+    preview_entries: &[ImageEntry],
     outdir: &std::path::Path,
 ) -> Result<crate::viz::html::GalleryAssets, Error> {
-    if report.metrics.is_empty() {
+    if report.metrics.is_empty() && preview_entries.is_empty() {
         return Ok(crate::viz::html::GalleryAssets::default());
     }
 
-    let filename = "similarity.png";
-    crate::viz::png::save_series_chart(&report.metric_series(), &outdir.join(filename))?;
-    Ok(crate::viz::html::GalleryAssets {
-        visuals: vec![crate::viz::html::VisualAsset {
-            title: "Similarity metric chart".to_string(),
-            path: filename.to_string(),
-            alt: "Similarity metric chart".to_string(),
-            description:
-                "Chart of the reported dataset-level similarity metrics for this model pair."
-                    .to_string(),
-        }],
-    })
+    let mut visuals = Vec::new();
+    if !report.metrics.is_empty() {
+        let filename = "similarity.png";
+        crate::viz::png::save_series_chart(&report.metric_series(), &outdir.join(filename))?;
+        visuals.push(assets::visual_asset(
+            filename,
+            "Similarity metric chart",
+            "Chart of the reported dataset-level similarity metrics for this model pair.",
+        ));
+    }
+
+    for (index, entry) in preview_entries.iter().enumerate() {
+        let filename = format!(
+            "dataset_sample_{:02}_{}.png",
+            index + 1,
+            assets::slugify_filename(&entry.stem)
+        );
+        visuals.push(assets::write_preview_from_path(
+            &entry.path,
+            outdir,
+            &filename,
+            format!("Dataset sample #{}: {}", index + 1, entry.stem),
+            "Representative dataset image used for the similarity run.",
+        )?);
+    }
+
+    Ok(crate::viz::html::GalleryAssets { visuals })
 }
 
 #[cfg(test)]

@@ -21,13 +21,14 @@ pub struct VisualAsset {
 
 #[derive(Debug, Clone, Default)]
 pub struct CompareHtmlAssets {
+    pub source_images: Vec<VisualAsset>,
     pub pca_images: Vec<VisualAsset>,
     pub heatmaps: Vec<VisualAsset>,
 }
 
 impl CompareHtmlAssets {
     fn is_empty(&self) -> bool {
-        self.pca_images.is_empty() && self.heatmaps.is_empty()
+        self.source_images.is_empty() && self.pca_images.is_empty() && self.heatmaps.is_empty()
     }
 }
 
@@ -44,13 +45,14 @@ impl GalleryAssets {
 
 #[derive(Debug, Clone, Default)]
 pub struct InspectHtmlAssets {
-    pub pca_image: Option<String>,
-    pub variance_image: Option<String>,
+    pub source_image: Option<VisualAsset>,
+    pub pca_image: Option<VisualAsset>,
+    pub variance_image: Option<VisualAsset>,
 }
 
 impl InspectHtmlAssets {
     fn is_empty(&self) -> bool {
-        self.pca_image.is_none() && self.variance_image.is_none()
+        self.source_image.is_none() && self.pca_image.is_none() && self.variance_image.is_none()
     }
 }
 
@@ -755,24 +757,14 @@ fn render_inspect_html(report: &InspectReport, assets: &InspectHtmlAssets) -> St
 fn render_inspect_asset_gallery(assets: &InspectHtmlAssets) -> String {
     let mut visuals = Vec::new();
 
-    if let Some(path) = &assets.pca_image {
-        visuals.push(VisualAsset {
-            title: "PCA Projection".to_string(),
-            path: path.clone(),
-            alt: "Inspect PCA projection".to_string(),
-            description: "Patch-space RGB projection derived from the top three PCA components."
-                .to_string(),
-        });
+    if let Some(asset) = &assets.source_image {
+        visuals.push(asset.clone());
     }
-    if let Some(path) = &assets.variance_image {
-        visuals.push(VisualAsset {
-            title: "Variance Chart".to_string(),
-            path: path.clone(),
-            alt: "Inspect variance spectrum chart".to_string(),
-            description:
-                "Component-wise variance concentration across the inspected representation."
-                    .to_string(),
-        });
+    if let Some(asset) = &assets.pca_image {
+        visuals.push(asset.clone());
+    }
+    if let Some(asset) = &assets.variance_image {
+        visuals.push(asset.clone());
     }
 
     render_visual_asset_cards(
@@ -784,6 +776,15 @@ fn render_inspect_asset_gallery(assets: &InspectHtmlAssets) -> String {
 fn render_compare_asset_gallery(assets: &CompareHtmlAssets) -> String {
     let mut sections = Vec::new();
 
+    if !assets.source_images.is_empty() {
+        sections.push(format!(
+            "<div><h3>Source image</h3>{}</div>",
+            render_visual_asset_cards(
+                &assets.source_images,
+                "No source image preview was generated for this report.",
+            ),
+        ));
+    }
     if !assets.pca_images.is_empty() {
         sections.push(format!(
             "<div><h3>Per-model PCA projections</h3>{}</div>",
@@ -1508,6 +1509,12 @@ mod tests {
     #[test]
     fn test_html_renders_compare_visual_assets() {
         let assets = CompareHtmlAssets {
+            source_images: vec![VisualAsset {
+                title: "Input image".into(),
+                path: "input_image.png".into(),
+                alt: "Input image".into(),
+                description: "Source image used for comparison.".into(),
+            }],
             pca_images: vec![VisualAsset {
                 title: "dinov2 PCA projection".into(),
                 path: "dinov2_pca.png".into(),
@@ -1524,6 +1531,8 @@ mod tests {
 
         let html = render_html("test.jpg", &[], &[], &[], &assets);
         assert!(html.contains("Visual Artefacts"));
+        assert!(html.contains("Source image"));
+        assert!(html.contains("input_image.png"));
         assert!(html.contains("Per-model PCA projections"));
         assert!(html.contains("Pairwise metric heatmaps"));
         assert!(html.contains("dinov2_pca.png"));
@@ -1534,8 +1543,24 @@ mod tests {
     fn test_render_inspect_html_includes_variance_spectrum_and_validation() {
         let report = inspect_report("dinov2-vit-l14");
         let assets = InspectHtmlAssets {
-            pca_image: Some("dinov2-vit-l14_pca.png".into()),
-            variance_image: Some("dinov2-vit-l14_variance.png".into()),
+            source_image: Some(VisualAsset {
+                title: "Input image".into(),
+                path: "input_image.png".into(),
+                alt: "Input image".into(),
+                description: "Source image used for inspect.".into(),
+            }),
+            pca_image: Some(VisualAsset {
+                title: "PCA Projection".into(),
+                path: "dinov2-vit-l14_pca.png".into(),
+                alt: "Inspect PCA projection".into(),
+                description: "Top-three PCA projection.".into(),
+            }),
+            variance_image: Some(VisualAsset {
+                title: "Variance Chart".into(),
+                path: "dinov2-vit-l14_variance.png".into(),
+                alt: "Inspect variance spectrum chart".into(),
+                description: "Variance profile.".into(),
+            }),
         };
         let html = render_inspect_html(&report, &assets);
 
@@ -1544,6 +1569,7 @@ mod tests {
         assert!(html.contains("Components @ 99%"));
         assert!(html.contains("PC01"));
         assert!(html.contains("Visual Artefacts"));
+        assert!(html.contains("input_image.png"));
         assert!(html.contains("dinov2-vit-l14_pca.png"));
         assert!(html.contains("Validation Summary"));
         assert!(html.contains("dinov2-vit-l14"));
@@ -1582,14 +1608,31 @@ mod tests {
         let path = dir.path().join("inspect-assets.html");
         let report = inspect_report("dinov2-vit-l14");
         let assets = InspectHtmlAssets {
-            pca_image: Some("dinov2-vit-l14_pca.png".into()),
-            variance_image: Some("dinov2-vit-l14_variance.png".into()),
+            source_image: Some(VisualAsset {
+                title: "Input image".into(),
+                path: "input_image.png".into(),
+                alt: "Input image".into(),
+                description: "Source image used for inspect.".into(),
+            }),
+            pca_image: Some(VisualAsset {
+                title: "PCA Projection".into(),
+                path: "dinov2-vit-l14_pca.png".into(),
+                alt: "Inspect PCA projection".into(),
+                description: "Top-three PCA projection.".into(),
+            }),
+            variance_image: Some(VisualAsset {
+                title: "Variance Chart".into(),
+                path: "dinov2-vit-l14_variance.png".into(),
+                alt: "Inspect variance spectrum chart".into(),
+                description: "Variance profile.".into(),
+            }),
         };
 
         write_inspect_report_with_assets(&report, &assets, &path).unwrap();
 
         let content = std::fs::read_to_string(&path).unwrap();
         assert!(content.contains("Visual Artefacts"));
+        assert!(content.contains("input_image.png"));
         assert!(content.contains("dinov2-vit-l14_variance.png"));
     }
 

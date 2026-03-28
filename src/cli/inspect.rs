@@ -3,6 +3,7 @@ use crate::errors::Error;
 use crate::extract::ExtractedFeatures;
 use crate::models::ModelSession;
 use crate::validation::summarize_session_or_unverified;
+use crate::viz::assets;
 use crate::viz::manifest::{ArtifactKind, OutputArtifactManifest};
 use crate::viz::OutputFormat;
 use clap::Args;
@@ -126,7 +127,7 @@ pub fn run(args: InspectArgs) -> Result<(), Error> {
                 .clone()
                 .unwrap_or_else(|| PathBuf::from("inspect_output"));
             std::fs::create_dir_all(&outdir)?;
-            let assets = write_inspect_visual_artifacts(&features, &report, &outdir)?;
+            let assets = write_inspect_visual_artifacts(None, &features, &report, &outdir)?;
             let manifest = build_inspect_manifest(
                 &report,
                 Some(&assets),
@@ -142,7 +143,7 @@ pub fn run(args: InspectArgs) -> Result<(), Error> {
                 .clone()
                 .unwrap_or_else(|| PathBuf::from("inspect_output"));
             std::fs::create_dir_all(&outdir)?;
-            let assets = write_inspect_visual_artifacts(&features, &report, &outdir)?;
+            let assets = write_inspect_visual_artifacts(Some(&img), &features, &report, &outdir)?;
             crate::viz::json::write_inspect_report(&report, &outdir.join("inspect.json"))?;
             crate::viz::html::write_inspect_report_with_assets(
                 &report,
@@ -167,11 +168,12 @@ pub fn run(args: InspectArgs) -> Result<(), Error> {
 }
 
 fn write_inspect_visual_artifacts(
+    source_image: Option<&image::DynamicImage>,
     features: &ExtractedFeatures,
     report: &crate::viz::report::InspectReport,
     outdir: &Path,
 ) -> Result<crate::viz::html::InspectHtmlAssets, Error> {
-    let prefix = slugify(&report.model);
+    let prefix = assets::slugify_filename(&report.model);
     let pca_filename = format!("{prefix}_pca.png");
     let variance_filename = format!("{prefix}_variance.png");
     let pca_result = pca(&features.patch_tokens, 3, 300)?;
@@ -185,8 +187,27 @@ fn write_inspect_visual_artifacts(
     )?;
 
     Ok(crate::viz::html::InspectHtmlAssets {
-        pca_image: Some(pca_filename),
-        variance_image: Some(variance_filename),
+        source_image: source_image
+            .map(|image| {
+                assets::write_preview_image(
+                    image,
+                    outdir,
+                    "input_image.png",
+                    "Input image",
+                    format!("Source image inspected with {}.", report.model),
+                )
+            })
+            .transpose()?,
+        pca_image: Some(assets::visual_asset(
+            pca_filename,
+            "PCA Projection",
+            "Patch-space RGB projection derived from the top three PCA components.",
+        )),
+        variance_image: Some(assets::visual_asset(
+            variance_filename,
+            "Variance Chart",
+            "Component-wise variance concentration across the inspected representation.",
+        )),
     })
 }
 
@@ -202,18 +223,25 @@ fn build_inspect_manifest(
         .with_validation(std::slice::from_ref(&report.validation));
 
     if let Some(assets) = assets {
+        if let Some(source_image) = &assets.source_image {
+            manifest = manifest.add_artifact(
+                source_image.path.clone(),
+                ArtifactKind::Png,
+                source_image.description.clone(),
+            );
+        }
         if let Some(pca_image) = &assets.pca_image {
             manifest = manifest.add_artifact(
-                pca_image.clone(),
+                pca_image.path.clone(),
                 ArtifactKind::Png,
-                format!("PCA projection for {}", report.model),
+                pca_image.description.clone(),
             );
         }
         if let Some(variance_image) = &assets.variance_image {
             manifest = manifest.add_artifact(
-                variance_image.clone(),
+                variance_image.path.clone(),
                 ArtifactKind::Png,
-                format!("Variance spectrum chart for {}", report.model),
+                variance_image.description.clone(),
             );
         }
     }
@@ -237,18 +265,4 @@ fn inspect_manifest_summary(report: &crate::viz::report::InspectReport) -> serde
         "components_99pct": report.variance_spectrum.components_99pct,
         "top10_variance_pct": report.metrics.top10_variance_pct,
     })
-}
-
-fn slugify(label: &str) -> String {
-    let mut slug = String::with_capacity(label.len());
-    for ch in label.chars() {
-        if ch.is_ascii_alphanumeric() {
-            slug.push(ch.to_ascii_lowercase());
-        } else if matches!(ch, '-' | '_') {
-            slug.push(ch);
-        } else {
-            slug.push('_');
-        }
-    }
-    slug.trim_matches('_').to_string()
 }

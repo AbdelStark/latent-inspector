@@ -217,12 +217,15 @@ fn neighbors_html_output_embeds_chart_and_validation_summary() {
 
     let html = fs::read_to_string(output_dir.join("report.html")).unwrap();
     assert!(html.contains("Visual Artefacts"));
+    assert!(html.contains("query_image.png"));
+    assert!(html.contains("neighbor_01_"));
     assert!(html.contains("neighbors.png"));
     assert!(html.contains("Validation Summary"));
     assert!(html.contains("dinov2-vit-l14"));
     let payload = read_json(&output_dir.join("neighbors.json"));
     assert_eq!(payload["model"], "dinov2-vit-l14");
     assert_eq!(payload["validation"]["status"], "unverified");
+    assert!(output_dir.join("query_image.png").exists());
     assert!(output_dir.join("neighbors.png").exists());
     let manifest = read_artifact_manifest(&output_dir);
     assert_eq!(manifest["command"], "neighbors");
@@ -233,6 +236,11 @@ fn neighbors_html_output_embeds_chart_and_validation_summary() {
         .unwrap()
         .iter()
         .any(|artifact| artifact["path"] == "neighbors.json"));
+    assert!(manifest["artifacts"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|artifact| artifact["path"] == "query_image.png"));
     assert!(manifest["artifacts"]
         .as_array()
         .unwrap()
@@ -348,6 +356,7 @@ fn similarity_html_output_embeds_chart_and_validation_summary() {
 
     let html = fs::read_to_string(output_dir.join("report.html")).unwrap();
     assert!(html.contains("Visual Artefacts"));
+    assert!(html.contains("dataset_sample_01_"));
     assert!(html.contains("similarity.png"));
     assert!(html.contains("Validation Summary"));
     assert!(html.contains("dinov2-vit-l14#1"));
@@ -366,6 +375,13 @@ fn similarity_html_output_embeds_chart_and_validation_summary() {
         .unwrap()
         .iter()
         .any(|artifact| artifact["path"] == "similarity.json"));
+    assert!(manifest["artifacts"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|artifact| artifact["path"]
+            .as_str()
+            .is_some_and(|path| path.starts_with("dataset_sample_01_"))));
     assert!(manifest["artifacts"]
         .as_array()
         .unwrap()
