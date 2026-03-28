@@ -146,15 +146,6 @@ pub fn run(args: CompareArgs) -> Result<(), Error> {
                 .file_name()
                 .and_then(|n| n.to_str())
                 .unwrap_or("image");
-            crate::viz::json::write_compare_report(&report, &outdir.join("compare.json"))?;
-            crate::viz::html::write_report_with_validation_and_assets(
-                image_name,
-                &report.metrics,
-                &report.comparisons,
-                &report.validation,
-                &assets,
-                &outdir.join("report.html"),
-            )?;
             let mut manifest = OutputArtifactManifest::new("compare", OutputFormat::Html)
                 .with_primary_artifact("report.html")
                 .with_context(compare_manifest_context(&args))
@@ -165,6 +156,16 @@ pub fn run(args: CompareArgs) -> Result<(), Error> {
             manifest = add_visual_artifacts(manifest, &assets.source_images);
             manifest = add_visual_artifacts(manifest, &assets.pca_images);
             manifest = add_visual_artifacts(manifest, &assets.heatmaps);
+            crate::viz::json::write_compare_report(&report, &outdir.join("compare.json"))?;
+            crate::viz::html::write_report_with_validation_assets_and_bundle(
+                image_name,
+                &report.metrics,
+                &report.comparisons,
+                &report.validation,
+                &assets,
+                Some(&manifest),
+                &outdir.join("report.html"),
+            )?;
             manifest.write_to_dir(&outdir)?;
             println!("Report written to {}/report.html", outdir.display());
         }

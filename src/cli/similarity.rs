@@ -247,9 +247,6 @@ fn render_output(
                 .unwrap_or_else(|| PathBuf::from("similarity_output"));
             std::fs::create_dir_all(&outdir)?;
             let assets = render_similarity_assets(report, preview_entries, &outdir)?;
-            crate::viz::json::write_similarity_report(report, &outdir.join("similarity.json"))?;
-            let path = outdir.join("report.html");
-            crate::viz::html::write_similarity_report_with_assets(report, &assets, &path)?;
             let mut manifest = OutputArtifactManifest::new("similarity", OutputFormat::Html)
                 .with_primary_artifact("report.html")
                 .with_context(similarity_manifest_context(args))
@@ -268,6 +265,14 @@ fn render_output(
                     asset.description.clone(),
                 );
             }
+            crate::viz::json::write_similarity_report(report, &outdir.join("similarity.json"))?;
+            let path = outdir.join("report.html");
+            crate::viz::html::write_similarity_report_with_assets_and_bundle(
+                report,
+                &assets,
+                Some(&manifest),
+                &path,
+            )?;
             manifest.write_to_dir(&outdir)?;
             println!("Report written to {}", path.display());
         }

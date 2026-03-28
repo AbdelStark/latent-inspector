@@ -78,15 +78,19 @@ fn list_models(args: &ModelsArgs) -> Result<(), Error> {
                 .unwrap_or_else(|| PathBuf::from("models_output"));
             std::fs::create_dir_all(&outdir)?;
             let path = outdir.join("models.html");
-            crate::viz::json::write_model_catalog(&report, &outdir.join("models.json"))?;
-            crate::viz::html::write_model_catalog_report(&report, &path)?;
-            OutputArtifactManifest::new("models", OutputFormat::Html)
+            let manifest = OutputArtifactManifest::new("models", OutputFormat::Html)
                 .with_primary_artifact("models.html")
                 .with_context(models_manifest_context(args))
                 .with_summary(models_manifest_summary(&report))
                 .add_artifact("models.html", ArtifactKind::Html, "Model catalog")
-                .add_artifact("models.json", ArtifactKind::Json, "Model catalog data")
-                .write_to_dir(&outdir)?;
+                .add_artifact("models.json", ArtifactKind::Json, "Model catalog data");
+            crate::viz::json::write_model_catalog(&report, &outdir.join("models.json"))?;
+            crate::viz::html::write_model_catalog_report_with_bundle(
+                &report,
+                Some(&manifest),
+                &path,
+            )?;
+            manifest.write_to_dir(&outdir)?;
             println!("Model catalog written to {}", path.display());
         }
         OutputFormat::Png => unreachable!("validated earlier"),

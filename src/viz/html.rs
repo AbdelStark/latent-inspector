@@ -5,6 +5,7 @@ use crate::dataset::DatasetProcessingSummary;
 use crate::errors::VizError;
 use crate::models::ModelCatalogReport;
 use crate::validation::report::ModelValidationSummary;
+use crate::viz::manifest::{ArtifactKind, OutputArtifactManifest};
 use crate::viz::report::{
     build_compare_overview, CompareOverview, DriftReport, InspectReport, NeighborsReport,
     PairwiseMatrix, PairwiseMetricSupport, SimilarityReport,
@@ -95,7 +96,28 @@ pub fn write_report_with_validation_and_assets(
     assets: &CompareHtmlAssets,
     output_path: &Path,
 ) -> Result<(), VizError> {
-    let html = render_html(image_name, metrics, comparisons, validation, assets);
+    write_report_with_validation_assets_and_bundle(
+        image_name,
+        metrics,
+        comparisons,
+        validation,
+        assets,
+        None,
+        output_path,
+    )
+}
+
+pub fn write_report_with_validation_assets_and_bundle(
+    image_name: &str,
+    metrics: &[ModelMetrics],
+    comparisons: &[ComparisonMetrics],
+    validation: &[ModelValidationSummary],
+    assets: &CompareHtmlAssets,
+    bundle: Option<&OutputArtifactManifest>,
+    output_path: &Path,
+) -> Result<(), VizError> {
+    let html =
+        render_html_with_bundle(image_name, metrics, comparisons, validation, assets, bundle);
     std::fs::write(output_path, &html)
         .map_err(|e| VizError::Html(format!("Failed to write {}: {e}", output_path.display())))?;
     Ok(())
@@ -105,7 +127,15 @@ pub fn write_validation_report(
     validation: &[ModelValidationSummary],
     output_path: &Path,
 ) -> Result<(), VizError> {
-    let html = render_validation_html(validation);
+    write_validation_report_with_bundle(validation, None, output_path)
+}
+
+pub fn write_validation_report_with_bundle(
+    validation: &[ModelValidationSummary],
+    bundle: Option<&OutputArtifactManifest>,
+    output_path: &Path,
+) -> Result<(), VizError> {
+    let html = render_validation_html_with_bundle(validation, bundle);
     std::fs::write(output_path, &html)
         .map_err(|e| VizError::Html(format!("Failed to write {}: {e}", output_path.display())))?;
     Ok(())
@@ -123,7 +153,16 @@ pub fn write_neighbors_report_with_assets(
     assets: &GalleryAssets,
     output_path: &Path,
 ) -> Result<(), VizError> {
-    let html = render_neighbors_html(report, assets);
+    write_neighbors_report_with_assets_and_bundle(report, assets, None, output_path)
+}
+
+pub fn write_neighbors_report_with_assets_and_bundle(
+    report: &NeighborsReport,
+    assets: &GalleryAssets,
+    bundle: Option<&OutputArtifactManifest>,
+    output_path: &Path,
+) -> Result<(), VizError> {
+    let html = render_neighbors_html_with_bundle(report, assets, bundle);
     std::fs::write(output_path, &html)
         .map_err(|e| VizError::Html(format!("Failed to write {}: {e}", output_path.display())))?;
     Ok(())
@@ -141,7 +180,16 @@ pub fn write_similarity_report_with_assets(
     assets: &GalleryAssets,
     output_path: &Path,
 ) -> Result<(), VizError> {
-    let html = render_similarity_html(report, assets);
+    write_similarity_report_with_assets_and_bundle(report, assets, None, output_path)
+}
+
+pub fn write_similarity_report_with_assets_and_bundle(
+    report: &SimilarityReport,
+    assets: &GalleryAssets,
+    bundle: Option<&OutputArtifactManifest>,
+    output_path: &Path,
+) -> Result<(), VizError> {
+    let html = render_similarity_html_with_bundle(report, assets, bundle);
     std::fs::write(output_path, &html)
         .map_err(|e| VizError::Html(format!("Failed to write {}: {e}", output_path.display())))?;
     Ok(())
@@ -156,7 +204,16 @@ pub fn write_drift_report_with_assets(
     assets: &GalleryAssets,
     output_path: &Path,
 ) -> Result<(), VizError> {
-    let html = render_drift_html(report, assets);
+    write_drift_report_with_assets_and_bundle(report, assets, None, output_path)
+}
+
+pub fn write_drift_report_with_assets_and_bundle(
+    report: &DriftReport,
+    assets: &GalleryAssets,
+    bundle: Option<&OutputArtifactManifest>,
+    output_path: &Path,
+) -> Result<(), VizError> {
+    let html = render_drift_html_with_bundle(report, assets, bundle);
     std::fs::write(output_path, &html)
         .map_err(|e| VizError::Html(format!("Failed to write {}: {e}", output_path.display())))?;
     Ok(())
@@ -166,7 +223,15 @@ pub fn write_model_catalog_report(
     report: &ModelCatalogReport,
     output_path: &Path,
 ) -> Result<(), VizError> {
-    let html = render_model_catalog_html(report);
+    write_model_catalog_report_with_bundle(report, None, output_path)
+}
+
+pub fn write_model_catalog_report_with_bundle(
+    report: &ModelCatalogReport,
+    bundle: Option<&OutputArtifactManifest>,
+    output_path: &Path,
+) -> Result<(), VizError> {
+    let html = render_model_catalog_html_with_bundle(report, bundle);
     std::fs::write(output_path, &html)
         .map_err(|e| VizError::Html(format!("Failed to write {}: {e}", output_path.display())))?;
     Ok(())
@@ -181,18 +246,39 @@ pub fn write_inspect_report_with_assets(
     assets: &InspectHtmlAssets,
     output_path: &Path,
 ) -> Result<(), VizError> {
-    let html = render_inspect_html(report, assets);
+    write_inspect_report_with_assets_and_bundle(report, assets, None, output_path)
+}
+
+pub fn write_inspect_report_with_assets_and_bundle(
+    report: &InspectReport,
+    assets: &InspectHtmlAssets,
+    bundle: Option<&OutputArtifactManifest>,
+    output_path: &Path,
+) -> Result<(), VizError> {
+    let html = render_inspect_html_with_bundle(report, assets, bundle);
     std::fs::write(output_path, &html)
         .map_err(|e| VizError::Html(format!("Failed to write {}: {e}", output_path.display())))?;
     Ok(())
 }
 
+#[cfg(test)]
 fn render_html(
     image_name: &str,
     metrics: &[ModelMetrics],
     comparisons: &[ComparisonMetrics],
     validation: &[ModelValidationSummary],
     assets: &CompareHtmlAssets,
+) -> String {
+    render_html_with_bundle(image_name, metrics, comparisons, validation, assets, None)
+}
+
+fn render_html_with_bundle(
+    image_name: &str,
+    metrics: &[ModelMetrics],
+    comparisons: &[ComparisonMetrics],
+    validation: &[ModelValidationSummary],
+    assets: &CompareHtmlAssets,
+    bundle: Option<&OutputArtifactManifest>,
 ) -> String {
     let overview = build_compare_overview(metrics, comparisons);
     let comparison_rows = comparisons
@@ -257,6 +343,14 @@ fn render_html(
             render_compare_asset_gallery(assets)
         )
     };
+    let bundle_section = bundle
+        .map(|bundle| {
+            format!(
+                r#"<div class="panel"><h2>Export Bundle</h2>{}</div>"#,
+                render_bundle_section(bundle)
+            )
+        })
+        .unwrap_or_default();
     let validation_section = render_validation_section_body(
         validation,
         "No validation evidence was attached to this report.",
@@ -307,6 +401,9 @@ fn render_html(
   .matrix-card {{ border: 1px solid var(--border); border-radius: 12px; padding: 0.9rem 1rem; background: rgba(255,255,255,0.02); }}
   .validation-grid {{ display: grid; gap: 1rem; }}
   .validation-card {{ border: 1px solid var(--border); border-radius: 14px; padding: 1rem; background: rgba(255,255,255,0.02); }}
+  .bundle-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem; }}
+  .bundle-card {{ border: 1px solid var(--border); border-radius: 14px; padding: 1rem; background: rgba(255,255,255,0.02); }}
+  .json-block {{ margin: 0; padding: 0.85rem 1rem; border-radius: 12px; border: 1px solid var(--border); background: rgba(0,0,0,0.25); overflow-x: auto; white-space: pre-wrap; word-break: break-word; }}
   .delta-list {{ margin: 0.5rem 0 0; padding-left: 1.1rem; color: var(--muted); }}
   .delta-list li {{ margin: 0.25rem 0; }}
   .empty-state {{ color: var(--muted); margin: 0; }}
@@ -362,6 +459,8 @@ fn render_html(
 
 {}
 
+{}
+
 <div class="panel">
 <h2>Validation Summary</h2>
 {}
@@ -379,21 +478,30 @@ fn render_html(
         comparison_table,
         matrix_sections,
         visual_section,
+        bundle_section,
         validation_section,
     )
 }
 
-fn render_validation_html(validation: &[ModelValidationSummary]) -> String {
-    render_html(
+fn render_validation_html_with_bundle(
+    validation: &[ModelValidationSummary],
+    bundle: Option<&OutputArtifactManifest>,
+) -> String {
+    render_html_with_bundle(
         "validation-run",
         &[],
         &[],
         validation,
         &CompareHtmlAssets::default(),
+        bundle,
     )
 }
 
-fn render_neighbors_html(report: &NeighborsReport, assets: &GalleryAssets) -> String {
+fn render_neighbors_html_with_bundle(
+    report: &NeighborsReport,
+    assets: &GalleryAssets,
+    bundle: Option<&OutputArtifactManifest>,
+) -> String {
     let rows = report
         .neighbors
         .iter()
@@ -452,10 +560,15 @@ fn render_neighbors_html(report: &NeighborsReport, assets: &GalleryAssets) -> St
             ("Loaded images", report.dataset_summary.loaded.to_string()),
         ],
         &sections,
+        bundle,
     )
 }
 
-fn render_similarity_html(report: &SimilarityReport, assets: &GalleryAssets) -> String {
+fn render_similarity_html_with_bundle(
+    report: &SimilarityReport,
+    assets: &GalleryAssets,
+    bundle: Option<&OutputArtifactManifest>,
+) -> String {
     let metrics = if report.metrics.is_empty() {
         "<p class=\"empty-state\">No similarity metric was available for the selected mode.</p>"
             .to_string()
@@ -518,10 +631,15 @@ fn render_similarity_html(report: &SimilarityReport, assets: &GalleryAssets) -> 
             ("Metrics reported", report.metrics.len().to_string()),
         ],
         &sections,
+        bundle,
     )
 }
 
-fn render_drift_html(report: &DriftReport, assets: &GalleryAssets) -> String {
+fn render_drift_html_with_bundle(
+    report: &DriftReport,
+    assets: &GalleryAssets,
+    bundle: Option<&OutputArtifactManifest>,
+) -> String {
     let rows = if report.drift.is_empty() {
         "<p class=\"empty-state\">Need at least two checkpoints to compute consecutive drift.</p>"
             .to_string()
@@ -607,10 +725,19 @@ fn render_drift_html(report: &DriftReport, assets: &GalleryAssets) -> String {
             ),
         ],
         &sections,
+        bundle,
     )
 }
 
+#[cfg(test)]
 fn render_model_catalog_html(report: &ModelCatalogReport) -> String {
+    render_model_catalog_html_with_bundle(report, None)
+}
+
+fn render_model_catalog_html_with_bundle(
+    report: &ModelCatalogReport,
+    bundle: Option<&OutputArtifactManifest>,
+) -> String {
     let fixture_status = match (
         &report.fixture_set,
         &report.evidence_timestamp,
@@ -667,10 +794,20 @@ fn render_model_catalog_html(report: &ModelCatalogReport) -> String {
             ),
         ],
         &sections,
+        bundle,
     )
 }
 
+#[cfg(test)]
 fn render_inspect_html(report: &InspectReport, assets: &InspectHtmlAssets) -> String {
+    render_inspect_html_with_bundle(report, assets, None)
+}
+
+fn render_inspect_html_with_bundle(
+    report: &InspectReport,
+    assets: &InspectHtmlAssets,
+    bundle: Option<&OutputArtifactManifest>,
+) -> String {
     let metrics = &report.metrics;
     let variance = &report.variance_spectrum;
     let variance_rows = variance
@@ -795,6 +932,7 @@ fn render_inspect_html(report: &InspectReport, assets: &InspectHtmlAssets) -> St
             ("Effective rank", metrics.effective_rank.to_string()),
         ],
         &sections,
+        bundle,
     )
 }
 
@@ -1290,8 +1428,17 @@ fn render_secondary_html(
     subtitle: &str,
     stats: &[(&str, String)],
     sections: &[(&str, String)],
+    bundle: Option<&OutputArtifactManifest>,
 ) -> String {
     let stats_html = render_secondary_stats(stats);
+    let bundle_section = bundle
+        .map(|bundle| {
+            format!(
+                "<div class=\"panel\"><h2>Export Bundle</h2>{}</div>",
+                render_bundle_section(bundle)
+            )
+        })
+        .unwrap_or_default();
     let sections_html = sections
         .iter()
         .map(|(heading, body)| {
@@ -1341,6 +1488,9 @@ fn render_secondary_html(
   .badge.failed, .badge.unverified {{ color: var(--bad); border-color: rgba(248,81,73,0.35); }}
   .validation-grid {{ display: grid; gap: 1rem; }}
   .validation-card {{ border: 1px solid var(--border); border-radius: 14px; padding: 1rem; background: rgba(255,255,255,0.02); }}
+  .bundle-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem; }}
+  .bundle-card {{ border: 1px solid var(--border); border-radius: 14px; padding: 1rem; background: rgba(255,255,255,0.02); }}
+  .json-block {{ margin: 0; padding: 0.85rem 1rem; border-radius: 12px; border: 1px solid var(--border); background: rgba(0,0,0,0.25); overflow-x: auto; white-space: pre-wrap; word-break: break-word; }}
   .inspect-asset-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1rem; }}
   .inspect-asset-card {{ border: 1px solid var(--border); border-radius: 14px; padding: 1rem; background: rgba(255,255,255,0.02); }}
   .inspect-asset-card h3 {{ margin-bottom: 0.75rem; }}
@@ -1362,12 +1512,14 @@ fn render_secondary_html(
   {}
 </div>
 {}
+{}
 </body>
 </html>"#,
         escape_html(title),
         escape_html(title),
         subtitle,
         stats_html,
+        bundle_section,
         sections_html
     )
 }
@@ -1389,6 +1541,137 @@ fn render_secondary_stats(stats: &[(&str, String)]) -> String {
         .collect::<Vec<_>>()
         .join("\n");
     format!("<div class=\"stats-grid\">{cards}</div>")
+}
+
+fn render_bundle_section(bundle: &OutputArtifactManifest) -> String {
+    let primary_artifact = bundle
+        .primary_artifact
+        .as_deref()
+        .unwrap_or("N/A")
+        .to_string();
+    let validation_status = bundle
+        .validation_summary
+        .as_ref()
+        .map(|summary| summary.overall_status.label().to_string())
+        .unwrap_or_else(|| "not attached".to_string());
+    let artifact_count = bundle.artifacts.len() + 1;
+    let validation_details = bundle
+        .validation_summary
+        .as_ref()
+        .map(render_bundle_validation_overview)
+        .unwrap_or_else(|| {
+            "<p class=\"empty-state\">No validation overview was attached to this bundle.</p>"
+                .to_string()
+        });
+
+    format!(
+        "<div class=\"stats-grid\">\
+         <div class=\"stat-card\"><span>Command</span><strong>{}</strong></div>\
+         <div class=\"stat-card\"><span>Format</span><strong>{}</strong></div>\
+         <div class=\"stat-card\"><span>Primary artifact</span><strong>{}</strong></div>\
+         <div class=\"stat-card\"><span>Bundle files</span><strong>{}</strong></div>\
+         <div class=\"stat-card\"><span>Validation overview</span><strong>{}</strong></div>\
+         </div>\
+         <div class=\"bundle-grid\" style=\"margin-top:1rem\">\
+         <article class=\"bundle-card\"><h3>Bundle Files</h3>{}</article>\
+         <article class=\"bundle-card\"><h3>Run Context</h3>{}</article>\
+         <article class=\"bundle-card\"><h3>Bundle Summary</h3>{}</article>\
+         <article class=\"bundle-card\"><h3>Validation Overview</h3>{}</article>\
+         </div>",
+        escape_html(&bundle.command),
+        escape_html(&bundle.format.to_string()),
+        escape_html(&primary_artifact),
+        artifact_count,
+        escape_html(&validation_status),
+        render_bundle_artifact_table(bundle),
+        render_json_block(
+            bundle.context.as_ref(),
+            "This bundle did not record command context.",
+        ),
+        render_json_block(
+            bundle.summary.as_ref(),
+            "This bundle did not record a top-line summary.",
+        ),
+        validation_details,
+    )
+}
+
+fn render_bundle_artifact_table(bundle: &OutputArtifactManifest) -> String {
+    let mut rows = bundle
+        .artifacts
+        .iter()
+        .map(|artifact| render_bundle_artifact_row(artifact, bundle.primary_artifact.as_deref()))
+        .collect::<Vec<_>>();
+    rows.push(format!(
+        "<tr><td><a href=\"artifacts.json\"><code>artifacts.json</code></a></td><td>{}</td><td>Artifact manifest</td><td>supporting</td></tr>",
+        render_artifact_kind_label(ArtifactKind::Json),
+    ));
+
+    format!(
+        "<table><thead><tr><th>Path</th><th>Kind</th><th>Label</th><th>Role</th></tr></thead><tbody>{}</tbody></table>",
+        rows.join("")
+    )
+}
+
+fn render_bundle_artifact_row(
+    artifact: &crate::viz::manifest::OutputArtifact,
+    primary_artifact: Option<&str>,
+) -> String {
+    let role = if primary_artifact == Some(artifact.path.as_str()) {
+        "primary"
+    } else {
+        "supporting"
+    };
+    format!(
+        "<tr><td><a href=\"{}\"><code>{}</code></a></td><td>{}</td><td>{}</td><td>{}</td></tr>",
+        escape_html(&artifact.path),
+        escape_html(&artifact.path),
+        render_artifact_kind_label(artifact.kind),
+        escape_html(&artifact.label),
+        role,
+    )
+}
+
+fn render_artifact_kind_label(kind: ArtifactKind) -> &'static str {
+    match kind {
+        ArtifactKind::Json => "json",
+        ArtifactKind::Html => "html",
+        ArtifactKind::Png => "png",
+    }
+}
+
+fn render_bundle_validation_overview(
+    overview: &crate::viz::manifest::ArtifactValidationOverview,
+) -> String {
+    format!(
+        "<div class=\"stats-grid\">\
+         <div class=\"stat-card\"><span>Overall status</span><strong>{}</strong></div>\
+         <div class=\"stat-card\"><span>Validated</span><strong>{}</strong></div>\
+         <div class=\"stat-card\"><span>Partial</span><strong>{}</strong></div>\
+         <div class=\"stat-card\"><span>Stale</span><strong>{}</strong></div>\
+         <div class=\"stat-card\"><span>Unverified</span><strong>{}</strong></div>\
+         <div class=\"stat-card\"><span>Failed</span><strong>{}</strong></div>\
+         </div>",
+        escape_html(overview.overall_status.label()),
+        overview.validated,
+        overview.partial,
+        overview.stale,
+        overview.unverified,
+        overview.failed,
+    )
+}
+
+fn render_json_block(value: Option<&serde_json::Value>, empty_message: &str) -> String {
+    match value {
+        Some(value) => {
+            let pretty = serde_json::to_string_pretty(value).unwrap_or_else(|_| value.to_string());
+            format!("<pre class=\"json-block\">{}</pre>", escape_html(&pretty))
+        }
+        None => format!(
+            "<p class=\"empty-state\">{}</p>",
+            escape_html(empty_message)
+        ),
+    }
 }
 
 fn render_dataset_summary_html(summary: &DatasetProcessingSummary) -> String {
@@ -1435,10 +1718,12 @@ mod tests {
         CheckSummary, ModelValidationSummary, ParityValidationSummary, TensorValidationSummary,
         ValidationStatus,
     };
+    use crate::viz::manifest::{ArtifactKind, OutputArtifactManifest};
     use crate::viz::report::{
         DriftReport, DriftStep, InspectReport, NeighborMatch, NeighborsReport,
         SimilarityMetricValue, SimilarityReport, VarianceSpectrumReport,
     };
+    use crate::viz::OutputFormat;
     use tempfile::tempdir;
 
     fn validation_summary(model: &str) -> ModelValidationSummary {
@@ -1497,6 +1782,22 @@ mod tests {
 
     fn model_catalog_report() -> ModelCatalogReport {
         build_model_catalog(None)
+    }
+
+    fn bundle_manifest(command: &str) -> OutputArtifactManifest {
+        OutputArtifactManifest::new(command, OutputFormat::Html)
+            .with_primary_artifact("report.html")
+            .with_context(serde_json::json!({
+                "model": "dinov2-vit-l14",
+                "image": "fixture.png",
+            }))
+            .with_summary(serde_json::json!({
+                "models": 1,
+                "artifacts": ["report.html", "compare.json"],
+            }))
+            .add_artifact("report.html", ArtifactKind::Html, "Primary report")
+            .add_artifact("compare.json", ArtifactKind::Json, "Structured report data")
+            .with_validation(&[validation_summary("dinov2-vit-l14")])
     }
 
     #[test]
@@ -1667,6 +1968,26 @@ mod tests {
     }
 
     #[test]
+    fn test_html_renders_export_bundle_section() {
+        let manifest = bundle_manifest("compare");
+        let html = render_html_with_bundle(
+            "test.jpg",
+            &[],
+            &[],
+            &[validation_summary("dinov2-vit-l14")],
+            &CompareHtmlAssets::default(),
+            Some(&manifest),
+        );
+
+        assert!(html.contains("Export Bundle"));
+        assert!(html.contains("artifacts.json"));
+        assert!(html.contains("Bundle Files"));
+        assert!(html.contains("Run Context"));
+        assert!(html.contains("compare.json"));
+        assert!(html.contains("dinov2-vit-l14"));
+    }
+
+    #[test]
     fn test_render_inspect_html_includes_variance_spectrum_and_validation() {
         let report = inspect_report("dinov2-vit-l14");
         let assets = InspectHtmlAssets {
@@ -1708,6 +2029,21 @@ mod tests {
         assert!(html.contains("dinov2-vit-l14_attention.png"));
         assert!(html.contains("Validation Summary"));
         assert!(html.contains("dinov2-vit-l14"));
+    }
+
+    #[test]
+    fn test_secondary_html_renders_export_bundle_section() {
+        let manifest = bundle_manifest("inspect");
+        let html = render_inspect_html_with_bundle(
+            &inspect_report("dinov2-vit-l14"),
+            &InspectHtmlAssets::default(),
+            Some(&manifest),
+        );
+
+        assert!(html.contains("Export Bundle"));
+        assert!(html.contains("Validation Overview"));
+        assert!(html.contains("report.html"));
+        assert!(html.contains("compare.json"));
     }
 
     #[test]

@@ -139,9 +139,7 @@ fn render_validate_output(
                 .clone()
                 .unwrap_or_else(|| PathBuf::from("validation_output"));
             std::fs::create_dir_all(&outdir)?;
-            crate::viz::json::write_validation_report(summaries, &outdir.join("validation.json"))?;
-            crate::viz::html::write_validation_report(summaries, &outdir.join("validation.html"))?;
-            OutputArtifactManifest::new("validate", OutputFormat::Html)
+            let manifest = OutputArtifactManifest::new("validate", OutputFormat::Html)
                 .with_primary_artifact("validation.html")
                 .with_context(validate_manifest_context(args))
                 .with_summary(validate_manifest_summary(args, summaries))
@@ -151,8 +149,14 @@ fn render_validate_output(
                     ArtifactKind::Json,
                     "Validation report data",
                 )
-                .with_validation(summaries)
-                .write_to_dir(&outdir)?;
+                .with_validation(summaries);
+            crate::viz::json::write_validation_report(summaries, &outdir.join("validation.json"))?;
+            crate::viz::html::write_validation_report_with_bundle(
+                summaries,
+                Some(&manifest),
+                &outdir.join("validation.html"),
+            )?;
+            manifest.write_to_dir(&outdir)?;
             println!(
                 "Validation report written to {}/validation.html",
                 outdir.display()

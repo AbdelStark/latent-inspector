@@ -135,6 +135,8 @@ fn validate_html_output_writes_companion_json_bundle() {
     assert_eq!(output.status.code(), Some(1));
     let html = fs::read_to_string(outdir.path().join("validation.html")).unwrap();
     assert!(html.contains("Validation Summary"));
+    assert!(html.contains("Export Bundle"));
+    assert!(html.contains("artifacts.json"));
     assert!(html.contains("dinov2-vit-l14"));
     assert!(html.contains("Stub backend"));
 
@@ -345,6 +347,8 @@ fn inspect_html_includes_variance_spectrum_and_validation_summary() {
     assert!(html.contains("dinov2-vit-l14_pca.png"));
     assert!(html.contains("dinov2-vit-l14_variance.png"));
     assert!(html.contains("Components @ 99%"));
+    assert!(html.contains("Export Bundle"));
+    assert!(html.contains("artifacts.json"));
     assert!(html.contains("Validation Summary"));
     assert!(html.contains("dinov2-vit-l14"));
     assert!(html.contains("Stub backend"));
@@ -424,6 +428,8 @@ fn compare_html_embeds_visual_assets_and_validation_summary() {
     assert!(html.contains("input_image.png"));
     assert!(html.contains("Per-model PCA projections"));
     assert!(html.contains("Pairwise metric heatmaps"));
+    assert!(html.contains("Export Bundle"));
+    assert!(html.contains("artifacts.json"));
     assert!(html.contains("Validation Summary"));
     assert!(html.contains("dinov2-vit-l14#1"));
     assert!(html.contains("dinov2-vit-l14#2"));

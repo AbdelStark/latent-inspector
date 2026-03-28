@@ -221,9 +221,6 @@ fn render_output(
                 .unwrap_or_else(|| PathBuf::from("neighbors_output"));
             std::fs::create_dir_all(&outdir)?;
             let assets = render_neighbors_assets(report, query_image, preview_sources, &outdir)?;
-            crate::viz::json::write_neighbors_report(report, &outdir.join("neighbors.json"))?;
-            let path = outdir.join("report.html");
-            crate::viz::html::write_neighbors_report_with_assets(report, &assets, &path)?;
             let mut manifest = OutputArtifactManifest::new("neighbors", OutputFormat::Html)
                 .with_primary_artifact("report.html")
                 .with_context(neighbors_manifest_context(args))
@@ -242,6 +239,14 @@ fn render_output(
                     asset.description.clone(),
                 );
             }
+            crate::viz::json::write_neighbors_report(report, &outdir.join("neighbors.json"))?;
+            let path = outdir.join("report.html");
+            crate::viz::html::write_neighbors_report_with_assets_and_bundle(
+                report,
+                &assets,
+                Some(&manifest),
+                &path,
+            )?;
             manifest.write_to_dir(&outdir)?;
             println!("Report written to {}", path.display());
         }

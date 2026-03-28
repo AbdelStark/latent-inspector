@@ -48,6 +48,11 @@ latent-inspector makes these differences visible and measurable.
   plus copied image previews so exported bundles stay readable away from the
   source dataset
 
+HTML bundles are now self-describing: each exported page includes an `Export Bundle`
+section that lists companion JSON/PNG assets, links to `artifacts.json`, and
+shows the recorded run context, top-line summary, and validation overview for
+that bundle.
+
 When a command writes files to an output directory, latent-inspector now also
 emits `artifacts.json` in that directory. The manifest records the command,
 requested format, the command context that produced the bundle, a top-line

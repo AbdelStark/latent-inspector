@@ -146,6 +146,8 @@ fn models_html_output_writes_shareable_catalog() {
 
     let html = fs::read_to_string(outdir.path().join("models.html")).unwrap();
     assert!(html.contains("Model inventory"));
+    assert!(html.contains("Export Bundle"));
+    assert!(html.contains("artifacts.json"));
     assert!(html.contains("Validation fixtures:"));
     assert!(html.contains("Runtime"));
     assert!(html.contains("dinov2-vit-l14"));

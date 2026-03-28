@@ -244,6 +244,8 @@ fn drift_html_output_embeds_chart_and_validation_summary() {
 
     let html = fs::read_to_string(output_dir.join("report.html")).unwrap();
     assert!(html.contains("Visual Artefacts"));
+    assert!(html.contains("Export Bundle"));
+    assert!(html.contains("artifacts.json"));
     assert!(html.contains("dataset_sample_01_sample-a.png"));
     assert!(html.contains("consecutive_cka.png"));
     assert!(html.contains("Validation Summary"));
