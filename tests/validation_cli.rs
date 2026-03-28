@@ -280,12 +280,44 @@ fn compare_json_includes_pairwise_overview() {
 
     assert_eq!(output.status.code(), Some(0));
     let payload: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(payload["image"], Value::from(image.display().to_string()));
+    assert_eq!(
+        payload["requested_models"],
+        Value::from(vec!["dinov2-vit-l14", "dinov2-vit-l14"])
+    );
     let labels = payload["overview"]["linear_cka_matrix"]["labels"]
         .as_array()
         .unwrap();
     assert_eq!(labels[0], Value::from("dinov2-vit-l14#1"));
     assert_eq!(labels[1], Value::from("dinov2-vit-l14#2"));
     assert!(payload["overview"]["comparison_highlights"].is_array());
+    assert_eq!(payload["validation"].as_array().unwrap().len(), 2);
+}
+
+#[test]
+fn compare_json_output_writes_structured_report() {
+    let dir = tempdir().unwrap();
+    let image = write_test_image(dir.path());
+    let output_dir = dir.path().join("compare-json");
+    let output = run(&[
+        "compare",
+        image.to_str().unwrap(),
+        "--models",
+        "dinov2-vit-l14,dinov2-vit-l14",
+        "--format",
+        "json",
+        "--output",
+        output_dir.to_str().unwrap(),
+    ]);
+
+    assert_eq!(output.status.code(), Some(0));
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("compare.json"));
+
+    let payload = read_json(&output_dir.join("compare.json"));
+    assert_eq!(payload["image"], Value::from(image.display().to_string()));
+    assert_eq!(payload["metrics"].as_array().unwrap().len(), 2);
+    assert!(payload["overview"]["cls_cosine_matrix"]["rows"].is_array());
 }
 
 #[test]
@@ -331,4 +363,32 @@ fn inspect_png_writes_variance_chart() {
     assert_eq!(output.status.code(), Some(0));
     assert!(output_dir.join("dinov2-vit-l14_pca.png").exists());
     assert!(output_dir.join("dinov2-vit-l14_variance.png").exists());
+}
+
+#[test]
+fn inspect_json_output_writes_structured_report() {
+    let dir = tempdir().unwrap();
+    let image = write_test_image(dir.path());
+    let output_dir = dir.path().join("inspect-json");
+    let output = run(&[
+        "inspect",
+        image.to_str().unwrap(),
+        "--model",
+        "dinov2-vit-l14",
+        "--format",
+        "json",
+        "--output",
+        output_dir.to_str().unwrap(),
+    ]);
+
+    assert_eq!(output.status.code(), Some(0));
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("inspect.json"));
+
+    let payload = read_json(&output_dir.join("inspect.json"));
+    assert_eq!(payload["image"], Value::from(image.display().to_string()));
+    assert_eq!(payload["model"], "dinov2-vit-l14");
+    assert_eq!(payload["validation"]["status"], "validated");
+    assert!(payload["variance_spectrum"]["ratios"].is_array());
+    assert!(payload["variance_spectrum"]["top10_concentration"].is_number());
 }

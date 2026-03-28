@@ -85,17 +85,30 @@ pub fn run(args: CompareArgs) -> Result<(), Error> {
         }
     }
 
-    let overview = crate::viz::report::build_compare_overview(&metrics, &comparisons);
+    let report = crate::viz::report::build_compare_report(
+        args.image.display().to_string(),
+        args.models.clone(),
+        metrics,
+        comparisons,
+        validation_summaries,
+    );
 
     // Render output
     match args.format {
         OutputFormat::Terminal => {
-            crate::viz::terminal::print_metrics_table(&metrics);
-            crate::viz::terminal::print_compare_overview(&overview);
-            crate::viz::terminal::print_validation_summaries(&validation_summaries);
+            crate::viz::terminal::print_metrics_table(&report.metrics);
+            crate::viz::terminal::print_compare_overview(&report.overview);
+            crate::viz::terminal::print_validation_summaries(&report.validation);
         }
         OutputFormat::Json => {
-            crate::viz::json::print_report(&metrics, &comparisons, Some(&validation_summaries))?;
+            if let Some(outdir) = &args.output {
+                std::fs::create_dir_all(outdir)?;
+                let path = outdir.join("compare.json");
+                crate::viz::json::write_compare_report(&report, &path)?;
+                println!("JSON report written to {}", path.display());
+            } else {
+                crate::viz::json::print_compare_report(&report)?;
+            }
         }
         OutputFormat::Html => {
             let outdir = args
@@ -109,9 +122,9 @@ pub fn run(args: CompareArgs) -> Result<(), Error> {
                 .unwrap_or("image");
             crate::viz::html::write_report_with_validation(
                 image_name,
-                &metrics,
-                &comparisons,
-                &validation_summaries,
+                &report.metrics,
+                &report.comparisons,
+                &report.validation,
                 &outdir.join("report.html"),
             )?;
             println!("Report written to {}/report.html", outdir.display());
@@ -129,7 +142,7 @@ pub fn run(args: CompareArgs) -> Result<(), Error> {
                 let path = outdir.join(format!("{}_pca.png", slugify(name)));
                 crate::viz::png::save_pca_rgb(&projected, grid, &path)?;
             }
-            save_pairwise_heatmaps(&outdir, &overview)?;
+            save_pairwise_heatmaps(&outdir, &report.overview)?;
             println!("PNG outputs saved to {}", outdir.display());
         }
     }

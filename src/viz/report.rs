@@ -1,5 +1,6 @@
-use crate::analysis::{ComparisonMetrics, ModelMetrics};
+use crate::analysis::{ComparisonMetrics, ModelMetrics, VarianceSpectrum};
 use crate::dataset::DatasetProcessingSummary;
+use crate::validation::report::ModelValidationSummary;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -52,6 +53,17 @@ pub struct CompareOverview {
     pub correspondence_matrix: PairwiseMatrix,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CompareReport {
+    pub image: String,
+    pub requested_models: Vec<String>,
+    pub metrics: Vec<ModelMetrics>,
+    pub comparisons: Vec<ComparisonMetrics>,
+    pub overview: CompareOverview,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub validation: Vec<ModelValidationSummary>,
+}
+
 pub fn build_compare_overview(
     metrics: &[ModelMetrics],
     comparisons: &[ComparisonMetrics],
@@ -72,6 +84,70 @@ pub fn build_compare_overview(
             comparisons,
             MetricKind::MeanPatchCorrespondence,
         ),
+    }
+}
+
+pub fn build_compare_report(
+    image: impl Into<String>,
+    requested_models: Vec<String>,
+    metrics: Vec<ModelMetrics>,
+    comparisons: Vec<ComparisonMetrics>,
+    validation: Vec<ModelValidationSummary>,
+) -> CompareReport {
+    let overview = build_compare_overview(&metrics, &comparisons);
+    CompareReport {
+        image: image.into(),
+        requested_models,
+        metrics,
+        comparisons,
+        overview,
+        validation,
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct VarianceSpectrumReport {
+    pub ratios: Vec<f32>,
+    pub cumulative: Vec<f32>,
+    pub components_90pct: usize,
+    pub components_99pct: usize,
+    pub top10_concentration: f32,
+}
+
+impl From<&VarianceSpectrum> for VarianceSpectrumReport {
+    fn from(value: &VarianceSpectrum) -> Self {
+        Self {
+            ratios: value.ratios.to_vec(),
+            cumulative: value.cumulative.to_vec(),
+            components_90pct: value.components_90pct,
+            components_99pct: value.components_99pct,
+            top10_concentration: value.top10_concentration,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InspectReport {
+    pub image: String,
+    pub model: String,
+    pub metrics: ModelMetrics,
+    pub validation: ModelValidationSummary,
+    pub variance_spectrum: VarianceSpectrumReport,
+}
+
+pub fn build_inspect_report(
+    image: impl Into<String>,
+    model: impl Into<String>,
+    metrics: ModelMetrics,
+    validation: ModelValidationSummary,
+    variance_spectrum: &VarianceSpectrum,
+) -> InspectReport {
+    InspectReport {
+        image: image.into(),
+        model: model.into(),
+        metrics,
+        validation,
+        variance_spectrum: variance_spectrum.into(),
     }
 }
 
@@ -347,6 +423,12 @@ fn build_comparison_highlights(comparisons: &[ComparisonMetrics]) -> Vec<Compari
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::analysis::VarianceSpectrum;
+    use crate::validation::report::{
+        CheckSummary, ModelValidationSummary, ParityValidationSummary, TensorValidationSummary,
+        ValidationStatus,
+    };
+    use ndarray::Array1;
 
     fn metrics() -> Vec<ModelMetrics> {
         vec![
@@ -390,6 +472,24 @@ mod tests {
         }]
     }
 
+    fn validation_summary(model: &str) -> ModelValidationSummary {
+        ModelValidationSummary::from_checks(
+            model,
+            "2026-03-28T00:00:00Z",
+            CheckSummary::validated("Preprocess matches contract."),
+            vec![TensorValidationSummary {
+                name: "last_hidden_state".into(),
+                role: "patch embeddings".into(),
+                status: ValidationStatus::Validated,
+                summary: "Tensor semantics match the registry contract.".into(),
+            }],
+            ParityValidationSummary::new(
+                ValidationStatus::Validated,
+                "Reference parity matches approved evidence.",
+            ),
+        )
+    }
+
     #[test]
     fn compare_overview_builds_symmetric_matrices() {
         let overview = build_compare_overview(&metrics(), &comparisons());
@@ -414,6 +514,44 @@ mod tests {
             .comparison_highlights
             .iter()
             .any(|highlight| highlight.label == "Strongest CKA alignment"));
+    }
+
+    #[test]
+    fn compare_report_tracks_requested_models() {
+        let report = build_compare_report(
+            "images/street.png",
+            vec!["dinov2".into(), "clip".into()],
+            metrics(),
+            comparisons(),
+            vec![validation_summary("dinov2"), validation_summary("clip")],
+        );
+
+        assert_eq!(report.image, "images/street.png");
+        assert_eq!(report.requested_models, vec!["dinov2", "clip"]);
+        assert_eq!(report.overview.linear_cka_matrix.rows[0][1], Some(0.77));
+        assert_eq!(report.validation.len(), 2);
+    }
+
+    #[test]
+    fn inspect_report_materializes_variance_spectrum() {
+        let report = build_inspect_report(
+            "images/street.png",
+            "dinov2",
+            metrics().into_iter().next().unwrap(),
+            validation_summary("dinov2"),
+            &VarianceSpectrum {
+                ratios: Array1::from_vec(vec![0.5, 0.3, 0.2]),
+                cumulative: Array1::from_vec(vec![0.5, 0.8, 1.0]),
+                components_90pct: 3,
+                components_99pct: 3,
+                top10_concentration: 1.0,
+            },
+        );
+
+        assert_eq!(report.image, "images/street.png");
+        assert_eq!(report.model, "dinov2");
+        assert_eq!(report.variance_spectrum.components_90pct, 3);
+        assert_eq!(report.variance_spectrum.ratios, vec![0.5, 0.3, 0.2]);
     }
 
     #[test]

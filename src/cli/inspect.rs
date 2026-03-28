@@ -41,37 +41,48 @@ pub fn run(args: InspectArgs) -> Result<(), Error> {
 
     let metrics = compute_metrics(&features, &args.model)?;
     let spectrum = variance_spectrum(&features.patch_tokens, args.pca_components.min(64))?;
+    let report = crate::viz::report::build_inspect_report(
+        args.image.display().to_string(),
+        args.model.clone(),
+        metrics,
+        validation_summary,
+        &spectrum,
+    );
 
     match args.format {
         OutputFormat::Terminal => {
-            println!("\nModel: {}", args.model);
+            println!("\nModel: {}", report.model);
             println!("{}", "═".repeat(60));
-            println!("  Patches:          {}", features.n_patches);
-            println!("  Embed dim:        {}", features.embed_dim);
+            println!("  Patches:          {}", report.metrics.n_patches);
+            println!("  Embed dim:        {}", report.metrics.embed_dim);
             println!(
                 "  Effective rank:   {}/{}",
-                metrics.effective_rank, metrics.embed_dim
+                report.metrics.effective_rank, report.metrics.embed_dim
             );
-            println!("  Dead dimensions:  {}", metrics.dead_dimensions);
-            println!("  Patch entropy:    {:.3}", metrics.patch_entropy);
-            if let Some(norm) = metrics.cls_l2_norm {
+            println!("  Dead dimensions:  {}", report.metrics.dead_dimensions);
+            println!("  Patch entropy:    {:.3}", report.metrics.patch_entropy);
+            if let Some(norm) = report.metrics.cls_l2_norm {
                 println!("  CLS L2 norm:      {:.2}", norm);
             }
             println!(
                 "  Patch norm mean:  {:.2} ± {:.2}",
-                metrics.patch_norm_mean, metrics.patch_norm_std
+                report.metrics.patch_norm_mean, report.metrics.patch_norm_std
             );
-            println!("  Top-10 var%:      {:.1}%", metrics.top10_variance_pct);
-            println!("  Components@90%:   {}", metrics.components_90pct);
+            println!(
+                "  Top-10 var%:      {:.1}%",
+                report.metrics.top10_variance_pct
+            );
+            println!("  Components@90%:   {}", report.metrics.components_90pct);
             println!();
             println!(
                 "  Variance spectrum (top {} components):",
-                spectrum.ratios.len()
+                report.variance_spectrum.ratios.len()
             );
-            for (i, (&ratio, &cum)) in spectrum
+            for (i, (&ratio, &cum)) in report
+                .variance_spectrum
                 .ratios
                 .iter()
-                .zip(spectrum.cumulative.iter())
+                .zip(report.variance_spectrum.cumulative.iter())
                 .enumerate()
             {
                 let bar_len = (ratio * 40.0) as usize;
@@ -85,21 +96,18 @@ pub fn run(args: InspectArgs) -> Result<(), Error> {
                 );
             }
             crate::viz::terminal::print_validation_summaries(std::slice::from_ref(
-                &validation_summary,
+                &report.validation,
             ));
         }
         OutputFormat::Json => {
-            let data = serde_json::json!({
-                "metrics": metrics,
-                "validation": validation_summary,
-                "variance_spectrum": {
-                    "ratios": spectrum.ratios.to_vec(),
-                    "cumulative": spectrum.cumulative.to_vec(),
-                    "components_90pct": spectrum.components_90pct,
-                    "components_99pct": spectrum.components_99pct,
-                }
-            });
-            println!("{}", serde_json::to_string_pretty(&data)?);
+            if let Some(outdir) = &args.output {
+                std::fs::create_dir_all(outdir)?;
+                let path = outdir.join("inspect.json");
+                crate::viz::json::write_inspect_report(&report, &path)?;
+                println!("JSON report written to {}", path.display());
+            } else {
+                crate::viz::json::print_inspect_report(&report)?;
+            }
         }
         OutputFormat::Png => {
             let outdir = args
@@ -109,11 +117,11 @@ pub fn run(args: InspectArgs) -> Result<(), Error> {
             let pca_result = crate::analysis::pca(&features.patch_tokens, 3, 300)?;
             let projected = crate::analysis::transform(&features.patch_tokens, &pca_result);
             let grid = (features.n_patches as f32).sqrt() as usize;
-            let path = outdir.join(format!("{}_pca.png", args.model));
+            let path = outdir.join(format!("{}_pca.png", report.model));
             crate::viz::png::save_pca_rgb(&projected, grid, &path)?;
             crate::viz::png::save_variance_spectrum_chart(
-                &spectrum.ratios.to_vec(),
-                &outdir.join(format!("{}_variance.png", args.model)),
+                &report.variance_spectrum.ratios,
+                &outdir.join(format!("{}_variance.png", report.model)),
             )?;
             println!("PNG saved to {}", outdir.display());
         }
@@ -129,9 +137,9 @@ pub fn run(args: InspectArgs) -> Result<(), Error> {
                 .unwrap_or("image");
             crate::viz::html::write_report_with_validation(
                 image_name,
-                &[metrics],
+                std::slice::from_ref(&report.metrics),
                 &[],
-                &[validation_summary],
+                std::slice::from_ref(&report.validation),
                 &outdir.join("report.html"),
             )?;
             println!("Report written to {}/report.html", outdir.display());
