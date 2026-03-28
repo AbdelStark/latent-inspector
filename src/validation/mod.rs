@@ -61,6 +61,17 @@ pub fn summarize_session_or_unverified(
     session: &mut ModelSession,
     fixture_selection: Option<&str>,
 ) -> ModelValidationSummary {
+    if !session.entry().is_ready() {
+        return ModelValidationSummary::unverified(
+            &session.info().name,
+            &session.entry().validation.evidence_timestamp,
+            format!(
+                "{} is still a planned integration. Development reports may use stubbed outputs, but source-alignment validation remains withheld until the real ONNX path is wired.",
+                session.info().name
+            ),
+        );
+    }
+
     match validate_session(session, fixture_selection, false) {
         Ok(summary) => summary,
         Err(err) => ModelValidationSummary::unverified(

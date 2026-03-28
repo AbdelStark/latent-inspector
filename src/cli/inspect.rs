@@ -34,7 +34,7 @@ pub fn run(args: InspectArgs) -> Result<(), Error> {
     info!("Inspecting {} on {:?}", args.model, args.image);
 
     let img = image::open(&args.image)?;
-    let mut session = ModelSession::load(&args.model)?;
+    let mut session = ModelSession::load_for_analysis(&args.model)?;
     let output = session.infer(&img)?;
     let features = ExtractedFeatures::from_output(output)?;
     let validation_summary = summarize_session_or_unverified(&mut session, None);

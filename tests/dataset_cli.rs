@@ -287,3 +287,47 @@ fn similarity_html_output_includes_validation_summary() {
     assert!(html.contains("dinov2-vit-l14#1"));
     assert!(html.contains("dinov2-vit-l14#2"));
 }
+
+#[test]
+fn similarity_json_supports_planned_stub_models_for_analysis() {
+    let dir = tempdir().unwrap();
+    let dataset_dir = dir.path().join("dataset");
+    let nested = dataset_dir.join("class-b").join("deep");
+    fs::create_dir_all(&nested).unwrap();
+
+    write_image(&dataset_dir.join("root.png"), 17);
+    write_image(&nested.join("leaf.png"), 31);
+
+    let output = Command::new(bin())
+        .env("LATENT_INSPECTOR_MODEL_BACKEND", "stub")
+        .args([
+            "similarity",
+            "--model-a",
+            "dinov2-vit-l14",
+            "--model-b",
+            "mae-vit-l16",
+            "--dataset",
+            dataset_dir.to_str().unwrap(),
+            "--metric",
+            "all",
+            "--format",
+            "json",
+        ])
+        .output()
+        .unwrap();
+
+    assert_eq!(output.status.code(), Some(0));
+
+    let payload: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(payload["model_a"], "dinov2-vit-l14");
+    assert_eq!(payload["model_b"], "mae-vit-l16");
+    assert_eq!(payload["note"], "N/A (CLS tokens unavailable)");
+    assert_eq!(
+        payload["validation"].as_array().unwrap()[0]["status"],
+        "validated"
+    );
+    assert_eq!(
+        payload["validation"].as_array().unwrap()[1]["status"],
+        "unverified"
+    );
+}

@@ -472,10 +472,17 @@ mod tests {
         vec![ComparisonMetrics {
             model_a: "dinov2".into(),
             model_b: "clip".into(),
+            alignment: crate::analysis::ComparisonAlignment {
+                patch_count_a: 256,
+                patch_count_b: 256,
+                compared_patch_count: 256,
+                note: None,
+            },
             cls_cosine_sim: Some(0.42),
             linear_cka: 0.77,
             knn_overlap_k10: 0.33,
             mean_patch_correspondence: Some(0.51),
+            metric_caveats: Vec::new(),
         }]
     }
 

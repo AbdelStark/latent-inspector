@@ -41,7 +41,7 @@ pub fn run(args: CompareArgs) -> Result<(), Error> {
         .iter()
         .zip(display_labels.iter())
         .map(|(name, display_label)| {
-            let session = ModelSession::load(name)?;
+            let session = ModelSession::load_for_analysis(name)?;
             Ok((display_label.clone(), name.clone(), session))
         })
         .collect::<Result<Vec<_>, Error>>()?;
@@ -98,6 +98,7 @@ pub fn run(args: CompareArgs) -> Result<(), Error> {
         OutputFormat::Terminal => {
             crate::viz::terminal::print_metrics_table(&report.metrics);
             crate::viz::terminal::print_compare_overview(&report.overview);
+            crate::viz::terminal::print_comparison_caveats(&report.comparisons);
             crate::viz::terminal::print_validation_summaries(&report.validation);
         }
         OutputFormat::Json => {

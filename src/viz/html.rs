@@ -81,9 +81,10 @@ fn render_html(
         .iter()
         .map(|comparison| {
             format!(
-                "<tr><td>{}</td><td>{}</td><td>{}</td><td>{:.3}</td><td>{:.3}</td><td>{}</td></tr>",
+                "<tr><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{:.3}</td><td>{:.3}</td><td>{}</td><td>{}</td></tr>",
                 escape_html(&comparison.model_a),
                 escape_html(&comparison.model_b),
+                escape_html(&comparison.alignment.summary()),
                 comparison
                     .cls_cosine_sim
                     .map(|value| format!("{value:.3}"))
@@ -94,6 +95,7 @@ fn render_html(
                     .mean_patch_correspondence
                     .map(|value| format!("{value:.3}"))
                     .unwrap_or_else(|| "N/A".to_string()),
+                render_metric_caveats(comparison),
             )
         })
         .collect::<Vec<_>>()
@@ -588,10 +590,12 @@ fn render_comparison_table(rows: &str) -> String {
     <tr>
       <th>Model A</th>
       <th>Model B</th>
+      <th>Patch alignment</th>
       <th>CLS cosine sim</th>
       <th>Linear CKA</th>
       <th>k-NN overlap (k=10)</th>
       <th>Mean patch corr.</th>
+      <th>Metric caveats</th>
     </tr>
   </thead>
   <tbody>
@@ -599,6 +603,26 @@ fn render_comparison_table(rows: &str) -> String {
   </tbody>
 </table>"
         )
+    }
+}
+
+fn render_metric_caveats(comparison: &ComparisonMetrics) -> String {
+    let mut caveats = Vec::new();
+    if let Some(note) = &comparison.alignment.note {
+        caveats.push(format!("Patch alignment: {}", escape_html(note)));
+    }
+    caveats.extend(comparison.metric_caveats.iter().map(|caveat| {
+        format!(
+            "{}: {}",
+            escape_html(&caveat.label),
+            escape_html(&caveat.reason)
+        )
+    }));
+
+    if caveats.is_empty() {
+        "None".to_string()
+    } else {
+        caveats.join("<br/>")
     }
 }
 
@@ -847,16 +871,83 @@ mod tests {
         let comparisons = vec![ComparisonMetrics {
             model_a: "dinov2".into(),
             model_b: "clip".into(),
+            alignment: crate::analysis::ComparisonAlignment {
+                patch_count_a: 256,
+                patch_count_b: 256,
+                compared_patch_count: 256,
+                note: None,
+            },
             cls_cosine_sim: Some(0.55),
             linear_cka: 0.71,
             knn_overlap_k10: 0.32,
             mean_patch_correspondence: Some(0.48),
+            metric_caveats: Vec::new(),
         }];
 
         let html = render_html("test.jpg", &metrics, &comparisons, &[]);
         assert!(html.contains("Pairwise matrices"));
         assert!(html.contains("Linear CKA"));
         assert!(html.contains("Strongest CKA alignment"));
+    }
+
+    #[test]
+    fn test_html_renders_comparison_alignment_and_caveats() {
+        let metrics = vec![
+            ModelMetrics {
+                model_name: "dinov2".into(),
+                n_patches: 256,
+                embed_dim: 1024,
+                effective_rank: 256,
+                dead_dimensions: 4,
+                patch_entropy: 5.4,
+                cls_l2_norm: Some(12.0),
+                patch_norm_mean: 6.0,
+                patch_norm_std: 1.0,
+                top10_variance_pct: 20.0,
+                components_90pct: 48,
+            },
+            ModelMetrics {
+                model_name: "mae".into(),
+                n_patches: 196,
+                embed_dim: 1024,
+                effective_rank: 192,
+                dead_dimensions: 8,
+                patch_entropy: 4.8,
+                cls_l2_norm: None,
+                patch_norm_mean: 5.0,
+                patch_norm_std: 1.1,
+                top10_variance_pct: 35.0,
+                components_90pct: 36,
+            },
+        ];
+        let comparisons = vec![ComparisonMetrics {
+            model_a: "dinov2".into(),
+            model_b: "mae".into(),
+            alignment: crate::analysis::ComparisonAlignment {
+                patch_count_a: 256,
+                patch_count_b: 196,
+                compared_patch_count: 196,
+                note: Some(
+                    "Compared the first 196 shared patches because the models expose different patch grids (256 vs 196)."
+                        .into(),
+                ),
+            },
+            cls_cosine_sim: None,
+            linear_cka: 0.71,
+            knn_overlap_k10: 0.32,
+            mean_patch_correspondence: Some(0.48),
+            metric_caveats: vec![crate::analysis::MetricCaveat {
+                key: "cls_cosine_sim".into(),
+                label: "CLS cosine similarity".into(),
+                reason: "Unavailable because only one model exposes a CLS token.".into(),
+            }],
+        }];
+
+        let html = render_html("test.jpg", &metrics, &comparisons, &[]);
+        assert!(html.contains("Patch alignment"));
+        assert!(html.contains("196 shared patches (from 256 vs 196)"));
+        assert!(html.contains("Metric caveats"));
+        assert!(html.contains("only one model exposes a CLS token"));
     }
 
     #[test]

@@ -77,27 +77,14 @@ impl StubConfig {
 impl ModelSession {
     /// Load a model by name. Downloads the artifact if it is ready and not yet cached.
     pub fn load(model_name: &str) -> Result<Self, ModelError> {
-        let entry = registry::find_ready(model_name)?;
-        if use_stub_backend() {
-            info!(
-                "Using explicit stub backend for '{}' via LATENT_INSPECTOR_MODEL_BACKEND=stub",
-                model_name
-            );
-            return Ok(Self {
-                entry,
-                inner: SessionInner::Stub(StubConfig::standard(model_name)),
-            });
-        }
+        Self::load_impl(model_name, false)
+    }
 
-        let path = cache::ensure_artifacts(model_name, &entry)?;
-        info!(
-            "Model '{}' is ready from cache bundle rooted at {}",
-            model_name,
-            path.display()
-        );
-
-        let inner = Self::create_session(&entry, &path)?;
-        Ok(Self { entry, inner })
+    /// Load a model for report-oriented analysis. In stub mode this can use
+    /// planned registry entries so multi-model flows can be exercised before the
+    /// real ONNX integration is available.
+    pub fn load_for_analysis(model_name: &str) -> Result<Self, ModelError> {
+        Self::load_impl(model_name, true)
     }
 
     /// Load a model session from an explicit ONNX artifact path while reusing the
@@ -316,6 +303,43 @@ impl ModelSession {
 
     pub fn entry(&self) -> &RegistryEntry {
         &self.entry
+    }
+
+    fn load_impl(model_name: &str, allow_planned_stub: bool) -> Result<Self, ModelError> {
+        let stub_backend = use_stub_backend();
+        let entry = if stub_backend && allow_planned_stub {
+            registry::find(model_name)
+                .ok_or_else(|| ModelError::NotFound(model_name.to_string()))?
+        } else {
+            registry::find_ready(model_name)?
+        };
+
+        if stub_backend {
+            info!(
+                "Using explicit stub backend for '{}' via LATENT_INSPECTOR_MODEL_BACKEND=stub",
+                model_name
+            );
+            if allow_planned_stub && !entry.is_ready() {
+                info!(
+                    "Allowing planned model '{}' in stub analysis mode for development-only report generation",
+                    model_name
+                );
+            }
+            return Ok(Self {
+                entry,
+                inner: SessionInner::Stub(StubConfig::standard(model_name)),
+            });
+        }
+
+        let path = cache::ensure_artifacts(model_name, &entry)?;
+        info!(
+            "Model '{}' is ready from cache bundle rooted at {}",
+            model_name,
+            path.display()
+        );
+
+        let inner = Self::create_session(&entry, &path)?;
+        Ok(Self { entry, inner })
     }
 }
 
@@ -659,6 +683,22 @@ mod tests {
     fn test_load_rejects_planned_models() {
         let result = ModelSession::load("clip-vit-l14");
         assert!(matches!(result, Err(ModelError::Unavailable { .. })));
+    }
+
+    #[test]
+    fn test_load_for_analysis_allows_planned_models_in_stub_mode() {
+        std::env::set_var("LATENT_INSPECTOR_MODEL_BACKEND", "stub");
+
+        let mut session = ModelSession::load_for_analysis("clip-vit-l14").unwrap();
+        let output = session
+            .infer(&image::DynamicImage::new_rgb8(224, 224))
+            .unwrap();
+
+        std::env::remove_var("LATENT_INSPECTOR_MODEL_BACKEND");
+
+        assert_eq!(session.info().name, "clip-vit-l14");
+        assert_eq!(output.patch_tokens.shape(), &[256, 1024]);
+        assert!(output.cls_token.is_some());
     }
 
     #[test]

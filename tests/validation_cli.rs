@@ -321,6 +321,66 @@ fn compare_json_output_writes_structured_report() {
 }
 
 #[test]
+fn compare_json_reports_alignment_and_metric_caveats_for_stubbed_planned_models() {
+    let dir = tempdir().unwrap();
+    let image = write_test_image(dir.path());
+    let output = run(&[
+        "compare",
+        image.to_str().unwrap(),
+        "--models",
+        "dinov2-vit-l14,mae-vit-l16,siglip-so400m",
+        "--format",
+        "json",
+    ]);
+
+    assert_eq!(output.status.code(), Some(0));
+    let payload: Value = serde_json::from_slice(&output.stdout).unwrap();
+
+    let comparisons = payload["comparisons"].as_array().unwrap();
+    let dinov2_mae = comparisons
+        .iter()
+        .find(|comparison| {
+            comparison["model_a"] == "dinov2-vit-l14" && comparison["model_b"] == "mae-vit-l16"
+        })
+        .unwrap();
+    assert_eq!(dinov2_mae["alignment"]["compared_patch_count"], 196);
+    assert!(dinov2_mae["alignment"]["note"]
+        .as_str()
+        .unwrap()
+        .contains("different patch grids"));
+    assert!(dinov2_mae["metric_caveats"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|caveat| caveat["key"] == "cls_cosine_sim"
+            && caveat["reason"]
+                .as_str()
+                .unwrap()
+                .contains("only one model exposes a CLS token")));
+
+    let dinov2_siglip = comparisons
+        .iter()
+        .find(|comparison| {
+            comparison["model_a"] == "dinov2-vit-l14" && comparison["model_b"] == "siglip-so400m"
+        })
+        .unwrap();
+    assert!(dinov2_siglip["metric_caveats"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|caveat| caveat["key"] == "mean_patch_correspondence"
+            && caveat["reason"]
+                .as_str()
+                .unwrap()
+                .contains("embedding dimensions differ")));
+
+    let validation = payload["validation"].as_array().unwrap();
+    assert_eq!(validation[0]["status"], "validated");
+    assert_eq!(validation[1]["status"], "unverified");
+    assert_eq!(validation[2]["status"], "unverified");
+}
+
+#[test]
 fn compare_png_writes_pairwise_heatmaps() {
     let dir = tempdir().unwrap();
     let image = write_test_image(dir.path());

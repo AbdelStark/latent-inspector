@@ -162,6 +162,31 @@ pub fn print_compare_overview(overview: &CompareOverview) {
     print_pairwise_matrix("Mean patch correspondence", &overview.correspondence_matrix);
 }
 
+pub fn print_comparison_caveats(comparisons: &[ComparisonMetrics]) {
+    let caveated = comparisons
+        .iter()
+        .filter(|comparison| comparison.has_caveats())
+        .collect::<Vec<_>>();
+    if caveated.is_empty() {
+        return;
+    }
+
+    println!();
+    println!("Comparison Caveats");
+    println!("{}", "═".repeat(100));
+    for comparison in caveated {
+        println!(
+            "{} ↔ {}",
+            truncate(&comparison.model_a, 32),
+            truncate(&comparison.model_b, 32),
+        );
+        for line in comparison.caveat_lines() {
+            println!("  {line}");
+        }
+        println!("{}", "─".repeat(100));
+    }
+}
+
 pub fn print_pairwise_matrix(title: &str, matrix: &PairwiseMatrix) {
     if matrix.len() < 2 || !matrix.has_off_diagonal_values() {
         return;

@@ -43,8 +43,8 @@ pub fn run(args: SimilarityArgs) -> Result<(), Error> {
         args.model_a, args.model_b, args.dataset
     );
 
-    let mut session_a = ModelSession::load(&args.model_a)?;
-    let mut session_b = ModelSession::load(&args.model_b)?;
+    let mut session_a = ModelSession::load_for_analysis(&args.model_a)?;
+    let mut session_b = ModelSession::load_for_analysis(&args.model_b)?;
     let (label_a, label_b) = similarity_validation_labels(&args.model_a, &args.model_b);
 
     let mut validation_a = summarize_session_or_unverified(&mut session_a, None);
