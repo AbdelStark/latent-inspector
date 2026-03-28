@@ -15,9 +15,19 @@ fn read_artifact_manifest(dir: &std::path::Path) -> Value {
     read_json(&dir.join("artifacts.json"))
 }
 
+fn models_command(cache_dir: &tempfile::TempDir) -> Command {
+    let mut command = Command::new(bin());
+    command.env("LATENT_INSPECTOR_CACHE_DIR", cache_dir.path());
+    command
+}
+
 #[test]
 fn models_output_includes_evidence_and_fixture_summary() {
-    let output = Command::new(bin()).args(["models"]).output().unwrap();
+    let cache_dir = tempdir().unwrap();
+    let output = models_command(&cache_dir)
+        .args(["models"])
+        .output()
+        .unwrap();
 
     assert_eq!(output.status.code(), Some(0));
 
@@ -33,11 +43,15 @@ fn models_output_includes_evidence_and_fixture_summary() {
     assert!(stdout.contains("mae-vit-l16"));
     assert!(stdout.contains("stub-only"));
     assert!(stdout.contains("unverified"));
+    assert!(stdout.contains("Artifact summary:"));
+    assert!(stdout.contains("6 total"));
 }
 
 #[test]
 fn models_verbose_output_includes_evidence_and_cache_details() {
-    let output = Command::new(bin())
+    let cache_dir = tempdir().unwrap();
+    fs::write(cache_dir.path().join("dinov2-vit-l14.onnx"), b"fake onnx").unwrap();
+    let output = models_command(&cache_dir)
         .args(["models", "--verbose"])
         .output()
         .unwrap();
@@ -50,15 +64,17 @@ fn models_verbose_output_includes_evidence_and_cache_details() {
     ));
     assert!(stdout.contains("Runtime: Normal runs load the registered ONNX artifact."));
     assert!(stdout.contains("[standard @ 2026-03-27T12:00:00Z]"));
-    assert!(stdout.contains("Cache: "));
-    assert!(stdout.contains("Artifact: dinov2-vit-l14.onnx"));
+    assert!(stdout.contains("Artifacts: 1 total, 1 usable, 0 verified, 1 pending verification"));
+    assert!(stdout.contains("Artifact: dinov2-vit-l14.onnx [present-unverified | pending]"));
+    assert!(stdout.contains("Path: "));
     assert!(stdout.contains("Cache dir:"));
 }
 
 #[test]
 fn models_json_output_writes_structured_catalog() {
     let outdir = tempdir().unwrap();
-    let output = Command::new(bin())
+    let cache_dir = tempdir().unwrap();
+    let output = models_command(&cache_dir)
         .args([
             "models",
             "--format",
@@ -75,6 +91,8 @@ fn models_json_output_writes_structured_catalog() {
     assert_eq!(payload["summary"]["total_models"], 6);
     assert_eq!(payload["summary"]["ready_models"], 1);
     assert_eq!(payload["summary"]["evidence"]["approved"], 1);
+    assert_eq!(payload["summary"]["artifacts"]["total"], 6);
+    assert_eq!(payload["summary"]["artifacts"]["usable"], 0);
     assert_eq!(payload["entries"].as_array().unwrap().len(), 6);
     let dinov2 = payload["entries"]
         .as_array()
@@ -83,9 +101,19 @@ fn models_json_output_writes_structured_catalog() {
         .find(|entry| entry["name"] == "dinov2-vit-l14")
         .unwrap();
     assert_eq!(dinov2["runtime_support"], "onnx-ready");
+    assert_eq!(dinov2["artifact_summary"]["total"], 1);
     assert_eq!(
         dinov2["artifacts"][0]["relative_path"],
         "dinov2-vit-l14.onnx"
+    );
+    assert_eq!(dinov2["artifacts"][0]["cache_status"], "missing");
+    assert_eq!(
+        dinov2["artifacts"][0]["absolute_path"],
+        cache_dir
+            .path()
+            .join("dinov2-vit-l14.onnx")
+            .display()
+            .to_string()
     );
     let manifest = read_artifact_manifest(outdir.path());
     assert_eq!(manifest["command"], "models");
@@ -102,7 +130,8 @@ fn models_json_output_writes_structured_catalog() {
 #[test]
 fn models_html_output_writes_shareable_catalog() {
     let outdir = tempdir().unwrap();
-    let output = Command::new(bin())
+    let cache_dir = tempdir().unwrap();
+    let output = models_command(&cache_dir)
         .args([
             "models",
             "--format",
@@ -121,6 +150,8 @@ fn models_html_output_writes_shareable_catalog() {
     assert!(html.contains("Runtime"));
     assert!(html.contains("dinov2-vit-l14"));
     assert!(html.contains("Registry availability, cache state, and validation evidence"));
+    assert!(html.contains("Registered artifacts"));
+    assert!(html.contains("Artifact details"));
     let payload = read_json(&outdir.path().join("models.json"));
     assert_eq!(payload["summary"]["total_models"], 6);
     assert_eq!(payload["summary"]["ready_models"], 1);
@@ -144,7 +175,8 @@ fn models_html_output_writes_shareable_catalog() {
 
 #[test]
 fn models_rejects_png_output() {
-    let output = Command::new(bin())
+    let cache_dir = tempdir().unwrap();
+    let output = models_command(&cache_dir)
         .args(["models", "--format", "png"])
         .output()
         .unwrap();

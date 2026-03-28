@@ -649,7 +649,18 @@ fn render_model_catalog_html(report: &ModelCatalogReport) -> String {
         &[
             ("Registered models", report.summary.total_models.to_string()),
             ("Ready now", report.summary.ready_models.to_string()),
-            ("Cached bundles", report.summary.cached_models.to_string()),
+            (
+                "Registered artifacts",
+                report.summary.artifacts.total.to_string(),
+            ),
+            (
+                "Usable artifacts",
+                report.summary.artifacts.usable.to_string(),
+            ),
+            (
+                "Verified artifacts",
+                report.summary.artifacts.verified.to_string(),
+            ),
             (
                 "Approved evidence",
                 report.summary.evidence.approved.to_string(),
@@ -1141,6 +1152,17 @@ fn render_model_catalog_details(entry: &crate::models::ModelInventoryEntry) -> S
             "<p><strong>Cache:</strong> {}</p>",
             escape_html(&entry.cache_summary),
         ),
+        format!(
+            "<p><strong>Artifacts:</strong> {} total, {} usable, {} verified, {} pending verification, {} missing, {} invalid, {} unusable, {} unknown</p>",
+            entry.artifact_summary.total,
+            entry.artifact_summary.usable,
+            entry.artifact_summary.verified,
+            entry.artifact_summary.pending_verification,
+            entry.artifact_summary.missing,
+            entry.artifact_summary.invalid,
+            entry.artifact_summary.unusable,
+            entry.artifact_summary.unknown,
+        ),
     ];
 
     if let Some(note) = &entry.verification_note {
@@ -1163,21 +1185,41 @@ fn render_model_catalog_details(entry: &crate::models::ModelInventoryEntry) -> S
     }
 
     if !entry.artifacts.is_empty() {
-        let items = entry
+        let rows = entry
             .artifacts
             .iter()
             .map(|artifact| {
+                let byte_size = artifact
+                    .byte_size
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "N/A".to_string());
+                let verification = artifact
+                    .verification_note
+                    .as_ref()
+                    .map(|note| {
+                        format!(
+                            "{}<br/><span class=\"caveat\">{}</span>",
+                            escape_html(&artifact.verification_label),
+                            escape_html(note),
+                        )
+                    })
+                    .unwrap_or_else(|| escape_html(&artifact.verification_label));
                 format!(
-                    "<li><code>{}</code><br/><a href=\"{}\">{}</a></li>",
+                    "<tr><td><code>{}</code></td><td>{}</td><td>{}</td><td>{}</td><td><code>{}</code></td><td><a href=\"{}\">{}</a><br/><span class=\"caveat\">{}</span></td></tr>",
                     escape_html(&artifact.relative_path),
+                    escape_html(artifact.cache_status.label()),
+                    byte_size,
+                    verification,
+                    escape_html(&artifact.absolute_path),
                     escape_html(&artifact.url),
                     escape_html(&artifact.url),
+                    escape_html(&artifact.cache_summary),
                 )
             })
             .collect::<Vec<_>>()
             .join("");
         parts.push(format!(
-            "<p><strong>Artifacts:</strong></p><ul>{items}</ul>"
+            "<p><strong>Artifact details:</strong></p><table><thead><tr><th>Relative path</th><th>Cache status</th><th>Bytes</th><th>Verify</th><th>Expected path</th><th>Source / cache detail</th></tr></thead><tbody>{rows}</tbody></table>"
         ));
     }
 

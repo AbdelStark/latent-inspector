@@ -252,6 +252,10 @@ catalog now reports each model's phase status, runtime support
 (`onnx-ready` vs `stub-only`), whether the local cache contains the full
 artifact bundle, and whether the approved validation evidence is current,
 stale, missing, or intentionally withheld for planned integrations.
+Verbose terminal output plus the JSON and HTML catalog exports now break that
+down to the individual artifact level as well, including the expected cache
+path, per-artifact cache state, byte size when present, and whether checksum
+verification is fully pinned or still pending for that file.
 Use `latent-inspector models --format json` to emit the same catalog as
 structured JSON to stdout or `latent-inspector models --format json --output
 tmp/models` to write `models.json` for automation. For a shareable report, run

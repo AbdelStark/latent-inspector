@@ -299,12 +299,36 @@ pub fn print_model_catalog(report: &ModelCatalogReport, verbose: bool) {
                 println!("      detail: {}", detail);
             }
             println!("    Cache: {}", entry.cache_summary);
+            println!(
+                "    Artifacts: {} total, {} usable, {} verified, {} pending verification, {} missing, {} invalid, {} unusable, {} unknown",
+                entry.artifact_summary.total,
+                entry.artifact_summary.usable,
+                entry.artifact_summary.verified,
+                entry.artifact_summary.pending_verification,
+                entry.artifact_summary.missing,
+                entry.artifact_summary.invalid,
+                entry.artifact_summary.unusable,
+                entry.artifact_summary.unknown,
+            );
             if let Some(note) = &entry.verification_note {
                 println!("    Verify note: {}", note);
             }
             for artifact in &entry.artifacts {
-                println!("    Artifact: {}", artifact.relative_path);
-                println!("    URL: {}", artifact.url);
+                println!(
+                    "    Artifact: {} [{} | {}]",
+                    artifact.relative_path,
+                    artifact.cache_status.label(),
+                    artifact.verification_label,
+                );
+                println!("      Path: {}", artifact.absolute_path);
+                if let Some(byte_size) = artifact.byte_size {
+                    println!("      Bytes: {}", byte_size);
+                }
+                println!("      Cache: {}", artifact.cache_summary);
+                if let Some(note) = &artifact.verification_note {
+                    println!("      Verify note: {}", note);
+                }
+                println!("      URL: {}", artifact.url);
             }
         } else if matches!(
             entry.evidence_status,
@@ -333,6 +357,17 @@ pub fn print_model_catalog(report: &ModelCatalogReport, verbose: bool) {
         report.summary.evidence.stale,
         report.summary.evidence.missing,
         report.summary.evidence.unverified,
+    );
+    println!(
+        "Artifact summary: {} total, {} usable, {} verified, {} pending verification, {} missing, {} invalid, {} unusable, {} unknown",
+        report.summary.artifacts.total,
+        report.summary.artifacts.usable,
+        report.summary.artifacts.verified,
+        report.summary.artifacts.pending_verification,
+        report.summary.artifacts.missing,
+        report.summary.artifacts.invalid,
+        report.summary.artifacts.unusable,
+        report.summary.artifacts.unknown,
     );
 }
 

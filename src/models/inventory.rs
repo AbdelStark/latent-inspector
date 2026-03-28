@@ -1,4 +1,4 @@
-use crate::models::cache;
+use crate::models::cache::{self, ArtifactCacheStatus};
 use crate::models::registry::{self, AvailabilityStatus, RegistryEntry, SSLMethod};
 use crate::validation::evidence::summarize_registered_evidence_with_fixture_set;
 use crate::validation::fixtures::{load_fixture_set, LoadedFixtureSet};
@@ -63,6 +63,66 @@ impl RuntimeSupport {
 pub struct ModelArtifactInventory {
     pub relative_path: String,
     pub url: String,
+    pub absolute_path: String,
+    pub cache_status: ArtifactCacheStatus,
+    pub cache_summary: String,
+    pub byte_size: Option<u64>,
+    pub verification_label: String,
+    pub verification_note: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ArtifactInventorySummary {
+    pub total: usize,
+    pub usable: usize,
+    pub verified: usize,
+    pub pending_verification: usize,
+    pub missing: usize,
+    pub invalid: usize,
+    pub unusable: usize,
+    pub unknown: usize,
+}
+
+impl ArtifactInventorySummary {
+    fn from_artifacts(artifacts: &[ModelArtifactInventory]) -> Self {
+        Self::from_statuses(artifacts.iter().map(|artifact| artifact.cache_status))
+    }
+
+    fn from_statuses<I>(statuses: I) -> Self
+    where
+        I: IntoIterator<Item = ArtifactCacheStatus>,
+    {
+        let mut summary = Self::default();
+        for status in statuses {
+            summary.total += 1;
+            match status {
+                ArtifactCacheStatus::PresentVerified => {
+                    summary.usable += 1;
+                    summary.verified += 1;
+                }
+                ArtifactCacheStatus::PresentUnverified => {
+                    summary.usable += 1;
+                    summary.pending_verification += 1;
+                }
+                ArtifactCacheStatus::Missing => summary.missing += 1,
+                ArtifactCacheStatus::Invalid => summary.invalid += 1,
+                ArtifactCacheStatus::Unusable => summary.unusable += 1,
+                ArtifactCacheStatus::Unknown => summary.unknown += 1,
+            }
+        }
+        summary
+    }
+
+    fn merge(&mut self, other: &Self) {
+        self.total += other.total;
+        self.usable += other.usable;
+        self.verified += other.verified;
+        self.pending_verification += other.pending_verification;
+        self.missing += other.missing;
+        self.invalid += other.invalid;
+        self.unusable += other.unusable;
+        self.unknown += other.unknown;
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -84,6 +144,7 @@ pub struct ModelInventoryEntry {
     pub verification_note: Option<String>,
     pub cache_status: CacheStatus,
     pub cache_summary: String,
+    pub artifact_summary: ArtifactInventorySummary,
     pub evidence_status: EvidenceStatus,
     pub evidence_summary: String,
     pub evidence_details: Vec<String>,
@@ -106,6 +167,7 @@ pub struct ModelCatalogSummary {
     pub ready_models: usize,
     pub planned_models: usize,
     pub cached_models: usize,
+    pub artifacts: ArtifactInventorySummary,
     pub evidence: EvidenceStatusCounts,
 }
 
@@ -148,11 +210,17 @@ impl ModelCatalogReport {
     }
 
     fn build_summary(&self) -> ModelCatalogSummary {
+        let mut artifacts = ArtifactInventorySummary::default();
+        for entry in &self.entries {
+            artifacts.merge(&entry.artifact_summary);
+        }
+
         ModelCatalogSummary {
             total_models: self.entries.len(),
             ready_models: self.ready_count(),
             planned_models: self.planned_count(),
             cached_models: self.cache_count(CacheStatus::Complete),
+            artifacts,
             evidence: EvidenceStatusCounts {
                 approved: self.evidence_count(EvidenceStatus::Approved),
                 stale: self.evidence_count(EvidenceStatus::Stale),
@@ -188,6 +256,7 @@ pub fn build_model_catalog(fixture_selection: Option<&str>) -> ModelCatalogRepor
             ready_models: 0,
             planned_models: 0,
             cached_models: 0,
+            artifacts: ArtifactInventorySummary::default(),
             evidence: EvidenceStatusCounts {
                 approved: 0,
                 stale: 0,
@@ -207,20 +276,14 @@ fn build_inventory_entry(
     fixture_error: Option<&str>,
 ) -> ModelInventoryEntry {
     let (runtime_support, runtime_summary) = runtime_support(entry);
-    let (cache_status, cache_summary) = match cache::is_cached(&entry.info.name) {
-        Ok(true) => (
-            CacheStatus::Complete,
-            "Required artifact bundle is present in the local cache.".to_string(),
-        ),
-        Ok(false) => (
-            CacheStatus::Missing,
-            "Required artifact bundle is missing or incomplete in the local cache.".to_string(),
-        ),
-        Err(err) => (
-            CacheStatus::Unknown,
-            format!("Cache state could not be determined: {err}"),
-        ),
-    };
+    let (
+        artifacts,
+        artifact_summary,
+        cache_status,
+        cache_summary,
+        verification_label,
+        verification_note,
+    ) = build_artifact_inventory(entry);
 
     let (evidence_status, evidence_summary, evidence_details) =
         assess_evidence(entry, fixture_set, fixture_error);
@@ -239,24 +302,166 @@ fn build_inventory_entry(
         embed_dim: entry.info.embed_dim,
         num_layers: entry.info.num_layers,
         num_heads: entry.info.num_heads,
-        verification_label: entry.verification_label().to_string(),
-        verification_note: entry.verification_note().map(str::to_string),
+        verification_label,
+        verification_note,
         cache_status,
         cache_summary,
+        artifact_summary,
         evidence_status,
         evidence_summary,
         evidence_details,
         approved_fixture_set: entry.validation.fixture_set.clone(),
         approved_evidence_timestamp: entry.validation.evidence_timestamp.clone(),
-        artifacts: entry
-            .artifacts
-            .iter()
-            .map(|artifact| ModelArtifactInventory {
-                relative_path: artifact.relative_path.clone(),
-                url: artifact.download_url.clone(),
-            })
-            .collect(),
+        artifacts,
     }
+}
+
+fn build_artifact_inventory(
+    entry: &RegistryEntry,
+) -> (
+    Vec<ModelArtifactInventory>,
+    ArtifactInventorySummary,
+    CacheStatus,
+    String,
+    String,
+    Option<String>,
+) {
+    if entry.artifacts.is_empty() {
+        return (
+            Vec::new(),
+            ArtifactInventorySummary::default(),
+            CacheStatus::Missing,
+            "No download artifacts are pinned for this registry entry yet.".to_string(),
+            "pending".to_string(),
+            Some("Artifact metadata has not been pinned for this integration yet.".to_string()),
+        );
+    }
+
+    let (artifacts, cache_status, cache_summary) = match cache::inspect_registry_artifacts(entry) {
+        Ok(artifacts) => {
+            let inventories = artifacts
+                .into_iter()
+                .map(|artifact| ModelArtifactInventory {
+                    relative_path: artifact.relative_path,
+                    url: artifact.url,
+                    absolute_path: artifact.absolute_path,
+                    cache_status: artifact.cache_status,
+                    cache_summary: artifact.cache_summary,
+                    byte_size: artifact.byte_size,
+                    verification_label: artifact.verification_label,
+                    verification_note: artifact.verification_note,
+                })
+                .collect::<Vec<_>>();
+            let summary = ArtifactInventorySummary::from_artifacts(&inventories);
+            let status = if summary.total > 0 && summary.usable == summary.total {
+                CacheStatus::Complete
+            } else {
+                CacheStatus::Missing
+            };
+            let summary_text = render_cache_summary(&summary);
+            (inventories, status, summary_text)
+        }
+        Err(err) => (
+            build_unknown_artifacts(entry, &err.to_string()),
+            CacheStatus::Unknown,
+            format!("Cache state could not be determined: {err}"),
+        ),
+    };
+
+    let artifact_summary = ArtifactInventorySummary::from_artifacts(&artifacts);
+    let (verification_label, verification_note) = summarize_verification(&artifacts);
+
+    (
+        artifacts,
+        artifact_summary,
+        cache_status,
+        cache_summary,
+        verification_label,
+        verification_note,
+    )
+}
+
+fn build_unknown_artifacts(entry: &RegistryEntry, reason: &str) -> Vec<ModelArtifactInventory> {
+    let cache_root = cache::cache_dir().ok();
+    entry
+        .artifacts
+        .iter()
+        .map(|artifact| ModelArtifactInventory {
+            relative_path: artifact.relative_path.clone(),
+            url: artifact.download_url.clone(),
+            absolute_path: cache_root
+                .as_ref()
+                .map(|root| root.join(&artifact.relative_path).display().to_string())
+                .unwrap_or_else(|| artifact.relative_path.clone()),
+            cache_status: ArtifactCacheStatus::Unknown,
+            cache_summary: format!("Cache inspection failed: {reason}"),
+            byte_size: None,
+            verification_label: artifact.checksum.label().to_string(),
+            verification_note: artifact.checksum.note().map(str::to_string),
+        })
+        .collect()
+}
+
+fn summarize_verification(artifacts: &[ModelArtifactInventory]) -> (String, Option<String>) {
+    if artifacts.is_empty() {
+        return ("pending".to_string(), None);
+    }
+
+    let mut labels = Vec::new();
+    let mut notes = Vec::new();
+    for artifact in artifacts {
+        push_unique(&mut labels, artifact.verification_label.clone());
+        if let Some(note) = &artifact.verification_note {
+            push_unique(&mut notes, note.clone());
+        }
+    }
+
+    let label = if labels.len() == 1 {
+        labels.remove(0)
+    } else {
+        "mixed".to_string()
+    };
+    let note = (!notes.is_empty()).then(|| notes.join(" | "));
+
+    (label, note)
+}
+
+fn push_unique(items: &mut Vec<String>, value: String) {
+    if !items.iter().any(|existing| existing == &value) {
+        items.push(value);
+    }
+}
+
+fn render_cache_summary(summary: &ArtifactInventorySummary) -> String {
+    if summary.total == 0 {
+        return "No download artifacts are pinned for this registry entry yet.".to_string();
+    }
+
+    if summary.unknown > 0 {
+        return format!(
+            "Cache inspection is incomplete: {} of {} artifact states are unknown.",
+            summary.unknown, summary.total
+        );
+    }
+
+    if summary.usable == summary.total {
+        if summary.pending_verification > 0 {
+            return format!(
+                "All {} artifacts are usable; {} checksum-verified and {} pending verification metadata.",
+                summary.total, summary.verified, summary.pending_verification
+            );
+        }
+
+        return format!(
+            "All {} artifacts are usable and checksum-verified.",
+            summary.total
+        );
+    }
+
+    format!(
+        "{} of {} artifacts are usable ({} missing, {} invalid, {} unusable).",
+        summary.usable, summary.total, summary.missing, summary.invalid, summary.unusable
+    )
 }
 
 fn runtime_support(entry: &RegistryEntry) -> (RuntimeSupport, String) {
@@ -369,10 +574,31 @@ mod tests {
             .unwrap();
 
         assert_eq!(dinov2.evidence_status, EvidenceStatus::Approved);
+        assert_eq!(dinov2.artifact_summary.total, 1);
+        assert_eq!(report.summary.artifacts.total, 6);
         assert!(dinov2.evidence_details.is_empty());
         assert_eq!(report.summary.total_models, report.entries.len());
         assert_eq!(report.summary.ready_models, 1);
         assert_eq!(report.summary.evidence.approved, 1);
+    }
+
+    #[test]
+    fn artifact_summary_counts_usable_missing_and_unknown_states() {
+        let summary = ArtifactInventorySummary::from_statuses([
+            ArtifactCacheStatus::PresentVerified,
+            ArtifactCacheStatus::PresentUnverified,
+            ArtifactCacheStatus::Missing,
+            ArtifactCacheStatus::Invalid,
+            ArtifactCacheStatus::Unknown,
+        ]);
+
+        assert_eq!(summary.total, 5);
+        assert_eq!(summary.usable, 2);
+        assert_eq!(summary.verified, 1);
+        assert_eq!(summary.pending_verification, 1);
+        assert_eq!(summary.missing, 1);
+        assert_eq!(summary.invalid, 1);
+        assert_eq!(summary.unknown, 1);
     }
 
     #[test]

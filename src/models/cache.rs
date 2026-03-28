@@ -2,6 +2,7 @@ use crate::errors::ModelError;
 use crate::models::registry::{self, Checksum, ModelArtifact, RegistryEntry};
 use indicatif::{ProgressBar, ProgressStyle};
 use reqwest::header::{CONTENT_RANGE, RANGE};
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::fs;
 use std::io::{Read, Write};
@@ -9,6 +10,68 @@ use std::path::{Path, PathBuf};
 use tracing::{debug, info, warn};
 
 const CACHE_DIR_ENV: &str = "LATENT_INSPECTOR_CACHE_DIR";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ArtifactCacheStatus {
+    Missing,
+    PresentUnverified,
+    PresentVerified,
+    Invalid,
+    Unusable,
+    Unknown,
+}
+
+impl ArtifactCacheStatus {
+    pub fn label(self) -> &'static str {
+        match self {
+            ArtifactCacheStatus::Missing => "missing",
+            ArtifactCacheStatus::PresentUnverified => "present-unverified",
+            ArtifactCacheStatus::PresentVerified => "present-verified",
+            ArtifactCacheStatus::Invalid => "invalid",
+            ArtifactCacheStatus::Unusable => "unusable",
+            ArtifactCacheStatus::Unknown => "unknown",
+        }
+    }
+
+    pub fn is_usable(self) -> bool {
+        matches!(
+            self,
+            ArtifactCacheStatus::PresentUnverified | ArtifactCacheStatus::PresentVerified
+        )
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CachedArtifactInfo {
+    pub relative_path: String,
+    pub url: String,
+    pub absolute_path: String,
+    pub cache_status: ArtifactCacheStatus,
+    pub cache_summary: String,
+    pub byte_size: Option<u64>,
+    pub verification_label: String,
+    pub verification_note: Option<String>,
+}
+
+impl CachedArtifactInfo {
+    fn from_inspection(inspection: &ArtifactInspection) -> Self {
+        let byte_size = fs::metadata(&inspection.path)
+            .ok()
+            .filter(|metadata| metadata.is_file())
+            .map(|metadata| metadata.len());
+        Self {
+            relative_path: inspection.artifact.relative_path.clone(),
+            url: inspection.artifact.download_url.clone(),
+            absolute_path: inspection.path.display().to_string(),
+            cache_status: inspection.state.status(),
+            cache_summary: artifact_state_summary(&inspection.state, &inspection.artifact),
+            byte_size,
+            verification_label: inspection.artifact.checksum.label().to_string(),
+            verification_note: inspection.artifact.checksum.note().map(str::to_string),
+        }
+    }
+}
 
 #[derive(Debug, Clone)]
 enum ArtifactCacheState {
@@ -20,11 +83,18 @@ enum ArtifactCacheState {
 }
 
 impl ArtifactCacheState {
+    fn status(&self) -> ArtifactCacheStatus {
+        match self {
+            ArtifactCacheState::Missing => ArtifactCacheStatus::Missing,
+            ArtifactCacheState::PresentUnverified => ArtifactCacheStatus::PresentUnverified,
+            ArtifactCacheState::PresentVerified => ArtifactCacheStatus::PresentVerified,
+            ArtifactCacheState::Invalid(_) => ArtifactCacheStatus::Invalid,
+            ArtifactCacheState::Unusable(_) => ArtifactCacheStatus::Unusable,
+        }
+    }
+
     fn is_usable(&self) -> bool {
-        matches!(
-            self,
-            ArtifactCacheState::PresentUnverified | ArtifactCacheState::PresentVerified
-        )
+        self.status().is_usable()
     }
 
     fn needs_download(&self) -> bool {
@@ -127,6 +197,22 @@ pub fn model_path(model_name: &str) -> Result<PathBuf, ModelError> {
 pub fn is_cached(model_name: &str) -> Result<bool, ModelError> {
     let entry = registry_entry(model_name)?;
     Ok(inspect_cache(&entry)?.is_complete())
+}
+
+pub fn inspect_model_artifacts(model_name: &str) -> Result<Vec<CachedArtifactInfo>, ModelError> {
+    let entry = registry_entry(model_name)?;
+    inspect_registry_artifacts(&entry)
+}
+
+pub fn inspect_registry_artifacts(
+    entry: &RegistryEntry,
+) -> Result<Vec<CachedArtifactInfo>, ModelError> {
+    let inspection = inspect_cache(entry)?;
+    Ok(inspection
+        .artifacts
+        .iter()
+        .map(CachedArtifactInfo::from_inspection)
+        .collect())
 }
 
 /// Ensure every required artifact is present and usable, redownloading only the
@@ -482,6 +568,25 @@ fn registry_entry(model_name: &str) -> Result<RegistryEntry, ModelError> {
 
 fn artifact_path(artifact: &ModelArtifact) -> Result<PathBuf, ModelError> {
     Ok(cache_dir()?.join(&artifact.relative_path))
+}
+
+fn artifact_state_summary(state: &ArtifactCacheState, artifact: &ModelArtifact) -> String {
+    match state {
+        ArtifactCacheState::Missing => "Artifact is not cached.".to_string(),
+        ArtifactCacheState::PresentUnverified => match artifact.checksum.note() {
+            Some(note) => format!("Artifact is cached; verification metadata is pending ({note})."),
+            None => "Artifact is cached; verification metadata is pending.".to_string(),
+        },
+        ArtifactCacheState::PresentVerified => {
+            "Artifact is cached and checksum-verified.".to_string()
+        }
+        ArtifactCacheState::Invalid(reason) => {
+            format!("Artifact must be refreshed before use: {reason}.")
+        }
+        ArtifactCacheState::Unusable(reason) => {
+            format!("Artifact path is unusable: {reason}.")
+        }
+    }
 }
 
 fn inspect_cache(entry: &RegistryEntry) -> Result<CacheInspection, ModelError> {
