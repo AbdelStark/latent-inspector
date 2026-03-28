@@ -48,11 +48,15 @@ pub struct InspectHtmlAssets {
     pub source_image: Option<VisualAsset>,
     pub pca_image: Option<VisualAsset>,
     pub variance_image: Option<VisualAsset>,
+    pub attention_image: Option<VisualAsset>,
 }
 
 impl InspectHtmlAssets {
     fn is_empty(&self) -> bool {
-        self.source_image.is_none() && self.pca_image.is_none() && self.variance_image.is_none()
+        self.source_image.is_none()
+            && self.pca_image.is_none()
+            && self.variance_image.is_none()
+            && self.attention_image.is_none()
     }
 }
 
@@ -218,12 +222,16 @@ fn render_html(
         .iter()
         .map(|metric| {
             format!(
-                "<tr><td>{}</td><td>{}/{}</td><td>{}</td><td>{:.2}</td><td>{}</td><td>{:.1}%</td><td>{}</td></tr>",
+                "<tr><td>{}</td><td>{}/{}</td><td>{}</td><td>{:.2}</td><td>{}</td><td>{}</td><td>{:.1}%</td><td>{}</td></tr>",
                 escape_html(&metric.model_name),
                 metric.effective_rank,
                 metric.embed_dim,
                 metric.dead_dimensions,
                 metric.patch_entropy,
+                metric
+                    .attention_gini
+                    .map(|value| format!("{value:.2}"))
+                    .unwrap_or_else(|| "N/A".to_string()),
                 metric
                     .cls_l2_norm
                     .map(|value| format!("{value:.1}"))
@@ -330,6 +338,7 @@ fn render_html(
       <th>Repr. rank</th>
       <th>Dead dims</th>
       <th>Patch entropy</th>
+      <th>Attention Gini</th>
       <th>CLS L2 norm</th>
       <th>Top-10 var%</th>
       <th>Components@90%</th>
@@ -688,6 +697,7 @@ fn render_inspect_html(report: &InspectReport, assets: &InspectHtmlAssets) -> St
                  <tr><td>Effective rank</td><td>{}/{}</td></tr>\
                  <tr><td>Dead dimensions</td><td>{}</td></tr>\
                  <tr><td>Patch entropy</td><td>{:.3}</td></tr>\
+                 <tr><td>Attention concentration (Gini)</td><td>{}</td></tr>\
                  <tr><td>CLS L2 norm</td><td>{}</td></tr>\
                  <tr><td>Patch norm mean ± std</td><td>{:.2} ± {:.2}</td></tr>\
                  <tr><td>Top-10 variance concentration</td><td>{:.1}%</td></tr>\
@@ -698,6 +708,10 @@ fn render_inspect_html(report: &InspectReport, assets: &InspectHtmlAssets) -> St
                 metrics.embed_dim,
                 metrics.dead_dimensions,
                 metrics.patch_entropy,
+                metrics
+                    .attention_gini
+                    .map(|value| format!("{value:.3}"))
+                    .unwrap_or_else(|| "N/A".to_string()),
                 metrics
                     .cls_l2_norm
                     .map(|value| format!("{value:.2}"))
@@ -726,6 +740,25 @@ fn render_inspect_html(report: &InspectReport, assets: &InspectHtmlAssets) -> St
             ),
         ),
     ];
+    if let Some(attention) = &report.attention {
+        sections.push((
+            "Attention Summary",
+            format!(
+                "<p>{}</p>\
+                 <div class=\"stats-grid\">\
+                 <div class=\"stat-card\"><span>Mean Gini</span><strong>{:.3}</strong></div>\
+                 <div class=\"stat-card\"><span>Layers</span><strong>{}</strong></div>\
+                 <div class=\"stat-card\"><span>Heads</span><strong>{}</strong></div>\
+                 <div class=\"stat-card\"><span>Tokens</span><strong>{}</strong></div>\
+                 </div>",
+                escape_html(attention.map_basis.description()),
+                attention.mean_gini,
+                attention.layers,
+                attention.heads,
+                attention.token_count,
+            ),
+        ));
+    }
     if !assets.is_empty() {
         sections.push(("Visual Artefacts", render_inspect_asset_gallery(assets)));
     }
@@ -764,6 +797,9 @@ fn render_inspect_asset_gallery(assets: &InspectHtmlAssets) -> String {
         visuals.push(asset.clone());
     }
     if let Some(asset) = &assets.variance_image {
+        visuals.push(asset.clone());
+    }
+    if let Some(asset) = &assets.attention_image {
         visuals.push(asset.clone());
     }
 
@@ -1392,6 +1428,7 @@ mod tests {
                 effective_rank: 212,
                 dead_dimensions: 6,
                 patch_entropy: 5.47,
+                attention_gini: Some(0.58),
                 cls_l2_norm: Some(14.3),
                 patch_norm_mean: 6.1,
                 patch_norm_std: 0.8,
@@ -1406,6 +1443,13 @@ mod tests {
                 components_99pct: 88,
                 top10_concentration: 0.62,
             },
+            attention: Some(crate::viz::report::InspectAttentionSummary {
+                mean_gini: 0.58,
+                layers: 2,
+                heads: 4,
+                token_count: 257,
+                map_basis: crate::extract::AttentionMapBasis::ClsToPatch,
+            }),
         }
     }
 
@@ -1429,6 +1473,7 @@ mod tests {
                 effective_rank: 256,
                 dead_dimensions: 4,
                 patch_entropy: 5.4,
+                attention_gini: Some(0.62),
                 cls_l2_norm: Some(12.0),
                 patch_norm_mean: 6.0,
                 patch_norm_std: 1.0,
@@ -1442,6 +1487,7 @@ mod tests {
                 effective_rank: 192,
                 dead_dimensions: 8,
                 patch_entropy: 4.8,
+                attention_gini: Some(0.47),
                 cls_l2_norm: Some(10.0),
                 patch_norm_mean: 5.0,
                 patch_norm_std: 1.1,
@@ -1487,6 +1533,7 @@ mod tests {
                 effective_rank: 256,
                 dead_dimensions: 4,
                 patch_entropy: 5.4,
+                attention_gini: Some(0.62),
                 cls_l2_norm: Some(12.0),
                 patch_norm_mean: 6.0,
                 patch_norm_std: 1.0,
@@ -1500,6 +1547,7 @@ mod tests {
                 effective_rank: 192,
                 dead_dimensions: 8,
                 patch_entropy: 4.8,
+                attention_gini: None,
                 cls_l2_norm: None,
                 patch_norm_mean: 5.0,
                 patch_norm_std: 1.1,
@@ -1598,16 +1646,24 @@ mod tests {
                 alt: "Inspect variance spectrum chart".into(),
                 description: "Variance profile.".into(),
             }),
+            attention_image: Some(VisualAsset {
+                title: "Attention Overlay".into(),
+                path: "dinov2-vit-l14_attention.png".into(),
+                alt: "Inspect attention overlay".into(),
+                description: "Attention projected back onto the input image.".into(),
+            }),
         };
         let html = render_inspect_html(&report, &assets);
 
         assert!(html.contains("Representation Inspect"));
         assert!(html.contains("Variance Spectrum"));
+        assert!(html.contains("Attention Summary"));
         assert!(html.contains("Components @ 99%"));
         assert!(html.contains("PC01"));
         assert!(html.contains("Visual Artefacts"));
         assert!(html.contains("input_image.png"));
         assert!(html.contains("dinov2-vit-l14_pca.png"));
+        assert!(html.contains("dinov2-vit-l14_attention.png"));
         assert!(html.contains("Validation Summary"));
         assert!(html.contains("dinov2-vit-l14"));
     }
@@ -1663,6 +1719,12 @@ mod tests {
                 alt: "Inspect variance spectrum chart".into(),
                 description: "Variance profile.".into(),
             }),
+            attention_image: Some(VisualAsset {
+                title: "Attention Overlay".into(),
+                path: "dinov2-vit-l14_attention.png".into(),
+                alt: "Inspect attention overlay".into(),
+                description: "Attention projected back onto the input image.".into(),
+            }),
         };
 
         write_inspect_report_with_assets(&report, &assets, &path).unwrap();
@@ -1671,6 +1733,7 @@ mod tests {
         assert!(content.contains("Visual Artefacts"));
         assert!(content.contains("input_image.png"));
         assert!(content.contains("dinov2-vit-l14_variance.png"));
+        assert!(content.contains("dinov2-vit-l14_attention.png"));
     }
 
     #[test]

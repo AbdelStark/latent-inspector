@@ -107,6 +107,7 @@ mod tests {
             effective_rank: 128,
             dead_dimensions: 0,
             patch_entropy: 2.5,
+            attention_gini: Some(0.42),
             cls_l2_norm: Some(18.4),
             patch_norm_mean: 12.0,
             patch_norm_std: 2.0,

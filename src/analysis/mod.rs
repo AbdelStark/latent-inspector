@@ -31,6 +31,7 @@ pub struct ModelMetrics {
     pub effective_rank: usize,
     pub dead_dimensions: usize,
     pub patch_entropy: f32,
+    pub attention_gini: Option<f32>,
     pub cls_l2_norm: Option<f32>,
     pub patch_norm_mean: f32,
     pub patch_norm_std: f32,
@@ -69,6 +70,11 @@ pub fn model_metrics_from_spectrum(
     };
     let dead = dead_dimensions(&features.patch_tokens, 1e-6);
     let entropy = patch_entropy(&features.patch_tokens, 8, 30)?;
+    let attention_gini = features
+        .attention_weights
+        .as_ref()
+        .map(mean_gini)
+        .transpose()?;
     let norm_stats = patch_norm_stats(&features.patch_tokens);
 
     Ok(ModelMetrics {
@@ -78,6 +84,7 @@ pub fn model_metrics_from_spectrum(
         effective_rank: rank,
         dead_dimensions: dead,
         patch_entropy: entropy,
+        attention_gini,
         cls_l2_norm: features.cls_norm,
         patch_norm_mean: norm_stats.mean,
         patch_norm_std: norm_stats.std,

@@ -69,6 +69,16 @@ pub fn print_metrics_table(metrics: &[ModelMetrics]) {
     }
     println!();
 
+    print!("{:<22}", "Attention Gini");
+    for m in metrics {
+        let val = m
+            .attention_gini
+            .map(|v| format!("{:.2}", v))
+            .unwrap_or_else(|| "N/A".into());
+        print!("{:<16}", val);
+    }
+    println!();
+
     print!("{:<22}", "CLS L2 norm");
     for m in metrics {
         let val = m

@@ -1,6 +1,6 @@
 use crate::analysis::{ComparisonMetrics, ModelMetrics, VarianceSpectrum};
 use crate::dataset::DatasetProcessingSummary;
-use crate::extract::EmbeddingBasis;
+use crate::extract::{AttentionMapBasis, EmbeddingBasis};
 use crate::validation::report::ModelValidationSummary;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -169,6 +169,15 @@ impl From<&VarianceSpectrum> for VarianceSpectrumReport {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct InspectAttentionSummary {
+    pub mean_gini: f32,
+    pub layers: usize,
+    pub heads: usize,
+    pub token_count: usize,
+    pub map_basis: AttentionMapBasis,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InspectReport {
     pub image: String,
@@ -176,6 +185,8 @@ pub struct InspectReport {
     pub metrics: ModelMetrics,
     pub validation: ModelValidationSummary,
     pub variance_spectrum: VarianceSpectrumReport,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub attention: Option<InspectAttentionSummary>,
 }
 
 pub fn build_inspect_report(
@@ -184,6 +195,7 @@ pub fn build_inspect_report(
     metrics: ModelMetrics,
     validation: ModelValidationSummary,
     variance_spectrum: &VarianceSpectrum,
+    attention: Option<InspectAttentionSummary>,
 ) -> InspectReport {
     InspectReport {
         image: image.into(),
@@ -191,6 +203,7 @@ pub fn build_inspect_report(
         metrics,
         validation,
         variance_spectrum: variance_spectrum.into(),
+        attention,
     }
 }
 
@@ -484,6 +497,23 @@ fn build_model_highlights(metrics: &[ModelMetrics]) -> Vec<ModelHighlight> {
         });
     }
 
+    if let Some(metric) = metrics
+        .iter()
+        .filter(|metric| metric.attention_gini.is_some())
+        .max_by(|a, b| {
+            a.attention_gini
+                .unwrap_or(f32::NEG_INFINITY)
+                .partial_cmp(&b.attention_gini.unwrap_or(f32::NEG_INFINITY))
+                .unwrap_or(std::cmp::Ordering::Equal)
+        })
+    {
+        highlights.push(ModelHighlight {
+            label: "Most focused attention".to_string(),
+            model: metric.model_name.clone(),
+            value: format!("{:.2}", metric.attention_gini.unwrap_or_default()),
+        });
+    }
+
     highlights
 }
 
@@ -569,6 +599,7 @@ mod tests {
                 effective_rank: 300,
                 dead_dimensions: 4,
                 patch_entropy: 6.1,
+                attention_gini: Some(0.63),
                 cls_l2_norm: Some(1.0),
                 patch_norm_mean: 2.0,
                 patch_norm_std: 0.4,
@@ -582,6 +613,7 @@ mod tests {
                 effective_rank: 210,
                 dead_dimensions: 2,
                 patch_entropy: 5.0,
+                attention_gini: Some(0.48),
                 cls_l2_norm: Some(1.0),
                 patch_norm_mean: 2.0,
                 patch_norm_std: 0.4,
@@ -651,6 +683,10 @@ mod tests {
             .iter()
             .any(|highlight| highlight.label == "Highest effective rank"));
         assert!(overview
+            .model_highlights
+            .iter()
+            .any(|highlight| highlight.label == "Most focused attention"));
+        assert!(overview
             .comparison_highlights
             .iter()
             .any(|highlight| highlight.label == "Strongest CKA alignment"));
@@ -682,6 +718,7 @@ mod tests {
                 effective_rank: 300,
                 dead_dimensions: 4,
                 patch_entropy: 6.1,
+                attention_gini: Some(0.63),
                 cls_l2_norm: Some(1.0),
                 patch_norm_mean: 2.0,
                 patch_norm_std: 0.4,
@@ -695,6 +732,7 @@ mod tests {
                 effective_rank: 210,
                 dead_dimensions: 2,
                 patch_entropy: 5.0,
+                attention_gini: None,
                 cls_l2_norm: None,
                 patch_norm_mean: 2.0,
                 patch_norm_std: 0.4,
@@ -757,12 +795,20 @@ mod tests {
                 components_99pct: 3,
                 top10_concentration: 1.0,
             },
+            Some(InspectAttentionSummary {
+                mean_gini: 0.63,
+                layers: 2,
+                heads: 4,
+                token_count: 257,
+                map_basis: AttentionMapBasis::ClsToPatch,
+            }),
         );
 
         assert_eq!(report.image, "images/street.png");
         assert_eq!(report.model, "dinov2");
         assert_eq!(report.variance_spectrum.components_90pct, 3);
         assert_eq!(report.variance_spectrum.ratios, vec![0.5, 0.3, 0.2]);
+        assert_eq!(report.attention.as_ref().unwrap().mean_gini, 0.63);
     }
 
     #[test]

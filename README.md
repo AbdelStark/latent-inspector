@@ -31,7 +31,7 @@ latent-inspector makes these differences visible and measurable.
 
 ### For each model, it computes:
 
-- **Patch-level attention maps** — Where is the model looking? Which patches matter most?
+- **Patch-level attention maps** — When a model export includes attention tensors, inspect reports expose patch overlays and attention concentration summaries.
 - **Feature PCA projection** — Reduce the high-dimensional representation to 3 RGB channels. Same-color regions have similar features.
 - **CLS token similarity** — How does the global representation compare across models?
 - **Patch cosine similarity matrix** — Which patches in model A correspond to which patches in model B?
@@ -67,7 +67,7 @@ serve both people and downstream automation.
 
 ## Why Rust?
 
-Model inference runs via ONNX Runtime (C++ backend). The analysis pipeline (PCA, cosine similarity, k-NN, attention extraction) runs in native Rust. Parallel across all models via rayon.
+Model inference runs via ONNX Runtime (C++ backend). The analysis pipeline (PCA, cosine similarity, k-NN, and attention-aware summaries when exports provide attention tensors) runs in native Rust. Parallel across all models via rayon.
 
 On a MacBook M3 Pro, comparing 5 models on a single image takes ~3 seconds. The equivalent Python pipeline takes ~25 seconds.
 
@@ -153,10 +153,10 @@ I-JEPA: 0.58 (moderate)  CLIP: 0.81 (very focused)
 ## Analysis modes
 
 ### `compare` — Side-by-side model comparison
-The main command. Takes an image and a list of models. Produces PCA projections, pairwise similarity matrices, highlight summaries, and validation-aware reports. When compared models expose different patch grids or incompatible CLS / embedding spaces, `compare` now keeps the dimension-agnostic metrics, marks unsupported metrics as `N/A`, and explains the reason in terminal, JSON, and HTML outputs instead of silently dropping them. Matrix sections now also report how many model pairs were actually comparable for each metric, so mixed-model runs do not imply support that the compared exports do not provide. `--format json` prints the structured compare report to stdout by default or writes `compare.json` when `--output <dir>` is provided. `--format png` writes per-model PCA images plus pairwise heatmaps for CKA, k-NN overlap, and direct patch correspondence. `--format html` now writes `report.html`, the same structured payload as `compare.json`, those companion PNG assets, an input-image preview, and `artifacts.json` in a single bundle.
+The main command. Takes an image and a list of models. Produces PCA projections, pairwise similarity matrices, highlight summaries, attention concentration metrics when available, and validation-aware reports. When compared models expose different patch grids or incompatible CLS / embedding spaces, `compare` now keeps the dimension-agnostic metrics, marks unsupported metrics as `N/A`, and explains the reason in terminal, JSON, and HTML outputs instead of silently dropping them. Matrix sections now also report how many model pairs were actually comparable for each metric, so mixed-model runs do not imply support that the compared exports do not provide. `--format json` prints the structured compare report to stdout by default or writes `compare.json` when `--output <dir>` is provided. `--format png` writes per-model PCA images plus pairwise heatmaps for CKA, k-NN overlap, and direct patch correspondence. `--format html` now writes `report.html`, the same structured payload as `compare.json`, those companion PNG assets, an input-image preview, and `artifacts.json` in a single bundle.
 
 ### `inspect` — Deep dive into a single model
-Detailed analysis of one model's representation: rank/entropy metrics, dead dimension counts, variance spectrum, validation status, and exportable PCA + variance artefacts. `--format json` prints the structured inspect report to stdout by default or writes `inspect.json` when `--output <dir>` is provided. `--format html` now writes a dedicated single-model report plus `inspect.json`, with the variance-spectrum breakdown, concentration thresholds, validation summary, and linked PCA / variance artefacts instead of falling back to the generic compare layout.
+Detailed analysis of one model's representation: rank/entropy metrics, attention concentration when available, dead dimension counts, variance spectrum, validation status, and exportable PCA + variance artefacts. When the backend exposes attention tensors, inspect reports also include an attention summary and an overlay projected back onto the source image. `--format json` prints the structured inspect report to stdout by default or writes `inspect.json` when `--output <dir>` is provided. `--format html` now writes a dedicated single-model report plus `inspect.json`, with the variance-spectrum breakdown, attention summary, validation summary, and linked artefacts instead of falling back to the generic compare layout.
 
 ### `neighbors` — k-NN retrieval across a dataset
 Given an image and a dataset directory, find the most similar images according to each model. Reveals what each model considers "similar." DINO finds visually similar objects. CLIP finds semantically similar concepts. I-JEPA finds structurally similar scenes.

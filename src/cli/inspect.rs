@@ -1,10 +1,11 @@
 use crate::analysis::{model_metrics_from_spectrum, pca, transform, variance_spectrum};
 use crate::errors::Error;
-use crate::extract::ExtractedFeatures;
+use crate::extract::{AttentionMapBasis, ExtractedFeatures};
 use crate::models::ModelSession;
 use crate::validation::summarize_session_or_unverified;
 use crate::viz::assets;
 use crate::viz::manifest::{ArtifactKind, OutputArtifactManifest};
+use crate::viz::report::InspectAttentionSummary;
 use crate::viz::OutputFormat;
 use clap::Args;
 use serde_json::json;
@@ -46,12 +47,14 @@ pub fn run(args: InspectArgs) -> Result<(), Error> {
     let spectrum = variance_spectrum(&features.patch_tokens, 64)?;
     let metrics = model_metrics_from_spectrum(&features, &args.model, &spectrum)?;
     let display_spectrum = spectrum.truncated(requested_components);
+    let attention = build_inspect_attention_summary(&features, metrics.attention_gini);
     let report = crate::viz::report::build_inspect_report(
         args.image.display().to_string(),
         args.model.clone(),
         metrics,
         validation_summary,
         &display_spectrum,
+        attention,
     );
 
     match args.format {
@@ -66,6 +69,9 @@ pub fn run(args: InspectArgs) -> Result<(), Error> {
             );
             println!("  Dead dimensions:  {}", report.metrics.dead_dimensions);
             println!("  Patch entropy:    {:.3}", report.metrics.patch_entropy);
+            if let Some(attention) = &report.attention {
+                println!("  Attention gini:   {:.3}", attention.mean_gini);
+            }
             if let Some(norm) = report.metrics.cls_l2_norm {
                 println!("  CLS L2 norm:      {:.2}", norm);
             }
@@ -78,6 +84,19 @@ pub fn run(args: InspectArgs) -> Result<(), Error> {
                 report.metrics.top10_variance_pct
             );
             println!("  Components@90%:   {}", report.metrics.components_90pct);
+            if let Some(attention) = &report.attention {
+                println!(
+                    "  Attention source: {} ({} layers x {} heads)",
+                    attention.map_basis.label(),
+                    attention.layers,
+                    attention.heads,
+                );
+                if let Some((_, map)) = features.attention_map() {
+                    println!();
+                    println!("  Attention map:");
+                    print!("{}", crate::viz::terminal::render_attention_map(&map, 16));
+                }
+            }
             println!();
             println!(
                 "  Variance spectrum (top {} components):",
@@ -127,7 +146,7 @@ pub fn run(args: InspectArgs) -> Result<(), Error> {
                 .clone()
                 .unwrap_or_else(|| PathBuf::from("inspect_output"));
             std::fs::create_dir_all(&outdir)?;
-            let assets = write_inspect_visual_artifacts(None, &features, &report, &outdir)?;
+            let assets = write_inspect_visual_artifacts(Some(&img), &features, &report, &outdir)?;
             let manifest = build_inspect_manifest(
                 &report,
                 Some(&assets),
@@ -176,6 +195,7 @@ fn write_inspect_visual_artifacts(
     let prefix = assets::slugify_filename(&report.model);
     let pca_filename = format!("{prefix}_pca.png");
     let variance_filename = format!("{prefix}_variance.png");
+    let attention_filename = format!("{prefix}_attention.png");
     let pca_result = pca(&features.patch_tokens, 3, 300)?;
     let projected = transform(&features.patch_tokens, &pca_result);
     let grid = (features.n_patches as f32).sqrt() as usize;
@@ -185,6 +205,25 @@ fn write_inspect_visual_artifacts(
         &report.variance_spectrum.ratios,
         &outdir.join(&variance_filename),
     )?;
+    let attention_image =
+        if let (Some(image), Some((basis, map))) = (source_image, features.attention_map()) {
+            crate::viz::png::save_attention_overlay(
+                image,
+                &map,
+                &outdir.join(&attention_filename),
+                0.45,
+            )?;
+            Some(assets::visual_asset(
+                attention_filename,
+                "Attention Overlay",
+                format!(
+                    "{} projected back onto the input image.",
+                    basis.description()
+                ),
+            ))
+        } else {
+            None
+        };
 
     Ok(crate::viz::html::InspectHtmlAssets {
         source_image: source_image
@@ -208,6 +247,7 @@ fn write_inspect_visual_artifacts(
             "Variance Chart",
             "Component-wise variance concentration across the inspected representation.",
         )),
+        attention_image,
     })
 }
 
@@ -244,6 +284,13 @@ fn build_inspect_manifest(
                 variance_image.description.clone(),
             );
         }
+        if let Some(attention_image) = &assets.attention_image {
+            manifest = manifest.add_artifact(
+                attention_image.path.clone(),
+                ArtifactKind::Png,
+                attention_image.description.clone(),
+            );
+        }
     }
 
     manifest
@@ -261,8 +308,35 @@ fn inspect_manifest_summary(report: &crate::viz::report::InspectReport) -> serde
     json!({
         "effective_rank": report.metrics.effective_rank,
         "patch_entropy": report.metrics.patch_entropy,
+        "attention_gini": report.metrics.attention_gini,
         "components_90pct": report.metrics.components_90pct,
         "components_99pct": report.variance_spectrum.components_99pct,
         "top10_variance_pct": report.metrics.top10_variance_pct,
+    })
+}
+
+fn build_inspect_attention_summary(
+    features: &ExtractedFeatures,
+    attention_gini: Option<f32>,
+) -> Option<InspectAttentionSummary> {
+    let mean_gini = attention_gini?;
+    let (layers, heads, token_count) = features.attention_dimensions()?;
+    let map_basis = features
+        .attention_map()
+        .map(|(basis, _)| basis)
+        .unwrap_or_else(|| {
+            if features.sequence_has_cls && features.cls_token.is_some() {
+                AttentionMapBasis::ClsToPatch
+            } else {
+                AttentionMapBasis::MeanTokenToPatch
+            }
+        });
+
+    Some(InspectAttentionSummary {
+        mean_gini,
+        layers,
+        heads,
+        token_count,
+        map_basis,
     })
 }

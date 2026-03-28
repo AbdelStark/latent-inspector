@@ -1,6 +1,6 @@
 use crate::errors::AnalysisError;
 use crate::models::ModelOutput;
-use ndarray::{Array1, Array2, Axis};
+use ndarray::{Array1, Array2, Array4, Axis};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -30,6 +30,33 @@ impl EmbeddingBasis {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum AttentionMapBasis {
+    ClsToPatch,
+    MeanTokenToPatch,
+}
+
+impl AttentionMapBasis {
+    pub fn label(self) -> &'static str {
+        match self {
+            AttentionMapBasis::ClsToPatch => "CLS-to-patch attention",
+            AttentionMapBasis::MeanTokenToPatch => "Mean token-to-patch attention",
+        }
+    }
+
+    pub fn description(self) -> &'static str {
+        match self {
+            AttentionMapBasis::ClsToPatch => {
+                "Average attention from the CLS token into the patch grid."
+            }
+            AttentionMapBasis::MeanTokenToPatch => {
+                "Average attention from all tokens into the patch grid."
+            }
+        }
+    }
+}
+
 /// Summary of extracted features for one model/image pair.
 #[derive(Debug, Clone)]
 pub struct ExtractedFeatures {
@@ -37,6 +64,10 @@ pub struct ExtractedFeatures {
     pub cls_token: Option<Array1<f32>>,
     /// Patch token matrix `[N_patches, D]`.
     pub patch_tokens: Array2<f32>,
+    /// Attention weights `[layers, heads, N, N]` when exported by the model.
+    pub attention_weights: Option<Array4<f32>>,
+    /// Whether the token sequence includes a CLS token prefix.
+    pub sequence_has_cls: bool,
     /// L2 norm of the CLS token (if present).
     pub cls_norm: Option<f32>,
     /// L2 norms of each patch token `[N_patches]`.
@@ -71,6 +102,8 @@ impl ExtractedFeatures {
         Ok(Self {
             cls_token: output.cls_token,
             patch_tokens: output.patch_tokens,
+            attention_weights: output.attention_weights,
+            sequence_has_cls: output.tensor_metadata.sequence_has_cls,
             cls_norm,
             patch_norms,
             n_patches,
@@ -109,6 +142,67 @@ impl ExtractedFeatures {
             (EmbeddingBasis::MeanPatch, self.mean_patch())
         }
     }
+
+    pub fn attention_dimensions(&self) -> Option<(usize, usize, usize)> {
+        let weights = self.attention_weights.as_ref()?;
+        let shape = weights.shape();
+        if shape.len() != 4 || shape[2] != shape[3] {
+            return None;
+        }
+        Some((shape[0], shape[1], shape[2]))
+    }
+
+    pub fn attention_map(&self) -> Option<(AttentionMapBasis, Array2<f32>)> {
+        let weights = self.attention_weights.as_ref()?;
+        let grid_size = attention_grid_size(self.n_patches)?;
+        let shape = weights.shape();
+        if shape.len() != 4 || shape[2] != shape[3] {
+            return None;
+        }
+
+        let has_cls = self.sequence_has_cls
+            && self.cls_token.is_some()
+            && shape[2] == self.n_patches.saturating_add(1);
+        let patch_start = usize::from(has_cls);
+        let token_count = shape[2];
+        if token_count < patch_start + self.n_patches {
+            return None;
+        }
+
+        let basis = if has_cls {
+            AttentionMapBasis::ClsToPatch
+        } else {
+            AttentionMapBasis::MeanTokenToPatch
+        };
+        let normalizer = if has_cls {
+            (shape[0] * shape[1]).max(1) as f32
+        } else {
+            (shape[0] * shape[1] * token_count).max(1) as f32
+        };
+
+        let values = (0..self.n_patches)
+            .map(|patch_idx| {
+                let key_idx = patch_start + patch_idx;
+                let mut total = 0.0_f32;
+                for layer_idx in 0..shape[0] {
+                    for head_idx in 0..shape[1] {
+                        if has_cls {
+                            total += weights[[layer_idx, head_idx, 0, key_idx]];
+                        } else {
+                            for query_idx in 0..token_count {
+                                total += weights[[layer_idx, head_idx, query_idx, key_idx]];
+                            }
+                        }
+                    }
+                }
+                total / normalizer
+            })
+            .collect::<Vec<_>>();
+
+        Array2::from_shape_vec((grid_size, grid_size), values)
+            .ok()
+            .map(|map| (basis, map))
+    }
 }
 
 fn l2_norm(v: &Array1<f32>) -> f32 {
@@ -117,6 +211,11 @@ fn l2_norm(v: &Array1<f32>) -> f32 {
 
 fn l2_norm_view(v: &ndarray::ArrayView1<f32>) -> f32 {
     v.iter().map(|x| x * x).sum::<f32>().sqrt()
+}
+
+fn attention_grid_size(n_patches: usize) -> Option<usize> {
+    let grid = (n_patches as f32).sqrt().round() as usize;
+    (grid > 0 && grid * grid == n_patches).then_some(grid)
 }
 
 #[cfg(test)]
@@ -203,5 +302,59 @@ mod tests {
 
         assert_eq!(basis, EmbeddingBasis::MeanPatch);
         assert_eq!(embedding, feat.mean_patch());
+    }
+
+    #[test]
+    fn attention_map_uses_cls_attention_when_present() {
+        let mut output = dummy_output(4, 4);
+        output.attention_weights = Some(
+            Array4::from_shape_vec(
+                (1, 1, 5, 5),
+                vec![
+                    0.1, 0.4, 0.3, 0.1, 0.1, //
+                    0.2, 0.2, 0.2, 0.2, 0.2, //
+                    0.2, 0.2, 0.2, 0.2, 0.2, //
+                    0.2, 0.2, 0.2, 0.2, 0.2, //
+                    0.2, 0.2, 0.2, 0.2, 0.2, //
+                ],
+            )
+            .unwrap(),
+        );
+        let feat = ExtractedFeatures::from_output(output).unwrap();
+
+        let (basis, map) = feat.attention_map().unwrap();
+
+        assert_eq!(basis, AttentionMapBasis::ClsToPatch);
+        assert_eq!(map.shape(), &[2, 2]);
+        approx::assert_relative_eq!(map[[0, 0]], 0.4, epsilon = 1e-5);
+        approx::assert_relative_eq!(map[[0, 1]], 0.3, epsilon = 1e-5);
+    }
+
+    #[test]
+    fn attention_map_falls_back_to_mean_token_attention_without_cls() {
+        let mut output = dummy_output(4, 4);
+        output.cls_token = None;
+        output.tensor_metadata.sequence_has_cls = false;
+        output.tensor_metadata.output_shape = vec![1, 4, 4];
+        output.attention_weights = Some(
+            Array4::from_shape_vec(
+                (1, 1, 4, 4),
+                vec![
+                    0.1, 0.4, 0.3, 0.2, //
+                    0.1, 0.4, 0.3, 0.2, //
+                    0.1, 0.4, 0.3, 0.2, //
+                    0.1, 0.4, 0.3, 0.2, //
+                ],
+            )
+            .unwrap(),
+        );
+        let feat = ExtractedFeatures::from_output(output).unwrap();
+
+        let (basis, map) = feat.attention_map().unwrap();
+
+        assert_eq!(basis, AttentionMapBasis::MeanTokenToPatch);
+        assert_eq!(map.shape(), &[2, 2]);
+        approx::assert_relative_eq!(map[[0, 0]], 0.1, epsilon = 1e-5);
+        approx::assert_relative_eq!(map[[1, 1]], 0.2, epsilon = 1e-5);
     }
 }

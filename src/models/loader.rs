@@ -306,12 +306,13 @@ impl ModelSession {
                 })
             }
             SessionInner::Stub(config) => {
-                let (cls_token, patch_tokens) = seeded_stub_features(*config, tensor, contract);
+                let (cls_token, patch_tokens, attention_weights) =
+                    seeded_stub_features(*config, tensor, contract, info.num_heads as usize);
 
                 Ok(ModelOutput {
                     cls_token,
                     patch_tokens,
-                    attention_weights: None,
+                    attention_weights,
                     model_info: info.clone(),
                     tensor_metadata: OutputTensorMetadata {
                         input_name: self.entry.input_name.clone(),
@@ -475,7 +476,8 @@ fn seeded_stub_features(
     config: StubConfig,
     tensor: &Array4<f32>,
     contract: &registry::TensorContract,
-) -> (Option<Array1<f32>>, Array2<f32>) {
+    model_heads: usize,
+) -> (Option<Array1<f32>>, Array2<f32>, Option<Array4<f32>>) {
     let seed = config.seed;
     let checkpoint_position = config.checkpoint_progress.unwrap_or(0.0);
     let checkpoint_sample_offset = checkpoint_position.max(0.0).round() as usize;
@@ -588,7 +590,133 @@ fn seeded_stub_features(
         })
     });
 
-    (cls_token, patch_tokens)
+    let attention_weights = Some(seeded_stub_attention(
+        config,
+        &flat_tensor,
+        contract,
+        &patch_tokens,
+        cls_token.as_ref(),
+        mean,
+        stddev,
+        model_heads,
+    ));
+
+    (cls_token, patch_tokens, attention_weights)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn seeded_stub_attention(
+    config: StubConfig,
+    flat_tensor: &[f32],
+    contract: &registry::TensorContract,
+    patch_tokens: &Array2<f32>,
+    cls_token: Option<&Array1<f32>>,
+    mean: f32,
+    stddev: f32,
+    model_heads: usize,
+) -> Array4<f32> {
+    let has_cls = contract.cls_expected && cls_token.is_some();
+    let patch_start = usize::from(has_cls);
+    let token_count = contract.patch_count + patch_start;
+    let layers = 2usize;
+    let heads = model_heads.clamp(1, 4);
+    let checkpoint_offset = config.checkpoint_progress.unwrap_or(0.0).max(0.0).round() as usize;
+    let focus_x =
+        (sampled_tensor_value(flat_tensor, config.seed ^ 0xA1A1_A1A1, checkpoint_offset, 0) + mean)
+            .clamp(-1.0, 1.0)
+            * 0.45;
+    let focus_y = (sampled_tensor_value(
+        flat_tensor,
+        config.seed ^ 0xB2B2_B2B2,
+        checkpoint_offset + 1,
+        1,
+    ) - stddev)
+        .clamp(-1.0, 1.0)
+        * 0.45;
+
+    let mut token_signatures = Vec::with_capacity(token_count);
+    if let Some(cls) = cls_token {
+        let signature = cls.iter().copied().sum::<f32>() / cls.len().max(1) as f32;
+        token_signatures.push(signature);
+    }
+    token_signatures.extend((0..contract.patch_count).map(|patch_idx| {
+        let row = patch_tokens.row(patch_idx);
+        row.iter().copied().sum::<f32>() / row.len().max(1) as f32
+    }));
+
+    let mut attention = Array4::<f32>::zeros((layers, heads, token_count, token_count));
+    for layer_idx in 0..layers {
+        for head_idx in 0..heads {
+            let head_focus_x =
+                focus_x + normalized_axis(head_idx, heads) * 0.18 + layer_idx as f32 * 0.04;
+            let head_focus_y =
+                focus_y - normalized_axis(layer_idx, layers) * 0.18 + head_idx as f32 * 0.02;
+            for query_idx in 0..token_count {
+                let (query_x, query_y) = if has_cls && query_idx == 0 {
+                    (head_focus_x * 0.4, head_focus_y * 0.4)
+                } else {
+                    patch_coordinates(query_idx.saturating_sub(patch_start), contract.patch_count)
+                };
+
+                let mut row_sum = 0.0_f32;
+                for key_idx in 0..token_count {
+                    let mut score = 0.02
+                        + 0.05
+                            * stub_unit(
+                                config.seed ^ 0xC3C3_C3C3,
+                                layer_idx * token_count + query_idx,
+                                head_idx * token_count + key_idx,
+                            );
+
+                    if has_cls && key_idx == 0 {
+                        score += 0.10
+                            + 0.02 * (layer_idx + head_idx) as f32
+                            + token_signatures[query_idx].abs() * 0.02;
+                    } else {
+                        let patch_idx = key_idx.saturating_sub(patch_start);
+                        let (key_x, key_y) = patch_coordinates(patch_idx, contract.patch_count);
+                        let dx = query_x - key_x;
+                        let dy = query_y - key_y;
+                        let distance = dx * dx + dy * dy;
+                        let locality = (-distance * 4.5).exp();
+                        let focus_distance =
+                            (key_x - head_focus_x).powi(2) + (key_y - head_focus_y).powi(2);
+                        let cls_focus = (-focus_distance * 6.0).exp();
+                        let compatibility = (token_signatures[query_idx]
+                            * token_signatures[key_idx])
+                            .abs()
+                            .min(2.0);
+
+                        score += 0.18 * locality
+                            + 0.16 * compatibility
+                            + 0.08
+                                * sampled_tensor_value(
+                                    flat_tensor,
+                                    config.seed ^ 0xD4D4_D4D4,
+                                    query_idx + checkpoint_offset,
+                                    key_idx + layer_idx * 3 + head_idx,
+                                )
+                                .abs();
+
+                        if has_cls && query_idx == 0 {
+                            score += 0.35 * cls_focus;
+                        }
+                    }
+
+                    attention[[layer_idx, head_idx, query_idx, key_idx]] = score.max(1e-6);
+                    row_sum += attention[[layer_idx, head_idx, query_idx, key_idx]];
+                }
+
+                if row_sum > 0.0 {
+                    for key_idx in 0..token_count {
+                        attention[[layer_idx, head_idx, query_idx, key_idx]] /= row_sum;
+                    }
+                }
+            }
+        }
+    }
+
+    attention
 }
 
 fn checkpoint_progress_from_label(label: &str) -> Option<f32> {
@@ -628,6 +756,17 @@ fn normalized_axis(index: usize, len: usize) -> f32 {
         0.0
     } else {
         index as f32 / (len - 1) as f32 - 0.5
+    }
+}
+
+fn patch_coordinates(index: usize, patch_count: usize) -> (f32, f32) {
+    let grid = (patch_count as f32).sqrt().round() as usize;
+    if grid > 0 && grid * grid == patch_count {
+        let row = index / grid;
+        let col = index % grid;
+        (normalized_axis(col, grid), normalized_axis(row, grid))
+    } else {
+        (normalized_axis(index, patch_count), 0.0)
     }
 }
 
@@ -707,8 +846,10 @@ mod tests {
 
         assert_eq!(output.patch_tokens.shape(), &[n_patches, embed_dim]);
         assert!(output.cls_token.is_some());
+        assert!(output.attention_weights.is_some());
         assert_eq!(output.cls_token.unwrap().len(), embed_dim);
         assert_eq!(output.tensor_metadata.output_shape, vec![1, 257, 1024]);
+        assert_eq!(output.attention_weights.unwrap().shape(), &[2, 4, 257, 257]);
     }
 
     #[test]
@@ -719,6 +860,7 @@ mod tests {
         let output = session.infer(&img).unwrap();
 
         assert!(output.cls_token.is_none());
+        assert!(output.attention_weights.is_some());
         assert_eq!(output.tensor_metadata.output_shape, vec![1, 196, 1024]);
     }
 
