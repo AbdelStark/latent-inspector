@@ -1,5 +1,6 @@
 use crate::analysis::{ComparisonMetrics, ModelMetrics, VarianceSpectrum};
 use crate::dataset::DatasetProcessingSummary;
+use crate::extract::EmbeddingBasis;
 use crate::validation::report::ModelValidationSummary;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -163,6 +164,7 @@ pub struct NeighborsReport {
     pub query_image: String,
     pub dataset: String,
     pub model: String,
+    pub embedding_basis: EmbeddingBasis,
     pub requested_k: usize,
     pub dataset_summary: DatasetProcessingSummary,
     pub neighbors: Vec<NeighborMatch>,
@@ -190,6 +192,7 @@ pub struct SimilarityReport {
     pub model_a: String,
     pub model_b: String,
     pub dataset: String,
+    pub dataset_embedding_basis: EmbeddingBasis,
     pub requested_metric: String,
     pub sample_count: usize,
     pub dataset_summary: DatasetProcessingSummary,
@@ -225,6 +228,7 @@ pub struct DriftReport {
     pub model: String,
     pub checkpoints: String,
     pub dataset: String,
+    pub dataset_embedding_basis: EmbeddingBasis,
     pub checkpoint_names: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub dataset_summary: Option<DatasetProcessingSummary>,
@@ -238,10 +242,12 @@ pub struct DriftReport {
 }
 
 impl DriftReport {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         model: impl Into<String>,
         checkpoints: impl Into<String>,
         dataset: impl Into<String>,
+        dataset_embedding_basis: EmbeddingBasis,
         checkpoint_names: Vec<String>,
         dataset_summary: Option<DatasetProcessingSummary>,
         drift: Vec<DriftStep>,
@@ -258,6 +264,7 @@ impl DriftReport {
             model: model.into(),
             checkpoints: checkpoints.into(),
             dataset: dataset.into(),
+            dataset_embedding_basis,
             checkpoint_names,
             dataset_summary,
             drift,
@@ -574,6 +581,7 @@ mod tests {
             query_image: "query.png".into(),
             dataset: "dataset".into(),
             model: "dinov2".into(),
+            embedding_basis: EmbeddingBasis::ClsToken,
             requested_k: 2,
             dataset_summary: DatasetProcessingSummary {
                 discovered: 3,
@@ -605,6 +613,7 @@ mod tests {
             model_a: "dinov2".into(),
             model_b: "clip".into(),
             dataset: "dataset".into(),
+            dataset_embedding_basis: EmbeddingBasis::MeanPatch,
             requested_metric: "all".into(),
             sample_count: 4,
             dataset_summary: DatasetProcessingSummary {
@@ -640,6 +649,7 @@ mod tests {
             "dinov2",
             "checkpoints",
             "dataset",
+            EmbeddingBasis::MeanPatch,
             vec!["step-1".into(), "step-2".into(), "step-10".into()],
             Some(DatasetProcessingSummary {
                 discovered: 3,

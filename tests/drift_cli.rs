@@ -128,6 +128,7 @@ fn drift_json_and_png_outputs_are_written() {
 
     let payload = read_json(&json_output_dir.join("drift.json"));
     assert_eq!(payload["model"], "dinov2-vit-l14");
+    assert_eq!(payload["dataset_embedding_basis"], "mean-patch");
     assert_eq!(
         payload["checkpoint_names"],
         Value::Array(vec![

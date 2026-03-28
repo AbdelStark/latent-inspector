@@ -1,5 +1,5 @@
 use crate::errors::Error;
-use crate::extract::ExtractedFeatures;
+use crate::extract::{EmbeddingBasis, ExtractedFeatures};
 use crate::models::ModelSession;
 use crate::validation::summarize_session_or_unverified;
 use crate::viz::report::{NeighborMatch, NeighborsReport};
@@ -40,26 +40,21 @@ pub fn run(args: NeighborsArgs) -> Result<(), Error> {
         args.k, args.image, args.model
     );
 
-    let mut session = ModelSession::load(&args.model)?;
+    let mut session = ModelSession::load_for_analysis(&args.model)?;
     let validation = summarize_session_or_unverified(&mut session, None);
 
     // Embed query image
     let query_img = image::open(&args.image)?;
     let query_output = session.infer(&query_img)?;
     let query_features = ExtractedFeatures::from_output(query_output)?;
-    let query_cls = query_features.cls_token.as_ref().ok_or_else(|| {
-        crate::errors::AnalysisError::EmptyInput(
-            "Model has no CLS token for neighbor search".into(),
-        )
-    })?;
+    let (embedding_basis, query_embedding) = query_features.preferred_global_embedding();
 
     let mut embeddings: Vec<(String, ndarray::Array1<f32>)> = Vec::new();
     let dataset_summary = crate::dataset::for_each_image(&args.dataset, true, |entry, img| {
         let output = session.infer(&img)?;
         let features = ExtractedFeatures::from_output(output)?;
-        if let Some(cls) = features.cls_token {
-            embeddings.push((entry.stem, cls));
-        }
+        let embedding = extract_neighbor_embedding(&features, embedding_basis);
+        embeddings.push((entry.stem, embedding));
         Ok::<(), Error>(())
     })?;
     info!(
@@ -76,18 +71,21 @@ pub fn run(args: NeighborsArgs) -> Result<(), Error> {
 
     if embeddings.is_empty() {
         return Err(crate::errors::AnalysisError::EmptyInput(
-            "Dataset produced no CLS embeddings for neighbor search".into(),
+            "Dataset produced no usable global embeddings for neighbor search".into(),
         )
         .into());
     }
 
     // Build similarity scores between query and all dataset entries
-    let _d = query_cls.len();
     let mut scores: Vec<(f32, &str)> = embeddings
         .iter()
         .map(|(name, emb)| {
-            let dot: f32 = query_cls.iter().zip(emb.iter()).map(|(a, b)| a * b).sum();
-            let na = query_cls
+            let dot: f32 = query_embedding
+                .iter()
+                .zip(emb.iter())
+                .map(|(a, b)| a * b)
+                .sum();
+            let na = query_embedding
                 .iter()
                 .map(|x| x * x)
                 .sum::<f32>()
@@ -98,7 +96,7 @@ pub fn run(args: NeighborsArgs) -> Result<(), Error> {
         })
         .collect();
 
-    scores.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap());
+    scores.sort_by(|a, b| b.0.total_cmp(&a.0));
 
     let neighbors = scores
         .iter()
@@ -114,6 +112,7 @@ pub fn run(args: NeighborsArgs) -> Result<(), Error> {
         query_image: args.image.display().to_string(),
         dataset: args.dataset.display().to_string(),
         model: args.model.clone(),
+        embedding_basis,
         requested_k: args.k,
         dataset_summary,
         neighbors,
@@ -122,6 +121,17 @@ pub fn run(args: NeighborsArgs) -> Result<(), Error> {
     render_output(&args, &report)?;
 
     Ok(())
+}
+
+fn extract_neighbor_embedding(
+    features: &ExtractedFeatures,
+    basis: EmbeddingBasis,
+) -> ndarray::Array1<f32> {
+    if let Some(embedding) = features.embedding_for_basis(basis) {
+        embedding
+    } else {
+        features.mean_patch()
+    }
 }
 
 fn render_output(args: &NeighborsArgs, report: &NeighborsReport) -> Result<(), Error> {

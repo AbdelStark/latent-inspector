@@ -1,6 +1,34 @@
 use crate::errors::AnalysisError;
 use crate::models::ModelOutput;
 use ndarray::{Array1, Array2, Axis};
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum EmbeddingBasis {
+    ClsToken,
+    MeanPatch,
+}
+
+impl EmbeddingBasis {
+    pub fn label(self) -> &'static str {
+        match self {
+            EmbeddingBasis::ClsToken => "CLS token",
+            EmbeddingBasis::MeanPatch => "Mean patch",
+        }
+    }
+
+    pub fn description(self) -> &'static str {
+        match self {
+            EmbeddingBasis::ClsToken => {
+                "Global image embedding taken directly from the model CLS token."
+            }
+            EmbeddingBasis::MeanPatch => {
+                "Global image embedding built by averaging patch tokens because no CLS token is available."
+            }
+        }
+    }
+}
 
 /// Summary of extracted features for one model/image pair.
 #[derive(Debug, Clone)]
@@ -63,6 +91,23 @@ impl ExtractedFeatures {
     /// Mean of patch tokens `[D]`.
     pub fn mean_patch(&self) -> Array1<f32> {
         self.patch_tokens.mean_axis(Axis(0)).unwrap()
+    }
+
+    /// Global embedding for the requested basis, when available.
+    pub fn embedding_for_basis(&self, basis: EmbeddingBasis) -> Option<Array1<f32>> {
+        match basis {
+            EmbeddingBasis::ClsToken => self.cls_token.clone(),
+            EmbeddingBasis::MeanPatch => Some(self.mean_patch()),
+        }
+    }
+
+    /// Preferred global embedding for image-level comparisons.
+    pub fn preferred_global_embedding(&self) -> (EmbeddingBasis, Array1<f32>) {
+        if let Some(cls) = self.cls_token.clone() {
+            (EmbeddingBasis::ClsToken, cls)
+        } else {
+            (EmbeddingBasis::MeanPatch, self.mean_patch())
+        }
     }
 }
 
@@ -136,5 +181,27 @@ mod tests {
         for v in mean.iter() {
             approx::assert_relative_eq!(*v, 0.5, epsilon = 1e-5);
         }
+    }
+
+    #[test]
+    fn preferred_embedding_uses_cls_when_available() {
+        let feat = ExtractedFeatures::from_output(dummy_output(16, 4)).unwrap();
+        let (basis, embedding) = feat.preferred_global_embedding();
+
+        assert_eq!(basis, EmbeddingBasis::ClsToken);
+        assert_eq!(embedding.len(), 4);
+    }
+
+    #[test]
+    fn preferred_embedding_falls_back_to_mean_patch_without_cls() {
+        let mut output = dummy_output(16, 4);
+        output.cls_token = None;
+        output.tensor_metadata.sequence_has_cls = false;
+        output.tensor_metadata.output_shape = vec![1, 16, 4];
+        let feat = ExtractedFeatures::from_output(output).unwrap();
+        let (basis, embedding) = feat.preferred_global_embedding();
+
+        assert_eq!(basis, EmbeddingBasis::MeanPatch);
+        assert_eq!(embedding, feat.mean_patch());
     }
 }

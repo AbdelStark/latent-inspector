@@ -1,6 +1,6 @@
 use crate::analysis::{cls_cosine_similarity, knn_overlap, linear_cka};
 use crate::errors::Error;
-use crate::extract::ExtractedFeatures;
+use crate::extract::{EmbeddingBasis, ExtractedFeatures};
 use crate::models::ModelSession;
 use crate::validation::summarize_session_or_unverified;
 use crate::viz::report::{SimilarityMetricValue, SimilarityReport};
@@ -134,6 +134,7 @@ pub fn run(args: SimilarityArgs) -> Result<(), Error> {
         model_a: args.model_a.clone(),
         model_b: args.model_b.clone(),
         dataset: args.dataset.display().to_string(),
+        dataset_embedding_basis: EmbeddingBasis::MeanPatch,
         requested_metric: args.metric.clone(),
         sample_count: n,
         dataset_summary,

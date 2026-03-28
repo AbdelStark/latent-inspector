@@ -256,6 +256,7 @@ pub fn print_neighbors_report(report: &NeighborsReport) {
     println!();
     println!("Nearest neighbors for {}", report.query_image);
     println!("Model: {}  k={}", report.model, report.requested_k);
+    println!("Embedding basis: {}", report.embedding_basis.label());
     println!("{}", "─".repeat(50));
     for neighbor in &report.neighbors {
         println!(
@@ -276,6 +277,10 @@ pub fn print_similarity_report(report: &SimilarityReport) {
         report.model_a, report.model_b
     );
     println!("Dataset: {} images", report.sample_count);
+    println!(
+        "Dataset embedding basis: {}",
+        report.dataset_embedding_basis.label()
+    );
     println!("{}", "═".repeat(55));
 
     for metric in &report.metrics {
@@ -334,13 +339,21 @@ pub fn print_drift_report(report: &DriftReport) {
             )
         })
         .collect::<Vec<_>>();
-    print_drift_summary(&report.checkpoint_names, &rows);
+    print_drift_summary(
+        &report.checkpoint_names,
+        report.dataset_embedding_basis.label(),
+        &rows,
+    );
     if !report.validation.is_empty() {
         print_validation_summaries(&report.validation);
     }
 }
 
-pub fn print_drift_summary(checkpoints: &[String], drift_rows: &[(String, String, f32)]) {
+pub fn print_drift_summary(
+    checkpoints: &[String],
+    dataset_embedding_basis: &str,
+    drift_rows: &[(String, String, f32)],
+) {
     println!();
     println!("Representation Drift");
     println!("{}", "═".repeat(84));
@@ -352,6 +365,7 @@ pub fn print_drift_summary(checkpoints: &[String], drift_rows: &[(String, String
     }
 
     println!("Checkpoints: {}", checkpoints.join(" -> "));
+    println!("Dataset embedding basis: {dataset_embedding_basis}");
     println!("{}", "─".repeat(84));
 
     if drift_rows.is_empty() {

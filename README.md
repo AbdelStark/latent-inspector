@@ -146,7 +146,9 @@ stdout by default or writes `neighbors.json` when `--output <dir>` is provided,
 while HTML/PNG emit a shareable report or ranking chart under
 `neighbors_output/` (or the requested output directory). Terminal, JSON, and
 HTML reports also attach the active model's validation summary so nearest-neighbor
-results keep their trust context.
+results keep their trust context. If a model does not expose a CLS token, the
+command now falls back to a mean-patch image embedding and records that basis in
+terminal, JSON, and HTML reports.
 
 ### `similarity` — Representation alignment between models
 Centered Kernel Alignment (CKA) and mutual k-NN overlap between two models across a dataset. Answers: "How similarly do these two models represent the world?"
@@ -154,7 +156,9 @@ Centered Kernel Alignment (CKA) and mutual k-NN overlap between two models acros
 reports include the computed metric set plus dataset processing summary, and the
 PNG surface writes a compact metric chart for automation-friendly artifact
 capture. Terminal, JSON, and HTML outputs also include validation summaries for
-both compared models.
+both compared models. Report payloads now also state that dataset-level
+similarity metrics are computed from mean-patch embeddings, with CLS cosine
+surfaced separately when available.
 
 ### `drift` — Track representation changes across checkpoints
 Point it at a directory of `.onnx` checkpoints (different training stages). Each file is loaded as its own session while reusing the selected model's registered preprocessing and tensor contract, then the command reports consecutive checkpoint CKA scores across the dataset. This is useful for understanding when representations materially shift during training.
@@ -167,7 +171,9 @@ the skipped paths in the terminal summary instead of aborting the whole run.
 captures checkpoint ordering, aggregate drift highlights, and dataset skip
 details, while the PNG output writes a consecutive-CKA chart to disk. Terminal,
 JSON, and HTML outputs now also surface per-checkpoint validation summaries so
-training-stage drift is read alongside contract and parity caveats.
+training-stage drift is read alongside contract and parity caveats. Dataset-based
+drift summaries now explicitly state that checkpoint comparisons use mean-patch
+embeddings.
 
 ## Dependencies
 

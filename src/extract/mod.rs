@@ -1,3 +1,3 @@
 pub mod features;
 
-pub use features::ExtractedFeatures;
+pub use features::{EmbeddingBasis, ExtractedFeatures};

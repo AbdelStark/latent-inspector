@@ -293,11 +293,16 @@ fn render_neighbors_html(report: &NeighborsReport) -> String {
     render_secondary_html(
         "Nearest Neighbors",
         &format!(
-            "Query <code>{}</code> searched with model <code>{}</code>.",
+            "Query <code>{}</code> searched with model <code>{}</code> using a <strong>{}</strong> global embedding.",
             escape_html(&report.query_image),
             escape_html(&report.model),
+            escape_html(report.embedding_basis.label()),
         ),
         &[
+            (
+                "Embedding basis",
+                report.embedding_basis.label().to_string(),
+            ),
             ("Requested k", report.requested_k.to_string()),
             ("Neighbors returned", report.neighbors.len().to_string()),
             ("Loaded images", report.dataset_summary.loaded.to_string()),
@@ -349,12 +354,17 @@ fn render_similarity_html(report: &SimilarityReport) -> String {
     render_secondary_html(
         "Representation Similarity",
         &format!(
-            "<code>{}</code> vs <code>{}</code> across <code>{}</code>.",
+            "<code>{}</code> vs <code>{}</code> across <code>{}</code>. Dataset-level similarity metrics use <strong>{}</strong> embeddings.",
             escape_html(&report.model_a),
             escape_html(&report.model_b),
             escape_html(&report.dataset),
+            escape_html(report.dataset_embedding_basis.label()),
         ),
         &[
+            (
+                "Dataset embedding basis",
+                report.dataset_embedding_basis.label().to_string(),
+            ),
             ("Requested mode", report.requested_metric.clone()),
             ("Loaded samples", report.sample_count.to_string()),
             ("Metrics reported", report.metrics.len().to_string()),
@@ -424,11 +434,16 @@ fn render_drift_html(report: &DriftReport) -> String {
     render_secondary_html(
         "Representation Drift",
         &format!(
-            "Model <code>{}</code> across checkpoints in <code>{}</code>.",
+            "Model <code>{}</code> across checkpoints in <code>{}</code>. Consecutive drift uses <strong>{}</strong> embeddings.",
             escape_html(&report.model),
             escape_html(&report.checkpoints),
+            escape_html(report.dataset_embedding_basis.label()),
         ),
         &[
+            (
+                "Dataset embedding basis",
+                report.dataset_embedding_basis.label().to_string(),
+            ),
             ("Checkpoints", report.checkpoint_names.len().to_string()),
             ("Consecutive comparisons", report.drift.len().to_string()),
             (
@@ -972,6 +987,7 @@ mod tests {
             query_image: "query.png".into(),
             dataset: "dataset".into(),
             model: "dinov2".into(),
+            embedding_basis: crate::extract::EmbeddingBasis::ClsToken,
             requested_k: 2,
             dataset_summary: DatasetProcessingSummary {
                 discovered: 3,
@@ -995,6 +1011,7 @@ mod tests {
         assert!(html.contains("Nearest Neighbors"));
         assert!(html.contains("class-a/leaf"));
         assert!(html.contains("Validation Summary"));
+        assert!(html.contains("CLS token"));
         assert!(html.contains("Reference parity matches approved evidence."));
     }
 
@@ -1006,6 +1023,7 @@ mod tests {
             model_a: "dinov2".into(),
             model_b: "clip".into(),
             dataset: "dataset".into(),
+            dataset_embedding_basis: crate::extract::EmbeddingBasis::MeanPatch,
             requested_metric: "all".into(),
             sample_count: 2,
             dataset_summary: DatasetProcessingSummary {
@@ -1029,6 +1047,7 @@ mod tests {
         assert!(html.contains("Linear CKA"));
         assert!(html.contains("CLS tokens unavailable"));
         assert!(html.contains("Validation Summary"));
+        assert!(html.contains("Mean patch"));
         assert!(html.contains("dinov2"));
         assert!(html.contains("clip"));
     }
@@ -1041,6 +1060,7 @@ mod tests {
             "dinov2",
             "checkpoints",
             "dataset",
+            crate::extract::EmbeddingBasis::MeanPatch,
             vec!["step-1".into(), "step-2".into()],
             Some(DatasetProcessingSummary {
                 discovered: 2,
@@ -1062,5 +1082,6 @@ mod tests {
         assert!(html.contains("step-1"));
         assert!(html.contains("Largest shift"));
         assert!(html.contains("Validation Summary"));
+        assert!(html.contains("Mean patch"));
     }
 }

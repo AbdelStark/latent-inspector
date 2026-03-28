@@ -1,6 +1,6 @@
 use crate::analysis::linear_cka;
 use crate::errors::Error;
-use crate::extract::ExtractedFeatures;
+use crate::extract::{EmbeddingBasis, ExtractedFeatures};
 use crate::models::ModelSession;
 use crate::validation::summarize_session_or_unverified;
 use crate::viz::report::{DriftReport, DriftStep};
@@ -52,6 +52,7 @@ pub fn run(args: DriftArgs) -> Result<(), Error> {
             args.model.clone(),
             args.checkpoints.display().to_string(),
             args.dataset.display().to_string(),
+            EmbeddingBasis::MeanPatch,
             Vec::new(),
             None,
             Vec::new(),
@@ -108,6 +109,7 @@ pub fn run(args: DriftArgs) -> Result<(), Error> {
         args.model.clone(),
         args.checkpoints.display().to_string(),
         args.dataset.display().to_string(),
+        EmbeddingBasis::MeanPatch,
         checkpoint_names,
         dataset_summary,
         drift_rows,
