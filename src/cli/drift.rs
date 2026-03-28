@@ -2,6 +2,7 @@ use crate::analysis::linear_cka;
 use crate::errors::Error;
 use crate::extract::ExtractedFeatures;
 use crate::models::ModelSession;
+use crate::validation::summarize_session_or_unverified;
 use crate::viz::report::{DriftReport, DriftStep};
 use crate::viz::{terminal, OutputFormat};
 use clap::Args;
@@ -54,6 +55,7 @@ pub fn run(args: DriftArgs) -> Result<(), Error> {
             Vec::new(),
             None,
             Vec::new(),
+            Vec::new(),
         );
         render_output(&args, &report)?;
         return Ok(());
@@ -69,12 +71,20 @@ pub fn run(args: DriftArgs) -> Result<(), Error> {
     // For each checkpoint, embed the dataset
     let mut all_embeddings: Vec<(String, Array2<f32>)> = Vec::new();
     let mut dataset_summary = None;
+    let mut validation = Vec::with_capacity(ckpt_paths.len());
 
     for ckpt_path in &ckpt_paths {
         let ckpt_name = checkpoint_name(ckpt_path);
         info!("Processing checkpoint: {ckpt_name}");
 
         let mut session = ModelSession::load_checkpoint(&args.model, ckpt_path)?;
+        let mut summary = summarize_session_or_unverified(&mut session, None);
+        summary.model = ckpt_name.clone();
+        summary.caveats.push(
+            "Checkpoint drift runs reuse the registered preprocessing and tensor contract, while reference parity remains anchored to the approved release artifact rather than this checkpoint."
+                .to_string(),
+        );
+        validation.push(summary);
         let (embedding, summary) = embed_dataset(&mut session, &args.dataset)?;
         if dataset_summary.is_none() {
             dataset_summary = Some(summary);
@@ -101,6 +111,7 @@ pub fn run(args: DriftArgs) -> Result<(), Error> {
         checkpoint_names,
         dataset_summary,
         drift_rows,
+        validation,
     );
     render_output(&args, &report)?;
 

@@ -125,17 +125,10 @@ fn render_html(
     let highlights = render_overview_cards(&overview);
     let comparison_table = render_comparison_table(&comparison_rows);
     let matrix_sections = render_matrix_sections(&overview);
-    let validation_section = if validation.is_empty() {
-        "<p class=\"empty-state\">No validation evidence was attached to this report.</p>"
-            .to_string()
-    } else {
-        let validation_rows = validation
-            .iter()
-            .map(render_validation_row)
-            .collect::<Vec<_>>()
-            .join("\n");
-        format!("<div class=\"validation-grid\">{validation_rows}</div>")
-    };
+    let validation_section = render_validation_section_body(
+        validation,
+        "No validation evidence was attached to this report.",
+    );
 
     format!(
         r#"<!DOCTYPE html>
@@ -280,6 +273,21 @@ fn render_neighbors_html(report: &NeighborsReport) -> String {
         )
     };
 
+    let sections = vec![
+        ("Top Matches", table),
+        (
+            "Dataset Processing",
+            render_dataset_summary_html(&report.dataset_summary),
+        ),
+        (
+            "Validation Summary",
+            render_validation_section_body(
+                std::slice::from_ref(&report.validation),
+                "No validation evidence was attached to this report.",
+            ),
+        ),
+    ];
+
     render_secondary_html(
         "Nearest Neighbors",
         &format!(
@@ -292,13 +300,7 @@ fn render_neighbors_html(report: &NeighborsReport) -> String {
             ("Neighbors returned", report.neighbors.len().to_string()),
             ("Loaded images", report.dataset_summary.loaded.to_string()),
         ],
-        &[
-            ("Top Matches", table),
-            (
-                "Dataset Processing",
-                render_dataset_summary_html(&report.dataset_summary),
-            ),
-        ],
+        &sections,
     )
 }
 
@@ -327,6 +329,21 @@ fn render_similarity_html(report: &SimilarityReport) -> String {
         .map(|note| format!("<p class=\"caveat\">{}</p>", escape_html(note)))
         .unwrap_or_default();
 
+    let sections = vec![
+        ("Similarity Metrics", format!("{metrics}{note}")),
+        (
+            "Dataset Processing",
+            render_dataset_summary_html(&report.dataset_summary),
+        ),
+        (
+            "Validation Summary",
+            render_validation_section_body(
+                &report.validation,
+                "No validation evidence was attached to this report.",
+            ),
+        ),
+    ];
+
     render_secondary_html(
         "Representation Similarity",
         &format!(
@@ -340,13 +357,7 @@ fn render_similarity_html(report: &SimilarityReport) -> String {
             ("Loaded samples", report.sample_count.to_string()),
             ("Metrics reported", report.metrics.len().to_string()),
         ],
-        &[
-            ("Similarity Metrics", format!("{metrics}{note}")),
-            (
-                "Dataset Processing",
-                render_dataset_summary_html(&report.dataset_summary),
-            ),
-        ],
+        &sections,
     )
 }
 
@@ -395,6 +406,19 @@ fn render_drift_html(report: &DriftReport) -> String {
                 .to_string()
         });
 
+    let sections = vec![
+        ("Consecutive Drift", rows),
+        ("Highlights", largest_shift),
+        ("Dataset Processing", summary_section),
+        (
+            "Validation Summary",
+            render_validation_section_body(
+                &report.validation,
+                "No validation evidence was attached to this report.",
+            ),
+        ),
+    ];
+
     render_secondary_html(
         "Representation Drift",
         &format!(
@@ -413,12 +437,27 @@ fn render_drift_html(report: &DriftReport) -> String {
                     .unwrap_or_else(|| "N/A".to_string()),
             ),
         ],
-        &[
-            ("Consecutive Drift", rows),
-            ("Highlights", largest_shift),
-            ("Dataset Processing", summary_section),
-        ],
+        &sections,
     )
+}
+
+fn render_validation_section_body(
+    validation: &[ModelValidationSummary],
+    empty_message: &str,
+) -> String {
+    if validation.is_empty() {
+        format!(
+            "<p class=\"empty-state\">{}</p>",
+            escape_html(empty_message)
+        )
+    } else {
+        let validation_rows = validation
+            .iter()
+            .map(render_validation_row)
+            .collect::<Vec<_>>()
+            .join("\n");
+        format!("<div class=\"validation-grid\">{validation_rows}</div>")
+    }
 }
 
 fn render_validation_row(summary: &ModelValidationSummary) -> String {
@@ -637,6 +676,9 @@ fn render_secondary_html(
     --text: #e6edf3;
     --muted: #8b949e;
     --accent: #79c0ff;
+    --ok: #3fb950;
+    --warn: #d29922;
+    --bad: #f85149;
     --border: #30363d;
   }}
   body {{ font-family: 'Segoe UI', system-ui, sans-serif; margin: 2rem; background: radial-gradient(circle at top, #182032 0%, var(--bg) 45%); color: var(--text); }}
@@ -649,6 +691,14 @@ fn render_secondary_html(
   th {{ background: var(--panel); padding: 0.5rem 1rem; text-align: left; color: var(--accent); border-bottom: 2px solid var(--border); }}
   td {{ padding: 0.4rem 1rem; border-bottom: 1px solid #21262d; vertical-align: top; }}
   tr:hover td {{ background: #161b22; }}
+  .badge {{ font-size: 0.8em; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--border); background: #1f2937; text-transform: uppercase; letter-spacing: 0.04em; }}
+  .badge.validated {{ color: var(--ok); border-color: rgba(63,185,80,0.35); }}
+  .badge.partial, .badge.stale {{ color: var(--warn); border-color: rgba(210,153,34,0.35); }}
+  .badge.failed, .badge.unverified {{ color: var(--bad); border-color: rgba(248,81,73,0.35); }}
+  .validation-grid {{ display: grid; gap: 1rem; }}
+  .validation-card {{ border: 1px solid var(--border); border-radius: 14px; padding: 1rem; background: rgba(255,255,255,0.02); }}
+  .delta-list {{ margin: 0.5rem 0 0; padding-left: 1.1rem; color: var(--muted); }}
+  .delta-list li {{ margin: 0.25rem 0; }}
   .empty-state, .caveat, li {{ color: var(--muted); }}
   ul {{ margin: 0.6rem 0 0; padding-left: 1.2rem; }}
   code {{ color: #c9d1d9; }}
@@ -730,11 +780,33 @@ fn escape_html(s: &str) -> String {
 mod tests {
     use super::*;
     use crate::dataset::{DatasetProcessingSummary, SkippedImage};
+    use crate::validation::report::{
+        CheckSummary, ModelValidationSummary, ParityValidationSummary, TensorValidationSummary,
+        ValidationStatus,
+    };
     use crate::viz::report::{
         DriftReport, DriftStep, NeighborMatch, NeighborsReport, SimilarityMetricValue,
         SimilarityReport,
     };
     use tempfile::tempdir;
+
+    fn validation_summary(model: &str) -> ModelValidationSummary {
+        ModelValidationSummary::from_checks(
+            model,
+            "2026-03-28T00:00:00Z",
+            CheckSummary::validated("Preprocess matches contract."),
+            vec![TensorValidationSummary {
+                name: "last_hidden_state".into(),
+                role: "patch embeddings".into(),
+                status: ValidationStatus::Validated,
+                summary: "Tensor semantics match the registry contract.".into(),
+            }],
+            ParityValidationSummary::new(
+                ValidationStatus::Validated,
+                "Reference parity matches approved evidence.",
+            ),
+        )
+    }
 
     #[test]
     fn test_html_contains_title() {
@@ -824,12 +896,15 @@ mod tests {
                 image: "class-a/leaf".into(),
                 similarity: 0.91,
             }],
+            validation: validation_summary("dinov2"),
         };
 
         write_neighbors_report(&report, &path).unwrap();
         let html = std::fs::read_to_string(&path).unwrap();
         assert!(html.contains("Nearest Neighbors"));
         assert!(html.contains("class-a/leaf"));
+        assert!(html.contains("Validation Summary"));
+        assert!(html.contains("Reference parity matches approved evidence."));
     }
 
     #[test]
@@ -854,6 +929,7 @@ mod tests {
                 value: 0.77,
             }],
             note: Some("N/A (CLS tokens unavailable)".into()),
+            validation: vec![validation_summary("dinov2"), validation_summary("clip")],
         };
 
         write_similarity_report(&report, &path).unwrap();
@@ -861,6 +937,9 @@ mod tests {
         assert!(html.contains("Representation Similarity"));
         assert!(html.contains("Linear CKA"));
         assert!(html.contains("CLS tokens unavailable"));
+        assert!(html.contains("Validation Summary"));
+        assert!(html.contains("dinov2"));
+        assert!(html.contains("clip"));
     }
 
     #[test]
@@ -883,6 +962,7 @@ mod tests {
                 to_checkpoint: "step-2".into(),
                 linear_cka: 0.88,
             }],
+            vec![validation_summary("step-1"), validation_summary("step-2")],
         );
 
         write_drift_report(&report, &path).unwrap();
@@ -890,5 +970,6 @@ mod tests {
         assert!(html.contains("Representation Drift"));
         assert!(html.contains("step-1"));
         assert!(html.contains("Largest shift"));
+        assert!(html.contains("Validation Summary"));
     }
 }

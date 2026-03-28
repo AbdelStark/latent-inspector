@@ -2,6 +2,7 @@ use crate::analysis::{cls_cosine_similarity, knn_overlap, linear_cka};
 use crate::errors::Error;
 use crate::extract::ExtractedFeatures;
 use crate::models::ModelSession;
+use crate::validation::summarize_session_or_unverified;
 use crate::viz::report::{SimilarityMetricValue, SimilarityReport};
 use crate::viz::OutputFormat;
 use clap::Args;
@@ -44,6 +45,12 @@ pub fn run(args: SimilarityArgs) -> Result<(), Error> {
 
     let mut session_a = ModelSession::load(&args.model_a)?;
     let mut session_b = ModelSession::load(&args.model_b)?;
+    let (label_a, label_b) = similarity_validation_labels(&args.model_a, &args.model_b);
+
+    let mut validation_a = summarize_session_or_unverified(&mut session_a, None);
+    validation_a.model = label_a;
+    let mut validation_b = summarize_session_or_unverified(&mut session_b, None);
+    validation_b.model = label_b;
 
     let mut cls_a: Vec<ndarray::Array1<f32>> = Vec::new();
     let mut cls_b: Vec<ndarray::Array1<f32>> = Vec::new();
@@ -132,10 +139,19 @@ pub fn run(args: SimilarityArgs) -> Result<(), Error> {
         dataset_summary,
         metrics,
         note,
+        validation: vec![validation_a, validation_b],
     };
     render_output(&args, &report)?;
 
     Ok(())
+}
+
+fn similarity_validation_labels(model_a: &str, model_b: &str) -> (String, String) {
+    if model_a == model_b {
+        (format!("{model_a}#1"), format!("{model_b}#2"))
+    } else {
+        (model_a.to_string(), model_b.to_string())
+    }
 }
 
 fn mean_cls_cosine(
@@ -199,4 +215,20 @@ fn render_output(args: &SimilarityArgs, report: &SimilarityReport) -> Result<(),
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::similarity_validation_labels;
+
+    #[test]
+    fn duplicate_similarity_models_receive_stable_validation_labels() {
+        assert_eq!(
+            similarity_validation_labels("dinov2-vit-l14", "dinov2-vit-l14"),
+            (
+                "dinov2-vit-l14#1".to_string(),
+                "dinov2-vit-l14#2".to_string()
+            )
+        );
+    }
 }

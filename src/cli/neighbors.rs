@@ -1,6 +1,7 @@
 use crate::errors::Error;
 use crate::extract::ExtractedFeatures;
 use crate::models::ModelSession;
+use crate::validation::summarize_session_or_unverified;
 use crate::viz::report::{NeighborMatch, NeighborsReport};
 use crate::viz::OutputFormat;
 use clap::Args;
@@ -40,6 +41,7 @@ pub fn run(args: NeighborsArgs) -> Result<(), Error> {
     );
 
     let mut session = ModelSession::load(&args.model)?;
+    let validation = summarize_session_or_unverified(&mut session, None);
 
     // Embed query image
     let query_img = image::open(&args.image)?;
@@ -115,6 +117,7 @@ pub fn run(args: NeighborsArgs) -> Result<(), Error> {
         requested_k: args.k,
         dataset_summary,
         neighbors,
+        validation,
     };
     render_output(&args, &report)?;
 

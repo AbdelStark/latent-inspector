@@ -62,6 +62,8 @@ fn neighbors_recurses_into_nested_dataset_and_reports_skips() {
     assert!(stdout.contains("Nearest neighbors"));
     assert!(stdout.contains("class-a/leaf"));
     assert!(stdout.contains("Dataset Summary"));
+    assert!(stdout.contains("Validation Summary"));
+    assert!(stdout.contains("validated"));
     assert!(stdout.contains("Skipped images:"));
     assert!(stdout.contains("broken.png"));
 }
@@ -101,6 +103,8 @@ fn similarity_recurses_into_nested_dataset_and_reports_skips() {
     assert!(stdout.contains("k-NN overlap (k=10):"));
     assert!(stdout.contains("Mean CLS cosine sim:"));
     assert!(stdout.contains("Dataset Summary"));
+    assert!(stdout.contains("Validation Summary"));
+    assert!(stdout.contains("validated"));
     assert!(stdout.contains("broken.png"));
 }
 
@@ -143,12 +147,52 @@ fn neighbors_json_output_writes_structured_report() {
     assert_eq!(payload["requested_k"], 2);
     assert_eq!(payload["dataset_summary"]["loaded"], 2);
     assert_eq!(payload["dataset_summary"]["skipped"], 1);
+    assert_eq!(payload["validation"]["model"], "dinov2-vit-l14");
+    assert_eq!(payload["validation"]["status"], "validated");
     assert_eq!(payload["neighbors"].as_array().unwrap().len(), 2);
     assert!(payload["neighbors"]
         .as_array()
         .unwrap()
         .iter()
         .any(|neighbor| neighbor["image"] == "class-a/leaf"));
+}
+
+#[test]
+fn neighbors_html_output_includes_validation_summary() {
+    let dir = tempdir().unwrap();
+    let dataset_dir = dir.path().join("dataset");
+    let nested = dataset_dir.join("class-a");
+    fs::create_dir_all(&nested).unwrap();
+
+    let query_path = write_query_image(dir.path());
+    write_image(&dataset_dir.join("root.png"), 11);
+    write_image(&nested.join("leaf.png"), 29);
+
+    let output_dir = dir.path().join("neighbors-html");
+    let output = Command::new(bin())
+        .env("LATENT_INSPECTOR_MODEL_BACKEND", "stub")
+        .args([
+            "neighbors",
+            query_path.to_str().unwrap(),
+            "--model",
+            "dinov2-vit-l14",
+            "--dataset",
+            dataset_dir.to_str().unwrap(),
+            "--k",
+            "2",
+            "--format",
+            "html",
+            "--output",
+            output_dir.to_str().unwrap(),
+        ])
+        .output()
+        .unwrap();
+
+    assert_eq!(output.status.code(), Some(0));
+
+    let html = fs::read_to_string(output_dir.join("report.html")).unwrap();
+    assert!(html.contains("Validation Summary"));
+    assert!(html.contains("dinov2-vit-l14"));
 }
 
 #[test]
@@ -191,6 +235,9 @@ fn similarity_json_output_writes_structured_report() {
     assert_eq!(payload["requested_metric"], "all");
     assert_eq!(payload["sample_count"], 2);
     assert_eq!(payload["dataset_summary"]["skipped"], 1);
+    assert_eq!(payload["validation"].as_array().unwrap().len(), 2);
+    assert_eq!(payload["validation"][0]["status"], "validated");
+    assert_eq!(payload["validation"][1]["status"], "validated");
     let metric_keys = payload["metrics"]
         .as_array()
         .unwrap()
@@ -200,4 +247,43 @@ fn similarity_json_output_writes_structured_report() {
     assert!(metric_keys.contains(&"linear_cka"));
     assert!(metric_keys.contains(&"knn_overlap_k10"));
     assert!(metric_keys.contains(&"mean_cls_cosine"));
+}
+
+#[test]
+fn similarity_html_output_includes_validation_summary() {
+    let dir = tempdir().unwrap();
+    let dataset_dir = dir.path().join("dataset");
+    let nested = dataset_dir.join("class-b").join("deep");
+    fs::create_dir_all(&nested).unwrap();
+
+    write_image(&dataset_dir.join("root.png"), 17);
+    write_image(&nested.join("leaf.png"), 31);
+
+    let output_dir = dir.path().join("similarity-html");
+    let output = Command::new(bin())
+        .env("LATENT_INSPECTOR_MODEL_BACKEND", "stub")
+        .args([
+            "similarity",
+            "--model-a",
+            "dinov2-vit-l14",
+            "--model-b",
+            "dinov2-vit-l14",
+            "--dataset",
+            dataset_dir.to_str().unwrap(),
+            "--metric",
+            "all",
+            "--format",
+            "html",
+            "--output",
+            output_dir.to_str().unwrap(),
+        ])
+        .output()
+        .unwrap();
+
+    assert_eq!(output.status.code(), Some(0));
+
+    let html = fs::read_to_string(output_dir.join("report.html")).unwrap();
+    assert!(html.contains("Validation Summary"));
+    assert!(html.contains("dinov2-vit-l14#1"));
+    assert!(html.contains("dinov2-vit-l14#2"));
 }

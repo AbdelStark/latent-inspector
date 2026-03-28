@@ -51,7 +51,7 @@ latent-inspector makes these differences visible and measurable.
 - `validate` checks preprocessing against the approved model contract
 - `validate` verifies the exported ONNX tensor name, shape, and CLS semantics
 - `validate` compares observed outputs against checked-in aggregate and per-fixture reference evidence
-- `compare` and `inspect` now embed the latest validation summary in terminal, JSON, and HTML reports
+- `compare`, `inspect`, `neighbors`, `similarity`, and `drift` now embed validation summaries in terminal, JSON, and HTML reports
 
 ## Why Rust?
 
@@ -144,14 +144,17 @@ lists.
 `neighbors` now supports `--format terminal|json|html|png`; JSON prints to
 stdout by default or writes `neighbors.json` when `--output <dir>` is provided,
 while HTML/PNG emit a shareable report or ranking chart under
-`neighbors_output/` (or the requested output directory).
+`neighbors_output/` (or the requested output directory). Terminal, JSON, and
+HTML reports also attach the active model's validation summary so nearest-neighbor
+results keep their trust context.
 
 ### `similarity` — Representation alignment between models
 Centered Kernel Alignment (CKA) and mutual k-NN overlap between two models across a dataset. Answers: "How similarly do these two models represent the world?"
 `similarity` now supports `--format terminal|json|html|png`; the JSON/HTML
 reports include the computed metric set plus dataset processing summary, and the
 PNG surface writes a compact metric chart for automation-friendly artifact
-capture.
+capture. Terminal, JSON, and HTML outputs also include validation summaries for
+both compared models.
 
 ### `drift` — Track representation changes across checkpoints
 Point it at a directory of `.onnx` checkpoints (different training stages). Each file is loaded as its own session while reusing the selected model's registered preprocessing and tensor contract, then the command reports consecutive checkpoint CKA scores across the dataset. This is useful for understanding when representations materially shift during training.
@@ -162,7 +165,9 @@ now skips that file, continues processing the rest of the dataset, and reports
 the skipped paths in the terminal summary instead of aborting the whole run.
 `drift` also supports `--format terminal|json|html|png`; the structured report
 captures checkpoint ordering, aggregate drift highlights, and dataset skip
-details, while the PNG output writes a consecutive-CKA chart to disk.
+details, while the PNG output writes a consecutive-CKA chart to disk. Terminal,
+JSON, and HTML outputs now also surface per-checkpoint validation summaries so
+training-stage drift is read alongside contract and parity caveats.
 
 ## Dependencies
 

@@ -241,6 +241,7 @@ pub fn print_neighbors_report(report: &NeighborsReport) {
         );
     }
     print_dataset_processing_summary(&report.dataset_summary);
+    print_validation_summaries(std::slice::from_ref(&report.validation));
 }
 
 pub fn print_similarity_report(report: &SimilarityReport) {
@@ -261,6 +262,9 @@ pub fn print_similarity_report(report: &SimilarityReport) {
     }
 
     print_dataset_processing_summary(&report.dataset_summary);
+    if !report.validation.is_empty() {
+        print_validation_summaries(&report.validation);
+    }
 }
 
 pub fn print_dataset_processing_summary(summary: &DatasetProcessingSummary) {
@@ -306,6 +310,9 @@ pub fn print_drift_report(report: &DriftReport) {
         })
         .collect::<Vec<_>>();
     print_drift_summary(&report.checkpoint_names, &rows);
+    if !report.validation.is_empty() {
+        print_validation_summaries(&report.validation);
+    }
 }
 
 pub fn print_drift_summary(checkpoints: &[String], drift_rows: &[(String, String, f32)]) {

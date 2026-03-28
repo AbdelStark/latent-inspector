@@ -166,6 +166,7 @@ pub struct NeighborsReport {
     pub requested_k: usize,
     pub dataset_summary: DatasetProcessingSummary,
     pub neighbors: Vec<NeighborMatch>,
+    pub validation: ModelValidationSummary,
 }
 
 impl NeighborsReport {
@@ -195,6 +196,8 @@ pub struct SimilarityReport {
     pub metrics: Vec<SimilarityMetricValue>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub note: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub validation: Vec<ModelValidationSummary>,
 }
 
 impl SimilarityReport {
@@ -230,6 +233,8 @@ pub struct DriftReport {
     pub mean_consecutive_cka: Option<f32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub largest_shift: Option<DriftStep>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub validation: Vec<ModelValidationSummary>,
 }
 
 impl DriftReport {
@@ -240,6 +245,7 @@ impl DriftReport {
         checkpoint_names: Vec<String>,
         dataset_summary: Option<DatasetProcessingSummary>,
         drift: Vec<DriftStep>,
+        validation: Vec<ModelValidationSummary>,
     ) -> Self {
         let mean_consecutive_cka = (!drift.is_empty())
             .then(|| drift.iter().map(|step| step.linear_cka).sum::<f32>() / drift.len() as f32);
@@ -257,6 +263,7 @@ impl DriftReport {
             drift,
             mean_consecutive_cka,
             largest_shift,
+            validation,
         }
     }
 
@@ -579,6 +586,7 @@ mod tests {
                     similarity: 0.82,
                 },
             ],
+            validation: validation_summary("dinov2"),
         };
 
         assert_eq!(report.similarity_series(), vec![0.91, 0.82]);
@@ -611,6 +619,7 @@ mod tests {
                 },
             ],
             note: None,
+            validation: vec![validation_summary("dinov2"), validation_summary("clip")],
         };
 
         assert_eq!(report.metric_value("linear_cka"), Some(0.77));
@@ -643,6 +652,7 @@ mod tests {
                     linear_cka: 0.71,
                 },
             ],
+            vec![validation_summary("step-1"), validation_summary("step-2")],
         );
 
         assert_eq!(report.mean_consecutive_cka, Some(0.82));
@@ -655,5 +665,6 @@ mod tests {
             })
         );
         assert_eq!(report.cka_series(), vec![0.93, 0.71]);
+        assert_eq!(report.validation.len(), 2);
     }
 }

@@ -71,6 +71,7 @@ fn drift_reports_consecutive_checkpoint_scores() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("Representation Drift"));
     assert!(stdout.contains("Dataset Summary"));
+    assert!(stdout.contains("Validation Summary"));
     assert!(stdout.contains("broken.png"));
     assert!(stdout.contains("step-1"));
     assert!(stdout.contains("step-2"));
@@ -139,6 +140,16 @@ fn drift_json_and_png_outputs_are_written() {
     assert_eq!(payload["dataset_summary"]["skipped"], 1);
     assert_eq!(payload["largest_shift"]["from_checkpoint"], "step-2");
     assert_eq!(payload["largest_shift"]["to_checkpoint"], "step-10");
+    assert_eq!(payload["validation"].as_array().unwrap().len(), 3);
+    assert_eq!(payload["validation"][0]["model"], "step-1");
+    assert!(payload["validation"][0]["caveats"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|caveat| caveat
+            .as_str()
+            .unwrap()
+            .contains("approved release artifact")));
     assert!(
         payload["drift"][0]["linear_cka"].as_f64().unwrap()
             > payload["drift"][1]["linear_cka"].as_f64().unwrap()
@@ -165,4 +176,44 @@ fn drift_json_and_png_outputs_are_written() {
 
     assert_eq!(png_output.status.code(), Some(0));
     assert!(png_output_dir.join("consecutive_cka.png").exists());
+}
+
+#[test]
+fn drift_html_output_includes_validation_summary() {
+    let dir = tempdir().unwrap();
+    let dataset_dir = dir.path().join("dataset");
+    let checkpoints_dir = dir.path().join("checkpoints");
+    fs::create_dir_all(&dataset_dir).unwrap();
+    fs::create_dir_all(&checkpoints_dir).unwrap();
+
+    write_dataset_image(&dataset_dir, "sample-a", 5);
+    write_dataset_image(&dataset_dir, "sample-b", 29);
+    fs::write(checkpoints_dir.join("step-1.onnx"), b"checkpoint-a").unwrap();
+    fs::write(checkpoints_dir.join("step-2.onnx"), b"checkpoint-b").unwrap();
+
+    let output_dir = dir.path().join("drift-html");
+    let output = Command::new(bin())
+        .env("LATENT_INSPECTOR_MODEL_BACKEND", "stub")
+        .args([
+            "drift",
+            "--model",
+            "dinov2-vit-l14",
+            "--checkpoints",
+            checkpoints_dir.to_str().unwrap(),
+            "--dataset",
+            dataset_dir.to_str().unwrap(),
+            "--format",
+            "html",
+            "--output",
+            output_dir.to_str().unwrap(),
+        ])
+        .output()
+        .unwrap();
+
+    assert_eq!(output.status.code(), Some(0));
+
+    let html = fs::read_to_string(output_dir.join("report.html")).unwrap();
+    assert!(html.contains("Validation Summary"));
+    assert!(html.contains("step-1"));
+    assert!(html.contains("step-2"));
 }
