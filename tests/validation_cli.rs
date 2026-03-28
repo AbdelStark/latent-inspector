@@ -106,6 +106,46 @@ fn validate_json_output_matches_contract_shape() {
 }
 
 #[test]
+fn validate_html_output_writes_companion_json_bundle() {
+    let outdir = tempdir().unwrap();
+    let output = run(&[
+        "validate",
+        "--model",
+        "dinov2-vit-l14",
+        "--format",
+        "html",
+        "--output",
+        outdir.path().to_str().unwrap(),
+    ]);
+
+    assert_eq!(output.status.code(), Some(1));
+    let html = fs::read_to_string(outdir.path().join("validation.html")).unwrap();
+    assert!(html.contains("Validation Summary"));
+    assert!(html.contains("dinov2-vit-l14"));
+    assert!(html.contains("Stub backend"));
+
+    let payload = read_json(&outdir.path().join("validation.json"));
+    let summary = &payload[0];
+    assert_eq!(summary["model"], "dinov2-vit-l14");
+    assert_eq!(summary["status"], "unverified");
+
+    let manifest = read_artifact_manifest(outdir.path());
+    assert_eq!(manifest["command"], "validate");
+    assert_eq!(manifest["format"], "html");
+    assert_eq!(manifest["primary_artifact"], "validation.html");
+    assert!(manifest["artifacts"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|artifact| artifact["path"] == "validation.html"));
+    assert!(manifest["artifacts"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|artifact| artifact["path"] == "validation.json"));
+}
+
+#[test]
 fn validate_detects_reference_drift() {
     let fixtures = copy_fixture_dir();
     let reference_path = fixtures.path().join("dinov2-vit-l14.reference.json");
@@ -284,6 +324,9 @@ fn inspect_html_includes_variance_spectrum_and_validation_summary() {
     assert!(html.contains("Validation Summary"));
     assert!(html.contains("dinov2-vit-l14"));
     assert!(html.contains("Stub backend"));
+    let payload = read_json(&output_dir.join("inspect.json"));
+    assert_eq!(payload["model"], "dinov2-vit-l14");
+    assert_eq!(payload["validation"]["status"], "unverified");
     assert!(output_dir.join("dinov2-vit-l14_pca.png").exists());
     assert!(output_dir.join("dinov2-vit-l14_variance.png").exists());
     let manifest = read_artifact_manifest(&output_dir);
@@ -295,6 +338,11 @@ fn inspect_html_includes_variance_spectrum_and_validation_summary() {
         .unwrap()
         .iter()
         .any(|artifact| artifact["path"] == "report.html"));
+    assert!(manifest["artifacts"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|artifact| artifact["path"] == "inspect.json"));
     assert!(manifest["artifacts"]
         .as_array()
         .unwrap()
@@ -335,6 +383,12 @@ fn compare_html_embeds_visual_assets_and_validation_summary() {
     assert!(html.contains("dinov2-vit-l14_1_pca.png"));
     assert!(html.contains("dinov2-vit-l14_2_pca.png"));
     assert!(html.contains("linear_cka.png"));
+    let payload = read_json(&output_dir.join("compare.json"));
+    assert_eq!(
+        payload["requested_models"],
+        Value::from(vec!["dinov2-vit-l14", "dinov2-vit-l14"])
+    );
+    assert_eq!(payload["validation"].as_array().unwrap().len(), 2);
     assert!(output_dir.join("dinov2-vit-l14_1_pca.png").exists());
     assert!(output_dir.join("dinov2-vit-l14_2_pca.png").exists());
     assert!(output_dir.join("cls_cosine.png").exists());
@@ -345,6 +399,11 @@ fn compare_html_embeds_visual_assets_and_validation_summary() {
     assert_eq!(manifest["command"], "compare");
     assert_eq!(manifest["format"], "html");
     assert_eq!(manifest["primary_artifact"], "report.html");
+    assert!(manifest["artifacts"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|artifact| artifact["path"] == "compare.json"));
     assert!(manifest["artifacts"]
         .as_array()
         .unwrap()

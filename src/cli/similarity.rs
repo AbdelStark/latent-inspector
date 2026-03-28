@@ -206,11 +206,17 @@ fn render_output(args: &SimilarityArgs, report: &SimilarityReport) -> Result<(),
                 .unwrap_or_else(|| PathBuf::from("similarity_output"));
             std::fs::create_dir_all(&outdir)?;
             let assets = render_similarity_assets(report, &outdir)?;
+            crate::viz::json::write_similarity_report(report, &outdir.join("similarity.json"))?;
             let path = outdir.join("report.html");
             crate::viz::html::write_similarity_report_with_assets(report, &assets, &path)?;
             let mut manifest = OutputArtifactManifest::new("similarity", OutputFormat::Html)
                 .with_primary_artifact("report.html")
                 .add_artifact("report.html", ArtifactKind::Html, "Similarity report")
+                .add_artifact(
+                    "similarity.json",
+                    ArtifactKind::Json,
+                    "Similarity report data",
+                )
                 .with_validation(&report.validation);
             for asset in &assets.visuals {
                 manifest = manifest.add_artifact(

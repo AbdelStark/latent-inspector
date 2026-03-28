@@ -131,12 +131,14 @@ pub fn run(args: InspectArgs) -> Result<(), Error> {
                 .unwrap_or_else(|| PathBuf::from("inspect_output"));
             std::fs::create_dir_all(&outdir)?;
             let assets = write_inspect_visual_artifacts(&features, &report, &outdir)?;
+            crate::viz::json::write_inspect_report(&report, &outdir.join("inspect.json"))?;
             crate::viz::html::write_inspect_report_with_assets(
                 &report,
                 &assets,
                 &outdir.join("report.html"),
             )?;
             let manifest = build_inspect_manifest(&report, Some(&assets), OutputFormat::Html)
+                .add_artifact("inspect.json", ArtifactKind::Json, "Inspect report data")
                 .add_artifact("report.html", ArtifactKind::Html, "Inspect report")
                 .with_primary_artifact("report.html");
             manifest.write_to_dir(&outdir)?;

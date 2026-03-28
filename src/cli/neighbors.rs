@@ -160,11 +160,17 @@ fn render_output(args: &NeighborsArgs, report: &NeighborsReport) -> Result<(), E
                 .unwrap_or_else(|| PathBuf::from("neighbors_output"));
             std::fs::create_dir_all(&outdir)?;
             let assets = render_neighbors_assets(report, &outdir)?;
+            crate::viz::json::write_neighbors_report(report, &outdir.join("neighbors.json"))?;
             let path = outdir.join("report.html");
             crate::viz::html::write_neighbors_report_with_assets(report, &assets, &path)?;
             let mut manifest = OutputArtifactManifest::new("neighbors", OutputFormat::Html)
                 .with_primary_artifact("report.html")
                 .add_artifact("report.html", ArtifactKind::Html, "Neighbors report")
+                .add_artifact(
+                    "neighbors.json",
+                    ArtifactKind::Json,
+                    "Neighbors report data",
+                )
                 .with_validation(std::slice::from_ref(&report.validation));
             for asset in &assets.visuals {
                 manifest = manifest.add_artifact(

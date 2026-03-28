@@ -139,6 +139,7 @@ pub fn run(args: CompareArgs) -> Result<(), Error> {
                 .file_name()
                 .and_then(|n| n.to_str())
                 .unwrap_or("image");
+            crate::viz::json::write_compare_report(&report, &outdir.join("compare.json"))?;
             crate::viz::html::write_report_with_validation_and_assets(
                 image_name,
                 &report.metrics,
@@ -150,6 +151,7 @@ pub fn run(args: CompareArgs) -> Result<(), Error> {
             let mut manifest = OutputArtifactManifest::new("compare", OutputFormat::Html)
                 .with_primary_artifact("report.html")
                 .add_artifact("report.html", ArtifactKind::Html, "Compare report")
+                .add_artifact("compare.json", ArtifactKind::Json, "Compare report data")
                 .with_validation(&report.validation);
             manifest = add_png_artifacts(manifest, &pca_artifacts);
             manifest = add_png_artifacts(manifest, &heatmap_artifacts);

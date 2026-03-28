@@ -237,11 +237,19 @@ fn drift_html_output_embeds_chart_and_validation_summary() {
     assert!(html.contains("Validation Summary"));
     assert!(html.contains("step-1"));
     assert!(html.contains("step-2"));
+    let payload = read_json(&output_dir.join("drift.json"));
+    assert_eq!(payload["model"], "dinov2-vit-l14");
+    assert_eq!(payload["validation"].as_array().unwrap().len(), 2);
     assert!(output_dir.join("consecutive_cka.png").exists());
     let manifest = read_artifact_manifest(&output_dir);
     assert_eq!(manifest["command"], "drift");
     assert_eq!(manifest["format"], "html");
     assert_eq!(manifest["primary_artifact"], "report.html");
+    assert!(manifest["artifacts"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|artifact| artifact["path"] == "drift.json"));
     assert!(manifest["artifacts"]
         .as_array()
         .unwrap()

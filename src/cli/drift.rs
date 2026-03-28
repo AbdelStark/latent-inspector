@@ -146,11 +146,13 @@ fn render_output(args: &DriftArgs, report: &DriftReport) -> Result<(), Error> {
                 .unwrap_or_else(|| PathBuf::from("drift_output"));
             std::fs::create_dir_all(&outdir)?;
             let assets = render_drift_assets(report, &outdir)?;
+            crate::viz::json::write_drift_report(report, &outdir.join("drift.json"))?;
             let path = outdir.join("report.html");
             crate::viz::html::write_drift_report_with_assets(report, &assets, &path)?;
             let mut manifest = OutputArtifactManifest::new("drift", OutputFormat::Html)
                 .with_primary_artifact("report.html")
                 .add_artifact("report.html", ArtifactKind::Html, "Drift report")
+                .add_artifact("drift.json", ArtifactKind::Json, "Drift report data")
                 .with_validation(&report.validation);
             for asset in &assets.visuals {
                 manifest = manifest.add_artifact(

@@ -116,11 +116,23 @@ fn models_html_output_writes_shareable_catalog() {
     assert!(html.contains("Runtime"));
     assert!(html.contains("dinov2-vit-l14"));
     assert!(html.contains("Registry availability, cache state, and validation evidence"));
+    let payload = read_json(&outdir.path().join("models.json"));
+    assert_eq!(payload["summary"]["total_models"], 6);
+    assert_eq!(payload["summary"]["ready_models"], 1);
     let manifest = read_artifact_manifest(outdir.path());
     assert_eq!(manifest["command"], "models");
     assert_eq!(manifest["format"], "html");
     assert_eq!(manifest["primary_artifact"], "models.html");
-    assert_eq!(manifest["artifacts"][0]["path"], "models.html");
+    assert!(manifest["artifacts"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|artifact| artifact["path"] == "models.html"));
+    assert!(manifest["artifacts"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|artifact| artifact["path"] == "models.json"));
 }
 
 #[test]

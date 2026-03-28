@@ -136,10 +136,16 @@ fn render_validate_output(
                 .clone()
                 .unwrap_or_else(|| PathBuf::from("validation_output"));
             std::fs::create_dir_all(&outdir)?;
+            crate::viz::json::write_validation_report(summaries, &outdir.join("validation.json"))?;
             crate::viz::html::write_validation_report(summaries, &outdir.join("validation.html"))?;
             OutputArtifactManifest::new("validate", OutputFormat::Html)
                 .with_primary_artifact("validation.html")
                 .add_artifact("validation.html", ArtifactKind::Html, "Validation report")
+                .add_artifact(
+                    "validation.json",
+                    ArtifactKind::Json,
+                    "Validation report data",
+                )
                 .with_validation(summaries)
                 .write_to_dir(&outdir)?;
             println!(

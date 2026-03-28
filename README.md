@@ -51,6 +51,9 @@ emits `artifacts.json` in that directory. The manifest records the command,
 requested format, primary report path when there is one, every generated asset,
 and any attached validation statuses so automation can discover outputs without
 hard-coding filenames.
+For HTML exports, the output directory now also includes the equivalent
+structured JSON payload alongside the human-readable page, so a single run can
+serve both people and downstream automation.
 
 ### Validation workflow:
 
@@ -113,6 +116,8 @@ When the development stub backend is enabled through
 `LATENT_INSPECTOR_MODEL_BACKEND=stub`, the command still exercises the report
 and fixture plumbing but marks the run as `unverified`; synthetic stub outputs
 are not treated as release-grade source-alignment evidence.
+`validate --format html --output <dir>` now writes both `validation.html` and
+`validation.json` so reviewed evidence bundles stay machine-readable.
 
 ## Example: How different models see a street scene
 
@@ -145,10 +150,10 @@ I-JEPA: 0.58 (moderate)  CLIP: 0.81 (very focused)
 ## Analysis modes
 
 ### `compare` — Side-by-side model comparison
-The main command. Takes an image and a list of models. Produces PCA projections, pairwise similarity matrices, highlight summaries, and validation-aware reports. When compared models expose different patch grids or incompatible CLS / embedding spaces, `compare` now keeps the dimension-agnostic metrics, marks unsupported metrics as `N/A`, and explains the reason in terminal, JSON, and HTML outputs instead of silently dropping them. `--format json` prints the structured compare report to stdout by default or writes `compare.json` when `--output <dir>` is provided. `--format png` writes per-model PCA images plus pairwise heatmaps for CKA, k-NN overlap, and direct patch correspondence. `--format html` now writes the report plus those companion PNG assets, embeds them in the page, and records them in `artifacts.json`.
+The main command. Takes an image and a list of models. Produces PCA projections, pairwise similarity matrices, highlight summaries, and validation-aware reports. When compared models expose different patch grids or incompatible CLS / embedding spaces, `compare` now keeps the dimension-agnostic metrics, marks unsupported metrics as `N/A`, and explains the reason in terminal, JSON, and HTML outputs instead of silently dropping them. `--format json` prints the structured compare report to stdout by default or writes `compare.json` when `--output <dir>` is provided. `--format png` writes per-model PCA images plus pairwise heatmaps for CKA, k-NN overlap, and direct patch correspondence. `--format html` now writes `report.html`, the same structured payload as `compare.json`, those companion PNG assets, and `artifacts.json` in a single bundle.
 
 ### `inspect` — Deep dive into a single model
-Detailed analysis of one model's representation: rank/entropy metrics, dead dimension counts, variance spectrum, validation status, and exportable PCA + variance artefacts. `--format json` prints the structured inspect report to stdout by default or writes `inspect.json` when `--output <dir>` is provided. `--format html` now writes a dedicated single-model report with the variance-spectrum breakdown, concentration thresholds, validation summary, and linked PCA / variance artefacts instead of falling back to the generic compare layout.
+Detailed analysis of one model's representation: rank/entropy metrics, dead dimension counts, variance spectrum, validation status, and exportable PCA + variance artefacts. `--format json` prints the structured inspect report to stdout by default or writes `inspect.json` when `--output <dir>` is provided. `--format html` now writes a dedicated single-model report plus `inspect.json`, with the variance-spectrum breakdown, concentration thresholds, validation summary, and linked PCA / variance artefacts instead of falling back to the generic compare layout.
 
 ### `neighbors` — k-NN retrieval across a dataset
 Given an image and a dataset directory, find the most similar images according to each model. Reveals what each model considers "similar." DINO finds visually similar objects. CLIP finds semantically similar concepts. I-JEPA finds structurally similar scenes.
@@ -163,7 +168,8 @@ HTML reports also attach the active model's validation summary so nearest-neighb
 results keep their trust context. If a model does not expose a CLS token, the
 command now falls back to a mean-patch image embedding and records that basis in
 terminal, JSON, and HTML reports. HTML exports also include the similarity chart
-PNG that the standalone `png` surface writes.
+PNG that the standalone `png` surface writes, plus the same structured payload
+as `neighbors.json`.
 
 ### `similarity` — Representation alignment between models
 Centered Kernel Alignment (CKA) and mutual k-NN overlap between two models across a dataset. Answers: "How similarly do these two models represent the world?"
@@ -173,7 +179,7 @@ PNG surface writes a compact metric chart for automation-friendly artifact
 capture. HTML exports now embed that chart alongside the report. Terminal, JSON, and HTML outputs also include validation summaries for
 both compared models. Report payloads now also state that dataset-level
 similarity metrics are computed from mean-patch embeddings, with CLS cosine
-surfaced separately when available.
+surfaced separately when available. HTML bundles also include `similarity.json`.
 
 ### `drift` — Track representation changes across checkpoints
 Point it at a directory of `.onnx` checkpoints (different training stages). Each file is loaded as its own session while reusing the selected model's registered preprocessing and tensor contract, then the command reports consecutive checkpoint CKA scores across the dataset. This is useful for understanding when representations materially shift during training.
@@ -189,7 +195,7 @@ exports embed that chart when at least one consecutive comparison exists. Termin
 JSON, and HTML outputs now also surface per-checkpoint validation summaries so
 training-stage drift is read alongside contract and parity caveats. Dataset-based
 drift summaries now explicitly state that checkpoint comparisons use mean-patch
-embeddings.
+embeddings. HTML bundles also include `drift.json`.
 
 ## Dependencies
 
@@ -233,7 +239,7 @@ Use `latent-inspector models --format json` to emit the same catalog as
 structured JSON to stdout or `latent-inspector models --format json --output
 tmp/models` to write `models.json` for automation. For a shareable report, run
 `latent-inspector models --format html --output tmp/models` to generate
-`models.html`.
+`models.html` alongside `models.json`.
 
 ## License
 
