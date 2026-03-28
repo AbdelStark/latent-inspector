@@ -166,6 +166,9 @@ Given an image and a dataset directory, find the most similar images according t
 Dataset-backed commands recurse through nested directories and preserve relative
 paths in their reports, so class-folder layouts remain legible in neighbor
 lists.
+Neighbor search now excludes the exact query file from the candidate pool when
+the query image already lives under the searched dataset root, so the top hit
+is always a real neighbor rather than the input image itself.
 `neighbors` now supports `--format terminal|json|html|png`; JSON prints to
 stdout by default or writes `neighbors.json` when `--output <dir>` is provided,
 while HTML/PNG emit a shareable report or ranking chart under
@@ -187,6 +190,9 @@ the report. Terminal, JSON, and HTML outputs also include validation summaries f
 both compared models. Report payloads now also state that dataset-level
 similarity metrics are computed from mean-patch embeddings, with CLS cosine
 surfaced separately when available. HTML bundles also include `similarity.json`.
+Dataset samples for similarity runs are now processed through a shared
+parallel worker pipeline, so large directory scans reuse per-worker model
+sessions instead of reimplementing the traversal in each command.
 
 ### `drift` — Track representation changes across checkpoints
 Point it at a directory of `.onnx` checkpoints (different training stages). Each file is loaded as its own session while reusing the selected model's registered preprocessing and tensor contract, then the command reports consecutive checkpoint CKA scores across the dataset. This is useful for understanding when representations materially shift during training.
@@ -195,6 +201,9 @@ Checkpoint filenames are evaluated in natural numeric order, so names such as
 If a supported image file in the dataset is unreadable or corrupt, the command
 now skips that file, continues processing the rest of the dataset, and reports
 the skipped paths in the terminal summary instead of aborting the whole run.
+Like `neighbors` and `similarity`, drift dataset passes now fan out across a
+shared parallel worker path so checkpoint comparisons keep deterministic output
+ordering without serializing every image through a single session.
 `drift` also supports `--format terminal|json|html|png`; the structured report
 captures checkpoint ordering, aggregate drift highlights, and dataset skip
 details, while the PNG output writes a consecutive-CKA chart to disk. HTML

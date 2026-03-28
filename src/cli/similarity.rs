@@ -56,53 +56,69 @@ pub fn run(args: SimilarityArgs) -> Result<(), Error> {
     let mut validation_b = summarize_session_or_unverified(&mut session_b, None);
     validation_b.model = label_b;
 
-    let mut cls_a: Vec<ndarray::Array1<f32>> = Vec::new();
-    let mut cls_b: Vec<ndarray::Array1<f32>> = Vec::new();
+    let (dataset_summary, samples) = crate::dataset::map_images_parallel(
+        &args.dataset,
+        true,
+        || {
+            Ok::<SimilarityWorker, Error>(SimilarityWorker {
+                session_a: ModelSession::load_for_analysis(&args.model_a)?,
+                session_b: ModelSession::load_for_analysis(&args.model_b)?,
+            })
+        },
+        |worker, entry, img| {
+            let out_a = worker.session_a.infer(&img)?;
+            let out_b = worker.session_b.infer(&img)?;
 
-    let mut patch_rows_a: Vec<ndarray::Array1<f32>> = Vec::new();
-    let mut patch_rows_b: Vec<ndarray::Array1<f32>> = Vec::new();
-    let mut preview_entries: Vec<ImageEntry> = Vec::new();
+            let feat_a = ExtractedFeatures::from_output(out_a)?;
+            let feat_b = ExtractedFeatures::from_output(out_b)?;
 
-    let dataset_summary = crate::dataset::for_each_image(&args.dataset, true, |entry, img| {
-        let out_a = session_a.infer(&img)?;
-        let out_b = session_b.infer(&img)?;
-
-        let feat_a = ExtractedFeatures::from_output(out_a)?;
-        let feat_b = ExtractedFeatures::from_output(out_b)?;
-
-        let mean_a = feat_a.mean_patch();
-        let mean_b = feat_b.mean_patch();
-
-        if let (Some(ca), Some(cb)) = (feat_a.cls_token, feat_b.cls_token) {
-            cls_a.push(ca);
-            cls_b.push(cb);
-        }
-
-        patch_rows_a.push(mean_a);
-        patch_rows_b.push(mean_b);
-        if preview_entries.len() < 4 {
-            preview_entries.push(entry);
-        }
-        Ok::<(), Error>(())
-    })?;
+            Ok(Some(SimilaritySample {
+                entry,
+                mean_a: feat_a.mean_patch(),
+                mean_b: feat_b.mean_patch(),
+                cls_pair: match (feat_a.cls_token, feat_b.cls_token) {
+                    (Some(left), Some(right)) => Some((left, right)),
+                    _ => None,
+                },
+            }))
+        },
+    )?;
     info!("Dataset: {} supported images", dataset_summary.discovered);
 
-    if !dataset_summary.has_loaded_images() || patch_rows_a.is_empty() {
+    if !dataset_summary.has_loaded_images() || samples.is_empty() {
         return Err(crate::errors::DatasetError::NoUsableImages(
             args.dataset.display().to_string(),
         )
         .into());
     }
 
-    let n = patch_rows_a.len();
-    let da = patch_rows_a[0].len();
-    let db = patch_rows_b[0].len();
+    let preview_entries = samples
+        .iter()
+        .take(4)
+        .map(|sample| sample.entry.clone())
+        .collect::<Vec<ImageEntry>>();
+    let cls_pairs = samples
+        .iter()
+        .filter_map(|sample| sample.cls_pair.as_ref())
+        .collect::<Vec<_>>();
+    let cls_a = cls_pairs
+        .iter()
+        .map(|(left, _)| (*left).clone())
+        .collect::<Vec<_>>();
+    let cls_b = cls_pairs
+        .iter()
+        .map(|(_, right)| (*right).clone())
+        .collect::<Vec<_>>();
+
+    let n = samples.len();
+    let da = samples[0].mean_a.len();
+    let db = samples[0].mean_b.len();
 
     let mut mat_a = Array2::<f32>::zeros((n, da));
     let mut mat_b = Array2::<f32>::zeros((n, db));
-    for i in 0..n {
-        mat_a.row_mut(i).assign(&patch_rows_a[i]);
-        mat_b.row_mut(i).assign(&patch_rows_b[i]);
+    for (index, sample) in samples.iter().enumerate() {
+        mat_a.row_mut(index).assign(&sample.mean_a);
+        mat_b.row_mut(index).assign(&sample.mean_b);
     }
 
     let mut metrics = Vec::new();
@@ -161,6 +177,18 @@ fn similarity_validation_labels(model_a: &str, model_b: &str) -> (String, String
     } else {
         (model_a.to_string(), model_b.to_string())
     }
+}
+
+struct SimilarityWorker {
+    session_a: ModelSession,
+    session_b: ModelSession,
+}
+
+struct SimilaritySample {
+    entry: ImageEntry,
+    mean_a: ndarray::Array1<f32>,
+    mean_b: ndarray::Array1<f32>,
+    cls_pair: Option<(ndarray::Array1<f32>, ndarray::Array1<f32>)>,
 }
 
 fn mean_cls_cosine(

@@ -1,6 +1,7 @@
 use crate::errors::DatasetError;
 use image::DynamicImage;
 use indicatif::{ProgressBar, ProgressStyle};
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use tracing::debug;
@@ -55,6 +56,17 @@ impl DatasetProcessingSummary {
 
     pub fn has_loaded_images(&self) -> bool {
         self.loaded > 0
+    }
+
+    pub fn merge(&mut self, other: Self) {
+        self.loaded += other.loaded;
+        self.skipped += other.skipped;
+        for skipped in other.skipped_examples {
+            if self.skipped_examples.len() >= 5 {
+                break;
+            }
+            self.skipped_examples.push(skipped);
+        }
     }
 }
 
@@ -112,6 +124,84 @@ where
     }
 
     Ok(summary)
+}
+
+/// Process dataset images in parallel with one initialized worker per chunk.
+/// Returned items preserve the original dataset scan order.
+pub fn map_images_parallel<W, T, Init, Visit, E>(
+    dir: &Path,
+    show_progress: bool,
+    init_worker: Init,
+    visit: Visit,
+) -> Result<(DatasetProcessingSummary, Vec<T>), E>
+where
+    T: Send,
+    E: From<DatasetError> + Send,
+    Init: Fn() -> Result<W, E> + Send + Sync,
+    Visit: Fn(&mut W, ImageEntry, DynamicImage) -> Result<Option<T>, E> + Send + Sync,
+{
+    let entries = scan_images(dir)?;
+    let discovered = entries.len();
+    let indexed_entries = entries
+        .into_iter()
+        .enumerate()
+        .collect::<Vec<(usize, ImageEntry)>>();
+    let progress = dataset_progress_bar(discovered, show_progress);
+    let init_worker = &init_worker;
+    let visit = &visit;
+
+    let chunk_results = indexed_entries
+        .par_chunks(parallel_chunk_size(discovered))
+        .map(
+            |chunk| -> Result<(DatasetProcessingSummary, Vec<(usize, T)>), E> {
+                let mut worker = init_worker()?;
+                let mut summary = DatasetProcessingSummary::new(0);
+                let mut items = Vec::with_capacity(chunk.len());
+
+                for (index, entry) in chunk.iter().cloned() {
+                    let image = load_entry_image(&entry);
+                    if let Some(progress) = &progress {
+                        progress.inc(1);
+                    }
+
+                    match image {
+                        Ok(image) => {
+                            summary.record_loaded();
+                            if let Some(item) = visit(&mut worker, entry, image)? {
+                                items.push((index, item));
+                            }
+                        }
+                        Err(DatasetError::ImageLoad { path, reason }) => {
+                            summary.record_skipped(path, reason);
+                        }
+                        Err(error) => return Err(error.into()),
+                    }
+                }
+
+                Ok((summary, items))
+            },
+        )
+        .collect::<Result<Vec<_>, E>>();
+
+    if let Some(progress) = &progress {
+        progress.finish_with_message("Done");
+    }
+
+    let mut summary = DatasetProcessingSummary::new(discovered);
+    let mut indexed_items = Vec::new();
+    for (chunk_summary, mut chunk_items) in chunk_results? {
+        summary.merge(chunk_summary);
+        indexed_items.append(&mut chunk_items);
+    }
+    indexed_items.sort_by_key(|(index, _)| *index);
+
+    Ok((
+        summary,
+        indexed_items
+            .into_iter()
+            .map(|(_, item)| item)
+            .collect::<Vec<_>>(),
+    ))
 }
 
 fn scan_images_recursive(
@@ -179,19 +269,7 @@ pub struct DatasetIterator {
 impl DatasetIterator {
     pub fn new(dir: &Path, show_progress: bool) -> Result<Self, DatasetError> {
         let entries = scan_images(dir)?;
-        let progress = if show_progress {
-            let pb = ProgressBar::new(entries.len() as u64);
-            pb.set_style(
-                ProgressStyle::default_bar()
-                    .template("{msg} [{bar:40.cyan/blue}] {pos}/{len}")
-                    .unwrap()
-                    .progress_chars("=> "),
-            );
-            pb.set_message("Loading images");
-            Some(pb)
-        } else {
-            None
-        };
+        let progress = dataset_progress_bar(entries.len(), show_progress);
 
         Ok(Self {
             entries,
@@ -207,6 +285,30 @@ impl DatasetIterator {
     pub fn is_empty(&self) -> bool {
         self.entries.is_empty()
     }
+}
+
+fn dataset_progress_bar(len: usize, show_progress: bool) -> Option<ProgressBar> {
+    if !show_progress {
+        return None;
+    }
+
+    let pb = ProgressBar::new(len as u64);
+    pb.set_style(
+        ProgressStyle::default_bar()
+            .template("{msg} [{bar:40.cyan/blue}] {pos}/{len}")
+            .unwrap()
+            .progress_chars("=> "),
+    );
+    pb.set_message("Loading images");
+    Some(pb)
+}
+
+fn parallel_chunk_size(len: usize) -> usize {
+    let workers = std::thread::available_parallelism()
+        .map(|threads| threads.get())
+        .unwrap_or(1)
+        .max(1);
+    len.div_ceil(workers).max(1)
 }
 
 impl Iterator for DatasetIterator {
@@ -330,5 +432,34 @@ mod tests {
         assert_eq!(summary.skipped, 1);
         assert_eq!(summary.skipped_examples.len(), 1);
         assert_eq!(summary.skipped_examples[0].path, "nested/broken.png");
+    }
+
+    #[test]
+    fn test_map_images_parallel_preserves_order_and_skips_corrupt_files() {
+        let dir = tempdir().unwrap();
+        let nested = dir.path().join("class-a");
+        std::fs::create_dir_all(&nested).unwrap();
+
+        image::RgbImage::new(4, 4)
+            .save(dir.path().join("root.png"))
+            .unwrap();
+        image::RgbImage::new(4, 4)
+            .save(nested.join("leaf.png"))
+            .unwrap();
+        std::fs::write(dir.path().join("broken.png"), b"not a real image").unwrap();
+
+        let (summary, stems) = map_images_parallel(
+            dir.path(),
+            false,
+            || Ok::<usize, DatasetError>(0),
+            |_, entry, _| Ok::<_, DatasetError>(Some(entry.stem)),
+        )
+        .unwrap();
+
+        assert_eq!(summary.discovered, 3);
+        assert_eq!(summary.loaded, 2);
+        assert_eq!(summary.skipped, 1);
+        assert_eq!(summary.skipped_examples[0].path, "broken.png");
+        assert_eq!(stems, vec!["class-a/leaf".to_string(), "root".to_string()]);
     }
 }

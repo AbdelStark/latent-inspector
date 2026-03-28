@@ -91,7 +91,7 @@ pub fn run(args: DriftArgs) -> Result<(), Error> {
                 .to_string(),
         );
         validation.push(summary);
-        let (embedding, summary, previews) = embed_dataset(&mut session, &args.dataset)?;
+        let (embedding, summary, previews) = embed_dataset(&args.model, ckpt_path, &args.dataset)?;
         if dataset_summary.is_none() {
             dataset_summary = Some(summary);
             preview_entries = previews;
@@ -260,7 +260,8 @@ fn render_drift_assets(
 }
 
 fn embed_dataset(
-    session: &mut ModelSession,
+    model_name: &str,
+    checkpoint_path: &Path,
     dataset_dir: &Path,
 ) -> Result<
     (
@@ -270,31 +271,46 @@ fn embed_dataset(
     ),
     Error,
 > {
-    let mut rows = Vec::new();
-    let mut preview_entries = Vec::new();
-    let summary = crate::dataset::for_each_image(dataset_dir, true, |entry, img| {
-        let output = session.infer(&img)?;
-        let features = ExtractedFeatures::from_output(output)?;
-        rows.push(features.mean_patch());
-        if preview_entries.len() < 4 {
-            preview_entries.push(entry);
-        }
-        Ok::<(), Error>(())
-    })?;
+    let (summary, samples) = crate::dataset::map_images_parallel(
+        dataset_dir,
+        true,
+        || ModelSession::load_checkpoint(model_name, checkpoint_path).map_err(Error::from),
+        |session, entry, img| {
+            let output = session.infer(&img)?;
+            let features = ExtractedFeatures::from_output(output)?;
+            Ok(Some(DriftSample {
+                entry,
+                embedding: features.mean_patch(),
+            }))
+        },
+    )?;
 
-    if !summary.has_loaded_images() || rows.is_empty() {
+    if !summary.has_loaded_images() || samples.is_empty() {
         return Err(
             crate::errors::DatasetError::NoUsableImages(dataset_dir.display().to_string()).into(),
         );
     }
 
-    let n = rows.len();
-    let d = rows.first().map(|row| row.len()).unwrap_or(0);
+    let preview_entries = samples
+        .iter()
+        .take(4)
+        .map(|sample| sample.entry.clone())
+        .collect::<Vec<_>>();
+    let n = samples.len();
+    let d = samples
+        .first()
+        .map(|sample| sample.embedding.len())
+        .unwrap_or(0);
     let mut matrix = Array2::<f32>::zeros((n, d));
-    for (index, row) in rows.iter().enumerate() {
-        matrix.row_mut(index).assign(row);
+    for (index, sample) in samples.iter().enumerate() {
+        matrix.row_mut(index).assign(&sample.embedding);
     }
     Ok((matrix, summary, preview_entries))
+}
+
+struct DriftSample {
+    entry: ImageEntry,
+    embedding: ndarray::Array1<f32>,
 }
 
 fn checkpoint_name(path: &Path) -> String {

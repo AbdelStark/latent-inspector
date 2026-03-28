@@ -183,6 +183,41 @@ fn neighbors_json_output_writes_structured_report() {
 }
 
 #[test]
+fn neighbors_json_excludes_query_image_from_dataset_matches() {
+    let dir = tempdir().unwrap();
+    let dataset_dir = dir.path().join("dataset");
+    fs::create_dir_all(&dataset_dir).unwrap();
+
+    let query_path = dataset_dir.join("query.png");
+    write_image(&query_path, 7);
+    write_image(&dataset_dir.join("other.png"), 19);
+
+    let output = Command::new(bin())
+        .env("LATENT_INSPECTOR_MODEL_BACKEND", "stub")
+        .args([
+            "neighbors",
+            query_path.to_str().unwrap(),
+            "--model",
+            "dinov2-vit-l14",
+            "--dataset",
+            dataset_dir.to_str().unwrap(),
+            "--k",
+            "2",
+            "--format",
+            "json",
+        ])
+        .output()
+        .unwrap();
+
+    assert_eq!(output.status.code(), Some(0));
+
+    let payload: Value = serde_json::from_slice(&output.stdout).unwrap();
+    let neighbors = payload["neighbors"].as_array().unwrap();
+    assert_eq!(neighbors.len(), 1);
+    assert_eq!(neighbors[0]["image"], "other");
+}
+
+#[test]
 fn neighbors_html_output_embeds_chart_and_validation_summary() {
     let dir = tempdir().unwrap();
     let dataset_dir = dir.path().join("dataset");

@@ -9,7 +9,7 @@ use crate::viz::report::{NeighborMatch, NeighborsReport};
 use crate::viz::OutputFormat;
 use clap::Args;
 use serde_json::json;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use tracing::info;
 
 #[derive(Args, Debug)]
@@ -52,15 +52,23 @@ pub fn run(args: NeighborsArgs) -> Result<(), Error> {
     let query_output = session.infer(&query_img)?;
     let query_features = ExtractedFeatures::from_output(query_output)?;
     let (embedding_basis, query_embedding) = query_features.preferred_global_embedding();
+    let canonical_query_path = std::fs::canonicalize(&args.image).ok();
 
-    let mut embeddings: Vec<(ImageEntry, ndarray::Array1<f32>)> = Vec::new();
-    let dataset_summary = crate::dataset::for_each_image(&args.dataset, true, |entry, img| {
-        let output = session.infer(&img)?;
-        let features = ExtractedFeatures::from_output(output)?;
-        let embedding = extract_neighbor_embedding(&features, embedding_basis);
-        embeddings.push((entry, embedding));
-        Ok::<(), Error>(())
-    })?;
+    let (dataset_summary, embeddings) = crate::dataset::map_images_parallel(
+        &args.dataset,
+        true,
+        || ModelSession::load_for_analysis(&args.model).map_err(Error::from),
+        |session, entry, img| {
+            if same_input_path(&args.image, canonical_query_path.as_deref(), &entry.path) {
+                return Ok(None);
+            }
+
+            let output = session.infer(&img)?;
+            let features = ExtractedFeatures::from_output(output)?;
+            let embedding = extract_neighbor_embedding(&features, embedding_basis);
+            Ok(Some(NeighborEmbedding { entry, embedding }))
+        },
+    )?;
     info!(
         "Dataset size: {} supported images",
         dataset_summary.discovered
@@ -83,10 +91,10 @@ pub fn run(args: NeighborsArgs) -> Result<(), Error> {
     // Build similarity scores between query and all dataset entries
     let mut scores: Vec<(f32, ImageEntry)> = embeddings
         .iter()
-        .map(|(entry, emb)| {
+        .map(|sample| {
             let dot: f32 = query_embedding
                 .iter()
-                .zip(emb.iter())
+                .zip(sample.embedding.iter())
                 .map(|(a, b)| a * b)
                 .sum();
             let na = query_embedding
@@ -95,8 +103,14 @@ pub fn run(args: NeighborsArgs) -> Result<(), Error> {
                 .sum::<f32>()
                 .sqrt()
                 .max(1e-8);
-            let nb = emb.iter().map(|x| x * x).sum::<f32>().sqrt().max(1e-8);
-            (dot / (na * nb), entry.clone())
+            let nb = sample
+                .embedding
+                .iter()
+                .map(|x| x * x)
+                .sum::<f32>()
+                .sqrt()
+                .max(1e-8);
+            (dot / (na * nb), sample.entry.clone())
         })
         .collect();
 
@@ -144,6 +158,12 @@ struct NeighborPreviewSource {
     entry: ImageEntry,
 }
 
+#[derive(Debug)]
+struct NeighborEmbedding {
+    entry: ImageEntry,
+    embedding: ndarray::Array1<f32>,
+}
+
 fn extract_neighbor_embedding(
     features: &ExtractedFeatures,
     basis: EmbeddingBasis,
@@ -153,6 +173,20 @@ fn extract_neighbor_embedding(
     } else {
         features.mean_patch()
     }
+}
+
+fn same_input_path(
+    query_path: &Path,
+    canonical_query_path: Option<&Path>,
+    candidate: &Path,
+) -> bool {
+    candidate == query_path
+        || canonical_query_path.is_some_and(|query| {
+            std::fs::canonicalize(candidate)
+                .ok()
+                .as_deref()
+                .is_some_and(|candidate| candidate == query)
+        })
 }
 
 fn render_output(
