@@ -5,8 +5,8 @@ use crate::dataset::DatasetProcessingSummary;
 use crate::errors::VizError;
 use crate::validation::report::ModelValidationSummary;
 use crate::viz::report::{
-    build_compare_overview, CompareOverview, DriftReport, NeighborsReport, PairwiseMatrix,
-    SimilarityReport,
+    build_compare_overview, CompareOverview, DriftReport, InspectReport, NeighborsReport,
+    PairwiseMatrix, SimilarityReport,
 };
 use std::path::Path;
 
@@ -65,6 +65,13 @@ pub fn write_similarity_report(
 
 pub fn write_drift_report(report: &DriftReport, output_path: &Path) -> Result<(), VizError> {
     let html = render_drift_html(report);
+    std::fs::write(output_path, &html)
+        .map_err(|e| VizError::Html(format!("Failed to write {}: {e}", output_path.display())))?;
+    Ok(())
+}
+
+pub fn write_inspect_report(report: &InspectReport, output_path: &Path) -> Result<(), VizError> {
+    let html = render_inspect_html(report);
     std::fs::write(output_path, &html)
         .map_err(|e| VizError::Html(format!("Failed to write {}: {e}", output_path.display())))?;
     Ok(())
@@ -458,6 +465,107 @@ fn render_drift_html(report: &DriftReport) -> String {
     )
 }
 
+fn render_inspect_html(report: &InspectReport) -> String {
+    let metrics = &report.metrics;
+    let variance = &report.variance_spectrum;
+    let variance_rows = variance
+        .ratios
+        .iter()
+        .zip(variance.cumulative.iter())
+        .take(12)
+        .enumerate()
+        .map(|(index, (ratio, cumulative))| {
+            let width = (ratio.clamp(0.0, 1.0) * 100.0).round();
+            format!(
+                "<tr><td>PC{:02}</td><td>{:.2}%</td><td>{:.2}%</td><td><div class=\"spectrum-bar-track\"><div class=\"spectrum-bar-fill\" style=\"width:{width:.0}%\"></div></div></td></tr>",
+                index + 1,
+                ratio * 100.0,
+                cumulative * 100.0,
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    let variance_table = if variance_rows.is_empty() {
+        "<p class=\"empty-state\">Variance spectrum was unavailable for this report.</p>"
+            .to_string()
+    } else {
+        format!(
+            "<table><thead><tr><th>Component</th><th>Variance</th><th>Cumulative</th><th>Profile</th></tr></thead><tbody>{variance_rows}</tbody></table>"
+        )
+    };
+    let sections = vec![
+        (
+            "Representation Metrics",
+            format!(
+                "<table><thead><tr><th>Metric</th><th>Value</th></tr></thead><tbody>\
+                 <tr><td>Patch tokens</td><td>{}</td></tr>\
+                 <tr><td>Embedding dimension</td><td>{}</td></tr>\
+                 <tr><td>Effective rank</td><td>{}/{}</td></tr>\
+                 <tr><td>Dead dimensions</td><td>{}</td></tr>\
+                 <tr><td>Patch entropy</td><td>{:.3}</td></tr>\
+                 <tr><td>CLS L2 norm</td><td>{}</td></tr>\
+                 <tr><td>Patch norm mean ± std</td><td>{:.2} ± {:.2}</td></tr>\
+                 <tr><td>Top-10 variance concentration</td><td>{:.1}%</td></tr>\
+                 </tbody></table>",
+                metrics.n_patches,
+                metrics.embed_dim,
+                metrics.effective_rank,
+                metrics.embed_dim,
+                metrics.dead_dimensions,
+                metrics.patch_entropy,
+                metrics
+                    .cls_l2_norm
+                    .map(|value| format!("{value:.2}"))
+                    .unwrap_or_else(|| "N/A".to_string()),
+                metrics.patch_norm_mean,
+                metrics.patch_norm_std,
+                metrics.top10_variance_pct,
+            ),
+        ),
+        (
+            "Variance Spectrum",
+            format!(
+                "<p>Top principal components of the patch embedding space for <code>{}</code>.</p>\
+                 <div class=\"stats-grid\">\
+                 <div class=\"stat-card\"><span>Components @ 90%</span><strong>{}</strong></div>\
+                 <div class=\"stat-card\"><span>Components @ 99%</span><strong>{}</strong></div>\
+                 <div class=\"stat-card\"><span>Top-10 concentration</span><strong>{:.1}%</strong></div>\
+                 <div class=\"stat-card\"><span>Components shown</span><strong>{}</strong></div>\
+                 </div>{}",
+                escape_html(&report.model),
+                variance.components_90pct,
+                variance.components_99pct,
+                variance.top10_concentration * 100.0,
+                variance.ratios.len(),
+                variance_table,
+            ),
+        ),
+        (
+            "Validation Summary",
+            render_validation_section_body(
+                std::slice::from_ref(&report.validation),
+                "No validation evidence was attached to this report.",
+            ),
+        ),
+    ];
+
+    render_secondary_html(
+        "Representation Inspect",
+        &format!(
+            "Image <code>{}</code> analysed with model <code>{}</code>.",
+            escape_html(&report.image),
+            escape_html(&report.model),
+        ),
+        &[
+            ("Model", report.model.clone()),
+            ("Patch tokens", metrics.n_patches.to_string()),
+            ("Embed dim", metrics.embed_dim.to_string()),
+            ("Effective rank", metrics.effective_rank.to_string()),
+        ],
+        &sections,
+    )
+}
+
 fn render_validation_section_body(
     validation: &[ModelValidationSummary],
     empty_message: &str,
@@ -738,6 +846,8 @@ fn render_secondary_html(
   .validation-card {{ border: 1px solid var(--border); border-radius: 14px; padding: 1rem; background: rgba(255,255,255,0.02); }}
   .delta-list {{ margin: 0.5rem 0 0; padding-left: 1.1rem; color: var(--muted); }}
   .delta-list li {{ margin: 0.25rem 0; }}
+  .spectrum-bar-track {{ width: 100%; min-width: 140px; height: 0.75rem; border-radius: 999px; background: rgba(255,255,255,0.08); overflow: hidden; }}
+  .spectrum-bar-fill {{ height: 100%; border-radius: inherit; background: linear-gradient(90deg, #58a6ff, #3fb950); }}
   .empty-state, .caveat, li {{ color: var(--muted); }}
   ul {{ margin: 0.6rem 0 0; padding-left: 1.2rem; }}
   code {{ color: #c9d1d9; }}
@@ -824,8 +934,8 @@ mod tests {
         ValidationStatus,
     };
     use crate::viz::report::{
-        DriftReport, DriftStep, NeighborMatch, NeighborsReport, SimilarityMetricValue,
-        SimilarityReport,
+        DriftReport, DriftStep, InspectReport, NeighborMatch, NeighborsReport,
+        SimilarityMetricValue, SimilarityReport, VarianceSpectrumReport,
     };
     use tempfile::tempdir;
 
@@ -845,6 +955,34 @@ mod tests {
                 "Reference parity matches approved evidence.",
             ),
         )
+    }
+
+    fn inspect_report(model: &str) -> InspectReport {
+        InspectReport {
+            image: "fixture.png".into(),
+            model: model.into(),
+            metrics: ModelMetrics {
+                model_name: model.into(),
+                n_patches: 256,
+                embed_dim: 1024,
+                effective_rank: 212,
+                dead_dimensions: 6,
+                patch_entropy: 5.47,
+                cls_l2_norm: Some(14.3),
+                patch_norm_mean: 6.1,
+                patch_norm_std: 0.8,
+                top10_variance_pct: 28.5,
+                components_90pct: 41,
+            },
+            validation: validation_summary(model),
+            variance_spectrum: VarianceSpectrumReport {
+                ratios: vec![0.28, 0.19, 0.13, 0.09],
+                cumulative: vec![0.28, 0.47, 0.60, 0.69],
+                components_90pct: 41,
+                components_99pct: 88,
+                top10_concentration: 0.62,
+            },
+        }
     }
 
     #[test]
@@ -966,6 +1104,19 @@ mod tests {
     }
 
     #[test]
+    fn test_render_inspect_html_includes_variance_spectrum_and_validation() {
+        let report = inspect_report("dinov2-vit-l14");
+        let html = render_inspect_html(&report);
+
+        assert!(html.contains("Representation Inspect"));
+        assert!(html.contains("Variance Spectrum"));
+        assert!(html.contains("Components @ 99%"));
+        assert!(html.contains("PC01"));
+        assert!(html.contains("Validation Summary"));
+        assert!(html.contains("dinov2-vit-l14"));
+    }
+
+    #[test]
     fn test_escape_html() {
         assert_eq!(escape_html("<script>"), "&lt;script&gt;");
     }
@@ -977,6 +1128,19 @@ mod tests {
         write_report("img.jpg", &[], &[], &path).unwrap();
         let content = std::fs::read_to_string(&path).unwrap();
         assert!(content.contains("<!DOCTYPE html>"));
+    }
+
+    #[test]
+    fn test_write_inspect_report() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("inspect.html");
+        let report = inspect_report("dinov2-vit-l14");
+
+        write_inspect_report(&report, &path).unwrap();
+
+        let content = std::fs::read_to_string(&path).unwrap();
+        assert!(content.contains("Variance Spectrum"));
+        assert!(content.contains("fixture.png"));
     }
 
     #[test]

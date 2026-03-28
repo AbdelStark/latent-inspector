@@ -244,6 +244,31 @@ fn inspect_json_includes_validation_summary() {
 }
 
 #[test]
+fn inspect_html_includes_variance_spectrum_and_validation_summary() {
+    let dir = tempdir().unwrap();
+    let image = write_test_image(dir.path());
+    let output_dir = dir.path().join("inspect");
+    let output = run(&[
+        "inspect",
+        image.to_str().unwrap(),
+        "--model",
+        "dinov2-vit-l14",
+        "--format",
+        "html",
+        "--output",
+        output_dir.to_str().unwrap(),
+    ]);
+
+    assert_eq!(output.status.code(), Some(0));
+    let html = fs::read_to_string(output_dir.join("report.html")).unwrap();
+    assert!(html.contains("Representation Inspect"));
+    assert!(html.contains("Variance Spectrum"));
+    assert!(html.contains("Components @ 99%"));
+    assert!(html.contains("Validation Summary"));
+    assert!(html.contains("dinov2-vit-l14"));
+}
+
+#[test]
 fn compare_html_includes_validation_summary() {
     let dir = tempdir().unwrap();
     let image = write_test_image(dir.path());

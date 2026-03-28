@@ -130,18 +130,7 @@ pub fn run(args: InspectArgs) -> Result<(), Error> {
                 .output
                 .unwrap_or_else(|| PathBuf::from("inspect_output"));
             std::fs::create_dir_all(&outdir)?;
-            let image_name = args
-                .image
-                .file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or("image");
-            crate::viz::html::write_report_with_validation(
-                image_name,
-                std::slice::from_ref(&report.metrics),
-                &[],
-                std::slice::from_ref(&report.validation),
-                &outdir.join("report.html"),
-            )?;
+            crate::viz::html::write_inspect_report(&report, &outdir.join("report.html"))?;
             println!("Report written to {}/report.html", outdir.display());
         }
     }
