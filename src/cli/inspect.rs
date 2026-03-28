@@ -1,4 +1,4 @@
-use crate::analysis::{compute_metrics, pca, transform, variance_spectrum};
+use crate::analysis::{model_metrics_from_spectrum, pca, transform, variance_spectrum};
 use crate::errors::Error;
 use crate::extract::ExtractedFeatures;
 use crate::models::ModelSession;
@@ -40,14 +40,16 @@ pub fn run(args: InspectArgs) -> Result<(), Error> {
     let features = ExtractedFeatures::from_output(output)?;
     let validation_summary = summarize_session_or_unverified(&mut session, None);
 
-    let metrics = compute_metrics(&features, &args.model)?;
-    let spectrum = variance_spectrum(&features.patch_tokens, args.pca_components.min(64))?;
+    let requested_components = args.pca_components.clamp(1, 64);
+    let spectrum = variance_spectrum(&features.patch_tokens, 64)?;
+    let metrics = model_metrics_from_spectrum(&features, &args.model, &spectrum)?;
+    let display_spectrum = spectrum.truncated(requested_components);
     let report = crate::viz::report::build_inspect_report(
         args.image.display().to_string(),
         args.model.clone(),
         metrics,
         validation_summary,
-        &spectrum,
+        &display_spectrum,
     );
 
     match args.format {

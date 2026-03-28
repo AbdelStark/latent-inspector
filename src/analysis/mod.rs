@@ -43,11 +43,33 @@ pub fn compute_metrics(
     features: &ExtractedFeatures,
     model_name: &str,
 ) -> Result<ModelMetrics, AnalysisError> {
-    let rank = effective_rank(&features.patch_tokens, 0.01, 64)?;
+    let spec = variance_spectrum(&features.patch_tokens, 64)?;
+    model_metrics_from_spectrum(features, model_name, &spec)
+}
+
+/// Build per-model metrics while reusing an already computed variance spectrum.
+pub fn model_metrics_from_spectrum(
+    features: &ExtractedFeatures,
+    model_name: &str,
+    spec: &VarianceSpectrum,
+) -> Result<ModelMetrics, AnalysisError> {
+    let max_ev = spec
+        .explained_variance
+        .iter()
+        .cloned()
+        .fold(f32::NEG_INFINITY, f32::max);
+    let rank = if max_ev <= 0.0 {
+        0
+    } else {
+        let threshold = 0.01 * max_ev;
+        spec.explained_variance
+            .iter()
+            .filter(|&&ev| ev > threshold)
+            .count()
+    };
     let dead = dead_dimensions(&features.patch_tokens, 1e-6);
     let entropy = patch_entropy(&features.patch_tokens, 8, 30)?;
     let norm_stats = patch_norm_stats(&features.patch_tokens);
-    let spec = variance_spectrum(&features.patch_tokens, 16)?;
 
     Ok(ModelMetrics {
         model_name: model_name.to_string(),
@@ -301,5 +323,23 @@ mod tests {
         assert_eq!(comparison.alignment.patch_count_a, 256);
         assert_eq!(comparison.alignment.patch_count_b, 196);
         assert!(comparison.alignment.note.is_some());
+    }
+
+    #[test]
+    fn metrics_can_reuse_a_precomputed_spectrum() {
+        let feat = features("dinov2-vit-l14", 64, 32);
+        let direct = compute_metrics(&feat, "dinov2-vit-l14").unwrap();
+        let spec = variance_spectrum(&feat.patch_tokens, 16).unwrap();
+        let reused = model_metrics_from_spectrum(&feat, "dinov2-vit-l14", &spec).unwrap();
+
+        assert_eq!(reused.model_name, direct.model_name);
+        assert_eq!(reused.effective_rank, direct.effective_rank);
+        assert_eq!(reused.dead_dimensions, direct.dead_dimensions);
+        approx::assert_relative_eq!(
+            reused.top10_variance_pct,
+            direct.top10_variance_pct,
+            epsilon = 1e-4
+        );
+        assert_eq!(reused.components_90pct, direct.components_90pct);
     }
 }

@@ -36,19 +36,16 @@ pub fn pca(data: &Array2<f32>, k: usize, max_iter: usize) -> Result<PcaResult, A
         row -= &mean;
     }
 
-    // Covariance matrix C = X^T X / (n-1)  [D, D]
-    // We avoid forming it explicitly for large D by doing power iteration in sample space.
-
     let mut components = Array2::<f32>::zeros((k, d));
     let mut eigenvalues = Array1::<f32>::zeros(k);
 
     for i in 0..k {
-        // Random init (deterministic: use a fixed pattern)
+        // Deterministic init.
         let mut v: Array1<f32> =
             Array1::from_iter((0..d).map(|j| if j == i % d { 1.0 } else { 0.0 }));
         normalize_inplace(&mut v);
 
-        let mut prev_lambda = 0.0_f32;
+        let mut prev_lambda: Option<f32> = None;
 
         for iter in 0..max_iter {
             // u = X * v  [N]
@@ -60,32 +57,42 @@ pub fn pca(data: &Array2<f32>, k: usize, max_iter: usize) -> Result<PcaResult, A
             if lambda < 1e-10 {
                 break;
             }
-            v = v_new / lambda;
 
-            if iter > 0 && (lambda - prev_lambda).abs() / prev_lambda.max(1e-10) < 1e-6 {
-                break;
+            let next = v_new / lambda;
+            let aligned = next.dot(&v).abs();
+
+            if let Some(previous) = prev_lambda {
+                let relative_change = (lambda - previous).abs() / previous.max(1e-10);
+                v = next;
+                if relative_change < 1e-6 || (1.0 - aligned) < 1e-6 {
+                    break;
+                }
+            } else {
+                v = next;
             }
+
             if iter == max_iter - 1 {
                 return Err(AnalysisError::ConvergenceFailed {
                     iterations: max_iter,
                     reason: format!("component {i} did not converge"),
                 });
             }
-            prev_lambda = lambda;
+
+            prev_lambda = Some(lambda);
         }
 
-        // Eigenvalue = λ / (n-1)
         let u = centred.dot(&v);
         let eigenvalue = u.dot(&u) / (n - 1) as f32;
         eigenvalues[i] = eigenvalue;
         components.row_mut(i).assign(&v);
 
-        // Deflate: remove component i from centred
+        // Deflate without allocating a temporary scaled component per row.
         let projection = centred.dot(&v);
-        for (j, mut row) in centred.rows_mut().into_iter().enumerate() {
-            let p = projection[j];
-            let v_scaled = v.mapv(|x| x * p);
-            row -= &v_scaled;
+        for (row_index, mut row) in centred.rows_mut().into_iter().enumerate() {
+            let scale = projection[row_index];
+            for (value, component) in row.iter_mut().zip(v.iter()) {
+                *value -= component * scale;
+            }
         }
     }
 
@@ -158,5 +165,16 @@ mod tests {
         let result = pca(&data, 3, 200).unwrap();
         let projected = transform(&data, &result);
         assert_eq!(projected.shape(), &[20, 3]);
+    }
+
+    #[test]
+    fn test_pca_handles_wide_matrices() {
+        let data = Array2::from_shape_fn((8, 64), |(i, j)| ((i * 11 + j * 3) % 17) as f32);
+        let result = pca(&data, 4, 200).unwrap();
+        let projected = transform(&data, &result);
+
+        assert_eq!(result.components.shape(), &[4, 64]);
+        assert_eq!(projected.shape(), &[8, 4]);
+        assert!(result.explained_variance.iter().all(|value| *value >= 0.0));
     }
 }

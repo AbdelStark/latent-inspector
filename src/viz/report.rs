@@ -561,6 +561,7 @@ mod tests {
             metrics().into_iter().next().unwrap(),
             validation_summary("dinov2"),
             &VarianceSpectrum {
+                explained_variance: Array1::from_vec(vec![5.0, 3.0, 2.0]),
                 ratios: Array1::from_vec(vec![0.5, 0.3, 0.2]),
                 cumulative: Array1::from_vec(vec![0.5, 0.8, 1.0]),
                 components_90pct: 3,

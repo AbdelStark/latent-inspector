@@ -2,11 +2,13 @@
 
 use crate::analysis::pca;
 use crate::errors::AnalysisError;
-use ndarray::{Array1, Array2};
+use ndarray::{s, Array1, Array2};
 
 /// Variance spectrum result.
 #[derive(Debug, Clone)]
 pub struct VarianceSpectrum {
+    /// Raw explained variance (eigenvalues) for each retained component.
+    pub explained_variance: Array1<f32>,
     /// Explained variance ratio for each component (sorted descending), length `k`.
     pub ratios: Array1<f32>,
     /// Cumulative explained variance, length `k`.
@@ -19,9 +21,47 @@ pub struct VarianceSpectrum {
     pub top10_concentration: f32,
 }
 
+impl VarianceSpectrum {
+    pub fn truncated(&self, k: usize) -> Self {
+        let k = k.max(1).min(self.ratios.len());
+        let explained_variance = self.explained_variance.slice(s![..k]).to_owned();
+        let ratios = self.ratios.slice(s![..k]).to_owned();
+        let mut cumulative = Array1::<f32>::zeros(k);
+        let mut running = 0.0_f32;
+        for (index, ratio) in ratios.iter().enumerate() {
+            running += *ratio;
+            cumulative[index] = running;
+        }
+
+        let components_90pct = cumulative
+            .iter()
+            .position(|&c| c >= 0.90)
+            .map(|i| i + 1)
+            .unwrap_or(k);
+
+        let components_99pct = cumulative
+            .iter()
+            .position(|&c| c >= 0.99)
+            .map(|i| i + 1)
+            .unwrap_or(k);
+
+        let top10_concentration = ratios.iter().take(10).sum();
+
+        Self {
+            explained_variance,
+            ratios,
+            cumulative,
+            components_90pct,
+            components_99pct,
+            top10_concentration,
+        }
+    }
+}
+
 /// Compute the variance spectrum of `data` `[N, D]` using `k` PCA components.
 pub fn variance_spectrum(data: &Array2<f32>, k: usize) -> Result<VarianceSpectrum, AnalysisError> {
     let result = pca::pca(data, k, 500)?;
+    let explained_variance = result.explained_variance;
     let ratios = result.explained_variance_ratio;
 
     let mut cumulative = Array1::<f32>::zeros(ratios.len());
@@ -46,6 +86,7 @@ pub fn variance_spectrum(data: &Array2<f32>, k: usize) -> Result<VarianceSpectru
     let top10_concentration = ratios.iter().take(10).sum();
 
     Ok(VarianceSpectrum {
+        explained_variance,
         ratios,
         cumulative,
         components_90pct,
@@ -81,5 +122,17 @@ mod tests {
         let spec = variance_spectrum(&data, 16).unwrap();
         assert!(spec.top10_concentration >= 0.0);
         assert!(spec.top10_concentration <= 1.0 + 1e-5);
+    }
+
+    #[test]
+    fn truncation_recomputes_cumulative_fields() {
+        let data = Array2::from_shape_fn((60, 16), |(i, j)| (i + j * 2) as f32);
+        let spec = variance_spectrum(&data, 12).unwrap();
+        let truncated = spec.truncated(5);
+
+        assert_eq!(truncated.explained_variance.len(), 5);
+        assert_eq!(truncated.ratios.len(), 5);
+        assert_eq!(truncated.cumulative.len(), 5);
+        assert!(truncated.cumulative[4] <= 1.0 + 1e-5);
     }
 }
