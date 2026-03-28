@@ -5,8 +5,8 @@ pub mod preprocess;
 pub mod registry;
 
 pub use inventory::{
-    build_model_catalog, CacheStatus, EvidenceStatus, ModelArtifactInventory, ModelCatalogReport,
-    ModelInventoryEntry,
+    build_model_catalog, CacheStatus, EvidenceStatus, EvidenceStatusCounts, ModelArtifactInventory,
+    ModelCatalogReport, ModelCatalogSummary, ModelInventoryEntry,
 };
 pub use loader::{ModelOutput, ModelSession, OutputTensorMetadata};
 pub use registry::{

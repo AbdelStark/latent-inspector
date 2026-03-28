@@ -1,7 +1,14 @@
+use serde_json::Value;
+use std::fs;
 use std::process::Command;
+use tempfile::tempdir;
 
 fn bin() -> &'static str {
     env!("CARGO_BIN_EXE_latent-inspector")
+}
+
+fn read_json(path: &std::path::Path) -> Value {
+    serde_json::from_str(&fs::read_to_string(path).unwrap()).unwrap()
 }
 
 #[test]
@@ -38,4 +45,73 @@ fn models_verbose_output_includes_evidence_and_cache_details() {
     assert!(stdout.contains("Cache: "));
     assert!(stdout.contains("Artifact: dinov2-vit-l14.onnx"));
     assert!(stdout.contains("Cache dir:"));
+}
+
+#[test]
+fn models_json_output_writes_structured_catalog() {
+    let outdir = tempdir().unwrap();
+    let output = Command::new(bin())
+        .args([
+            "models",
+            "--format",
+            "json",
+            "--output",
+            outdir.path().to_str().unwrap(),
+        ])
+        .output()
+        .unwrap();
+
+    assert_eq!(output.status.code(), Some(0));
+
+    let payload = read_json(&outdir.path().join("models.json"));
+    assert_eq!(payload["summary"]["total_models"], 6);
+    assert_eq!(payload["summary"]["ready_models"], 1);
+    assert_eq!(payload["summary"]["evidence"]["approved"], 1);
+    assert_eq!(payload["entries"].as_array().unwrap().len(), 6);
+    let dinov2 = payload["entries"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|entry| entry["name"] == "dinov2-vit-l14")
+        .unwrap();
+    assert_eq!(
+        dinov2["artifacts"][0]["relative_path"],
+        "dinov2-vit-l14.onnx"
+    );
+}
+
+#[test]
+fn models_html_output_writes_shareable_catalog() {
+    let outdir = tempdir().unwrap();
+    let output = Command::new(bin())
+        .args([
+            "models",
+            "--format",
+            "html",
+            "--output",
+            outdir.path().to_str().unwrap(),
+        ])
+        .output()
+        .unwrap();
+
+    assert_eq!(output.status.code(), Some(0));
+
+    let html = fs::read_to_string(outdir.path().join("models.html")).unwrap();
+    assert!(html.contains("Model inventory"));
+    assert!(html.contains("Validation fixtures:"));
+    assert!(html.contains("dinov2-vit-l14"));
+    assert!(html.contains("Registry availability, cache state, and validation evidence"));
+}
+
+#[test]
+fn models_rejects_png_output() {
+    let output = Command::new(bin())
+        .args(["models", "--format", "png"])
+        .output()
+        .unwrap();
+
+    assert_eq!(output.status.code(), Some(2));
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("models only supports terminal, json, or html output"));
 }

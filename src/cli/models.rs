@@ -1,6 +1,8 @@
-use crate::errors::Error;
+use crate::errors::{Error, ValidationError};
 use crate::models::{build_model_catalog, cache, registry};
+use crate::viz::OutputFormat;
 use clap::Args;
+use std::path::PathBuf;
 
 #[derive(Args, Debug)]
 pub struct ModelsArgs {
@@ -11,25 +13,69 @@ pub struct ModelsArgs {
     /// Show all models including size information.
     #[arg(short, long)]
     pub verbose: bool,
+
+    /// Output format for the model catalog.
+    #[arg(short, long, default_value = "terminal")]
+    pub format: OutputFormat,
+
+    /// Output directory for JSON or HTML artifacts.
+    #[arg(short, long)]
+    pub output: Option<PathBuf>,
 }
 
 pub fn run(args: ModelsArgs) -> Result<(), Error> {
+    if matches!(args.format, OutputFormat::Png) {
+        return Err(ValidationError::Usage(
+            "models only supports terminal, json, or html output.".to_string(),
+        )
+        .into());
+    }
+
     if let Some(name) = args.download {
         return download_model(&name);
     }
 
-    list_models(args.verbose)?;
+    list_models(&args)?;
     Ok(())
 }
 
-fn list_models(verbose: bool) -> Result<(), Error> {
+fn list_models(args: &ModelsArgs) -> Result<(), Error> {
     let report = build_model_catalog(None);
-    crate::viz::terminal::print_model_catalog(&report, verbose);
-    println!("Run `latent-inspector models --download dinov2-vit-l14` to cache the Phase 1 model.");
-    let cache_path = cache::cache_dir()
-        .map(|p| p.display().to_string())
-        .unwrap_or_else(|_| "unknown".to_string());
-    println!("Cache dir: {}", cache_path);
+
+    match args.format {
+        OutputFormat::Terminal => {
+            crate::viz::terminal::print_model_catalog(&report, args.verbose);
+            println!(
+                "Run `latent-inspector models --download dinov2-vit-l14` to cache the Phase 1 model."
+            );
+            let cache_path = cache::cache_dir()
+                .map(|p| p.display().to_string())
+                .unwrap_or_else(|_| "unknown".to_string());
+            println!("Cache dir: {}", cache_path);
+        }
+        OutputFormat::Json => {
+            if let Some(outdir) = &args.output {
+                std::fs::create_dir_all(outdir)?;
+                let path = outdir.join("models.json");
+                crate::viz::json::write_model_catalog(&report, &path)?;
+                println!("Model catalog written to {}", path.display());
+            } else {
+                crate::viz::json::print_model_catalog(&report)?;
+            }
+        }
+        OutputFormat::Html => {
+            let outdir = args
+                .output
+                .clone()
+                .unwrap_or_else(|| PathBuf::from("models_output"));
+            std::fs::create_dir_all(&outdir)?;
+            let path = outdir.join("models.html");
+            crate::viz::html::write_model_catalog_report(&report, &path)?;
+            println!("Model catalog written to {}", path.display());
+        }
+        OutputFormat::Png => unreachable!("validated earlier"),
+    }
+
     Ok(())
 }
 

@@ -1,5 +1,6 @@
 use crate::analysis::{ComparisonMetrics, ModelMetrics};
 use crate::errors::VizError;
+use crate::models::ModelCatalogReport;
 use crate::validation::report::ModelValidationSummary;
 use crate::viz::report::{
     CompareReport, DriftReport, InspectReport, NeighborsReport, SimilarityReport,
@@ -65,6 +66,14 @@ pub fn print_drift_report(report: &DriftReport) -> Result<(), VizError> {
 }
 
 pub fn write_drift_report(report: &DriftReport, path: &Path) -> Result<(), VizError> {
+    write_value(report, path)
+}
+
+pub fn print_model_catalog(report: &ModelCatalogReport) -> Result<(), VizError> {
+    print_value(report)
+}
+
+pub fn write_model_catalog(report: &ModelCatalogReport, path: &Path) -> Result<(), VizError> {
     write_value(report, path)
 }
 

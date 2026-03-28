@@ -4,8 +4,10 @@ use crate::validation::fixtures::{load_fixture_set, LoadedFixtureSet};
 use crate::validation::freshness::{
     parity_evidence_freshness, preprocess_evidence_freshness, tensor_evidence_freshness,
 };
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum CacheStatus {
     Complete,
     Missing,
@@ -22,7 +24,8 @@ impl CacheStatus {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum EvidenceStatus {
     Approved,
     Stale,
@@ -41,13 +44,13 @@ impl EvidenceStatus {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ModelArtifactInventory {
     pub relative_path: String,
     pub url: String,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ModelInventoryEntry {
     pub name: String,
     pub availability_status: AvailabilityStatus,
@@ -72,11 +75,29 @@ pub struct ModelInventoryEntry {
     pub artifacts: Vec<ModelArtifactInventory>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EvidenceStatusCounts {
+    pub approved: usize,
+    pub stale: usize,
+    pub missing: usize,
+    pub unverified: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModelCatalogSummary {
+    pub total_models: usize,
+    pub ready_models: usize,
+    pub planned_models: usize,
+    pub cached_models: usize,
+    pub evidence: EvidenceStatusCounts,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ModelCatalogReport {
     pub fixture_set: Option<String>,
     pub evidence_timestamp: Option<String>,
     pub fixture_error: Option<String>,
+    pub summary: ModelCatalogSummary,
     pub entries: Vec<ModelInventoryEntry>,
 }
 
@@ -86,6 +107,42 @@ impl ModelCatalogReport {
             .iter()
             .filter(|entry| entry.evidence_status == status)
             .count()
+    }
+
+    pub fn cache_count(&self, status: CacheStatus) -> usize {
+        self.entries
+            .iter()
+            .filter(|entry| entry.cache_status == status)
+            .count()
+    }
+
+    pub fn ready_count(&self) -> usize {
+        self.entries
+            .iter()
+            .filter(|entry| entry.availability_status == AvailabilityStatus::Ready)
+            .count()
+    }
+
+    pub fn planned_count(&self) -> usize {
+        self.entries
+            .iter()
+            .filter(|entry| entry.availability_status == AvailabilityStatus::Planned)
+            .count()
+    }
+
+    fn build_summary(&self) -> ModelCatalogSummary {
+        ModelCatalogSummary {
+            total_models: self.entries.len(),
+            ready_models: self.ready_count(),
+            planned_models: self.planned_count(),
+            cached_models: self.cache_count(CacheStatus::Complete),
+            evidence: EvidenceStatusCounts {
+                approved: self.evidence_count(EvidenceStatus::Approved),
+                stale: self.evidence_count(EvidenceStatus::Stale),
+                missing: self.evidence_count(EvidenceStatus::Missing),
+                unverified: self.evidence_count(EvidenceStatus::Unverified),
+            },
+        }
     }
 }
 
@@ -105,12 +162,26 @@ pub fn build_model_catalog(fixture_selection: Option<&str>) -> ModelCatalogRepor
         .map(|entry| build_inventory_entry(&entry, fixture_set.as_ref(), fixture_error.as_deref()))
         .collect();
 
-    ModelCatalogReport {
+    let mut report = ModelCatalogReport {
         fixture_set: fixture_name,
         evidence_timestamp,
         fixture_error,
+        summary: ModelCatalogSummary {
+            total_models: 0,
+            ready_models: 0,
+            planned_models: 0,
+            cached_models: 0,
+            evidence: EvidenceStatusCounts {
+                approved: 0,
+                stale: 0,
+                missing: 0,
+                unverified: 0,
+            },
+        },
         entries,
-    }
+    };
+    report.summary = report.build_summary();
+    report
 }
 
 fn build_inventory_entry(
@@ -298,6 +369,9 @@ mod tests {
 
         assert_eq!(dinov2.evidence_status, EvidenceStatus::Approved);
         assert!(dinov2.evidence_details.is_empty());
+        assert_eq!(report.summary.total_models, report.entries.len());
+        assert_eq!(report.summary.ready_models, 1);
+        assert_eq!(report.summary.evidence.approved, 1);
     }
 
     #[test]

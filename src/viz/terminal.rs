@@ -216,7 +216,7 @@ pub fn print_pairwise_matrix(title: &str, matrix: &PairwiseMatrix) {
 
 pub fn print_model_catalog(report: &ModelCatalogReport, verbose: bool) {
     println!();
-    println!("Available models ({})", report.entries.len());
+    println!("Available models ({})", report.summary.total_models);
     println!("{}", "═".repeat(112));
     println!(
         "{:<20} {:<10} {:<12} {:<10} {:<8} {:<12} {:>10}",
@@ -286,10 +286,10 @@ pub fn print_model_catalog(report: &ModelCatalogReport, verbose: bool) {
     println!("Validation fixtures: {fixture_summary}");
     println!(
         "Evidence summary: {} approved, {} stale, {} missing, {} unverified",
-        report.evidence_count(EvidenceStatus::Approved),
-        report.evidence_count(EvidenceStatus::Stale),
-        report.evidence_count(EvidenceStatus::Missing),
-        report.evidence_count(EvidenceStatus::Unverified),
+        report.summary.evidence.approved,
+        report.summary.evidence.stale,
+        report.summary.evidence.missing,
+        report.summary.evidence.unverified,
     );
 }
 

@@ -3,6 +3,7 @@
 use crate::analysis::{ComparisonMetrics, ModelMetrics};
 use crate::dataset::DatasetProcessingSummary;
 use crate::errors::VizError;
+use crate::models::ModelCatalogReport;
 use crate::validation::report::ModelValidationSummary;
 use crate::viz::report::{
     build_compare_overview, CompareOverview, DriftReport, InspectReport, NeighborsReport,
@@ -77,6 +78,16 @@ pub fn write_similarity_report(
 
 pub fn write_drift_report(report: &DriftReport, output_path: &Path) -> Result<(), VizError> {
     let html = render_drift_html(report);
+    std::fs::write(output_path, &html)
+        .map_err(|e| VizError::Html(format!("Failed to write {}: {e}", output_path.display())))?;
+    Ok(())
+}
+
+pub fn write_model_catalog_report(
+    report: &ModelCatalogReport,
+    output_path: &Path,
+) -> Result<(), VizError> {
+    let html = render_model_catalog_html(report);
     std::fs::write(output_path, &html)
         .map_err(|e| VizError::Html(format!("Failed to write {}: {e}", output_path.display())))?;
     Ok(())
@@ -485,6 +496,55 @@ fn render_drift_html(report: &DriftReport) -> String {
     )
 }
 
+fn render_model_catalog_html(report: &ModelCatalogReport) -> String {
+    let fixture_status = match (
+        &report.fixture_set,
+        &report.evidence_timestamp,
+        &report.fixture_error,
+    ) {
+        (_, _, Some(error)) => format!("Unavailable: {}", escape_html(error)),
+        (Some(fixture_set), Some(timestamp), None) => format!(
+            "<code>{}</code> @ <code>{}</code>",
+            escape_html(fixture_set),
+            escape_html(timestamp),
+        ),
+        (Some(fixture_set), None, None) => {
+            format!("<code>{}</code>", escape_html(fixture_set))
+        }
+        _ => "Unavailable".to_string(),
+    };
+
+    let sections = vec![
+        (
+            "Fixture Provenance",
+            format!(
+                "<p><strong>Validation fixtures:</strong> {}</p><p><strong>Evidence summary:</strong> {} approved, {} stale, {} missing, {} unverified</p>",
+                fixture_status,
+                report.summary.evidence.approved,
+                report.summary.evidence.stale,
+                report.summary.evidence.missing,
+                report.summary.evidence.unverified,
+            ),
+        ),
+        ("Model Inventory", render_model_catalog_table(report)),
+    ];
+
+    render_secondary_html(
+        "Model inventory",
+        "Registry availability, cache state, and validation evidence for each known integration.",
+        &[
+            ("Registered models", report.summary.total_models.to_string()),
+            ("Ready now", report.summary.ready_models.to_string()),
+            ("Cached bundles", report.summary.cached_models.to_string()),
+            (
+                "Approved evidence",
+                report.summary.evidence.approved.to_string(),
+            ),
+        ],
+        &sections,
+    )
+}
+
 fn render_inspect_html(report: &InspectReport, assets: &InspectHtmlAssets) -> String {
     let metrics = &report.metrics;
     let variance = &report.variance_spectrum;
@@ -774,9 +834,107 @@ fn render_comparison_table(rows: &str) -> String {
   <tbody>
     {rows}
   </tbody>
-</table>"
+            </table>"
         )
     }
+}
+
+fn render_model_catalog_table(report: &ModelCatalogReport) -> String {
+    if report.entries.is_empty() {
+        return "<p class=\"empty-state\">No models are registered.</p>".to_string();
+    }
+
+    let rows = report
+        .entries
+        .iter()
+        .map(|entry| {
+            format!(
+                "<tr><td><code>{}</code></td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>",
+                escape_html(&entry.name),
+                escape_html(&entry.phase),
+                escape_html(&entry.availability_status.to_string()),
+                escape_html(entry.evidence_status.label()),
+                escape_html(entry.cache_status.label()),
+                escape_html(&entry.verification_label),
+                escape_html(&entry.method.to_string()),
+                entry.params_m,
+                render_model_catalog_details(entry),
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    format!(
+        "<table><thead><tr><th>Name</th><th>Phase</th><th>Status</th><th>Evidence</th><th>Cache</th><th>Verify</th><th>Method</th><th>Params (M)</th><th>Details</th></tr></thead><tbody>{rows}</tbody></table>"
+    )
+}
+
+fn render_model_catalog_details(entry: &crate::models::ModelInventoryEntry) -> String {
+    let mut parts = vec![
+        format!(
+            "<p><strong>Availability:</strong> {}</p>",
+            escape_html(&entry.availability_note),
+        ),
+        format!(
+            "<p><strong>Architecture:</strong> {} | {}x{} | dim {} | {} layers / {} heads</p>",
+            escape_html(&entry.architecture),
+            entry.input_size,
+            entry.input_size,
+            entry.embed_dim,
+            entry.num_layers,
+            entry.num_heads,
+        ),
+        format!(
+            "<p><strong>Evidence:</strong> {} [{} @ {}]</p>",
+            escape_html(&entry.evidence_summary),
+            escape_html(&entry.approved_fixture_set),
+            escape_html(&entry.approved_evidence_timestamp),
+        ),
+        format!(
+            "<p><strong>Cache:</strong> {}</p>",
+            escape_html(&entry.cache_summary),
+        ),
+    ];
+
+    if let Some(note) = &entry.verification_note {
+        parts.push(format!(
+            "<p><strong>Verification note:</strong> {}</p>",
+            escape_html(note),
+        ));
+    }
+
+    if !entry.evidence_details.is_empty() {
+        let items = entry
+            .evidence_details
+            .iter()
+            .map(|detail| format!("<li>{}</li>", escape_html(detail)))
+            .collect::<Vec<_>>()
+            .join("");
+        parts.push(format!(
+            "<p><strong>Evidence details:</strong></p><ul>{items}</ul>"
+        ));
+    }
+
+    if !entry.artifacts.is_empty() {
+        let items = entry
+            .artifacts
+            .iter()
+            .map(|artifact| {
+                format!(
+                    "<li><code>{}</code><br/><a href=\"{}\">{}</a></li>",
+                    escape_html(&artifact.relative_path),
+                    escape_html(&artifact.url),
+                    escape_html(&artifact.url),
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("");
+        parts.push(format!(
+            "<p><strong>Artifacts:</strong></p><ul>{items}</ul>"
+        ));
+    }
+
+    parts.join("")
 }
 
 fn render_metric_caveats(comparison: &ComparisonMetrics) -> String {
@@ -983,6 +1141,7 @@ fn escape_html(s: &str) -> String {
 mod tests {
     use super::*;
     use crate::dataset::{DatasetProcessingSummary, SkippedImage};
+    use crate::models::{build_model_catalog, EvidenceStatus};
     use crate::validation::report::{
         CheckSummary, ModelValidationSummary, ParityValidationSummary, TensorValidationSummary,
         ValidationStatus,
@@ -1037,6 +1196,10 @@ mod tests {
                 top10_concentration: 0.62,
             },
         }
+    }
+
+    fn model_catalog_report() -> ModelCatalogReport {
+        build_model_catalog(None)
     }
 
     #[test]
@@ -1324,5 +1487,32 @@ mod tests {
         assert!(html.contains("Largest shift"));
         assert!(html.contains("Validation Summary"));
         assert!(html.contains("Mean patch"));
+    }
+
+    #[test]
+    fn test_write_model_catalog_report() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("models.html");
+        let report = model_catalog_report();
+
+        write_model_catalog_report(&report, &path).unwrap();
+
+        let html = std::fs::read_to_string(&path).unwrap();
+        assert!(html.contains("Model inventory"));
+        assert!(html.contains("Fixture Provenance"));
+        assert!(html.contains("dinov2-vit-l14"));
+        assert!(html.contains("approved"));
+    }
+
+    #[test]
+    fn test_model_catalog_report_includes_summary_counts() {
+        let report = model_catalog_report();
+        let html = render_model_catalog_html(&report);
+
+        assert_eq!(report.summary.evidence.approved, 1);
+        assert_eq!(report.summary.evidence.unverified, 5);
+        assert!(html.contains("Registered models"));
+        assert!(html.contains("Approved evidence"));
+        assert!(html.contains(EvidenceStatus::Approved.label()));
     }
 }

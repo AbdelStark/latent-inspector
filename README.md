@@ -212,6 +212,11 @@ Use `latent-inspector models` to inspect the live registry inventory. The
 catalog now reports each model's phase status, whether the local cache contains
 the full artifact bundle, and whether the approved validation evidence is
 current, stale, missing, or intentionally withheld for planned integrations.
+Use `latent-inspector models --format json` to emit the same catalog as
+structured JSON to stdout or `latent-inspector models --format json --output
+tmp/models` to write `models.json` for automation. For a shareable report, run
+`latent-inspector models --format html --output tmp/models` to generate
+`models.html`.
 
 ## License
 
