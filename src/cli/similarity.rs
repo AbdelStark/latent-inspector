@@ -205,13 +205,21 @@ fn render_output(args: &SimilarityArgs, report: &SimilarityReport) -> Result<(),
                 .clone()
                 .unwrap_or_else(|| PathBuf::from("similarity_output"));
             std::fs::create_dir_all(&outdir)?;
+            let assets = render_similarity_assets(report, &outdir)?;
             let path = outdir.join("report.html");
-            crate::viz::html::write_similarity_report(report, &path)?;
-            OutputArtifactManifest::new("similarity", OutputFormat::Html)
+            crate::viz::html::write_similarity_report_with_assets(report, &assets, &path)?;
+            let mut manifest = OutputArtifactManifest::new("similarity", OutputFormat::Html)
                 .with_primary_artifact("report.html")
                 .add_artifact("report.html", ArtifactKind::Html, "Similarity report")
-                .with_validation(&report.validation)
-                .write_to_dir(&outdir)?;
+                .with_validation(&report.validation);
+            for asset in &assets.visuals {
+                manifest = manifest.add_artifact(
+                    asset.path.clone(),
+                    ArtifactKind::Png,
+                    asset.description.clone(),
+                );
+            }
+            manifest.write_to_dir(&outdir)?;
             println!("Report written to {}", path.display());
         }
         OutputFormat::Png => {
@@ -236,6 +244,28 @@ fn render_output(args: &SimilarityArgs, report: &SimilarityReport) -> Result<(),
     }
 
     Ok(())
+}
+
+fn render_similarity_assets(
+    report: &SimilarityReport,
+    outdir: &std::path::Path,
+) -> Result<crate::viz::html::GalleryAssets, Error> {
+    if report.metrics.is_empty() {
+        return Ok(crate::viz::html::GalleryAssets::default());
+    }
+
+    let filename = "similarity.png";
+    crate::viz::png::save_series_chart(&report.metric_series(), &outdir.join(filename))?;
+    Ok(crate::viz::html::GalleryAssets {
+        visuals: vec![crate::viz::html::VisualAsset {
+            title: "Similarity metric chart".to_string(),
+            path: filename.to_string(),
+            alt: "Similarity metric chart".to_string(),
+            description:
+                "Chart of the reported dataset-level similarity metrics for this model pair."
+                    .to_string(),
+        }],
+    })
 }
 
 #[cfg(test)]

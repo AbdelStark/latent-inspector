@@ -171,7 +171,7 @@ fn neighbors_json_output_writes_structured_report() {
 }
 
 #[test]
-fn neighbors_html_output_includes_validation_summary() {
+fn neighbors_html_output_embeds_chart_and_validation_summary() {
     let dir = tempdir().unwrap();
     let dataset_dir = dir.path().join("dataset");
     let nested = dataset_dir.join("class-a");
@@ -204,8 +204,20 @@ fn neighbors_html_output_includes_validation_summary() {
     assert_eq!(output.status.code(), Some(0));
 
     let html = fs::read_to_string(output_dir.join("report.html")).unwrap();
+    assert!(html.contains("Visual Artefacts"));
+    assert!(html.contains("neighbors.png"));
     assert!(html.contains("Validation Summary"));
     assert!(html.contains("dinov2-vit-l14"));
+    assert!(output_dir.join("neighbors.png").exists());
+    let manifest = read_artifact_manifest(&output_dir);
+    assert_eq!(manifest["command"], "neighbors");
+    assert_eq!(manifest["format"], "html");
+    assert_eq!(manifest["primary_artifact"], "report.html");
+    assert!(manifest["artifacts"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|artifact| artifact["path"] == "neighbors.png"));
 }
 
 #[test]
@@ -272,7 +284,7 @@ fn similarity_json_output_writes_structured_report() {
 }
 
 #[test]
-fn similarity_html_output_includes_validation_summary() {
+fn similarity_html_output_embeds_chart_and_validation_summary() {
     let dir = tempdir().unwrap();
     let dataset_dir = dir.path().join("dataset");
     let nested = dataset_dir.join("class-b").join("deep");
@@ -305,9 +317,21 @@ fn similarity_html_output_includes_validation_summary() {
     assert_eq!(output.status.code(), Some(0));
 
     let html = fs::read_to_string(output_dir.join("report.html")).unwrap();
+    assert!(html.contains("Visual Artefacts"));
+    assert!(html.contains("similarity.png"));
     assert!(html.contains("Validation Summary"));
     assert!(html.contains("dinov2-vit-l14#1"));
     assert!(html.contains("dinov2-vit-l14#2"));
+    assert!(output_dir.join("similarity.png").exists());
+    let manifest = read_artifact_manifest(&output_dir);
+    assert_eq!(manifest["command"], "similarity");
+    assert_eq!(manifest["format"], "html");
+    assert_eq!(manifest["primary_artifact"], "report.html");
+    assert!(manifest["artifacts"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|artifact| artifact["path"] == "similarity.png"));
 }
 
 #[test]

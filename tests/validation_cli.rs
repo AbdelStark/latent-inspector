@@ -309,7 +309,7 @@ fn inspect_html_includes_variance_spectrum_and_validation_summary() {
 }
 
 #[test]
-fn compare_html_includes_validation_summary() {
+fn compare_html_embeds_visual_assets_and_validation_summary() {
     let dir = tempdir().unwrap();
     let image = write_test_image(dir.path());
     let output_dir = dir.path().join("compare");
@@ -317,7 +317,7 @@ fn compare_html_includes_validation_summary() {
         "compare",
         image.to_str().unwrap(),
         "--models",
-        "dinov2-vit-l14",
+        "dinov2-vit-l14,dinov2-vit-l14",
         "--format",
         "html",
         "--output",
@@ -326,8 +326,35 @@ fn compare_html_includes_validation_summary() {
 
     assert_eq!(output.status.code(), Some(0));
     let html = fs::read_to_string(output_dir.join("report.html")).unwrap();
+    assert!(html.contains("Visual Artefacts"));
+    assert!(html.contains("Per-model PCA projections"));
+    assert!(html.contains("Pairwise metric heatmaps"));
     assert!(html.contains("Validation Summary"));
-    assert!(html.contains("dinov2-vit-l14"));
+    assert!(html.contains("dinov2-vit-l14#1"));
+    assert!(html.contains("dinov2-vit-l14#2"));
+    assert!(html.contains("dinov2-vit-l14_1_pca.png"));
+    assert!(html.contains("dinov2-vit-l14_2_pca.png"));
+    assert!(html.contains("linear_cka.png"));
+    assert!(output_dir.join("dinov2-vit-l14_1_pca.png").exists());
+    assert!(output_dir.join("dinov2-vit-l14_2_pca.png").exists());
+    assert!(output_dir.join("cls_cosine.png").exists());
+    assert!(output_dir.join("linear_cka.png").exists());
+    assert!(output_dir.join("knn_overlap_k10.png").exists());
+    assert!(output_dir.join("patch_correspondence.png").exists());
+    let manifest = read_artifact_manifest(&output_dir);
+    assert_eq!(manifest["command"], "compare");
+    assert_eq!(manifest["format"], "html");
+    assert_eq!(manifest["primary_artifact"], "report.html");
+    assert!(manifest["artifacts"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|artifact| artifact["path"] == "dinov2-vit-l14_1_pca.png"));
+    assert!(manifest["artifacts"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|artifact| artifact["path"] == "linear_cka.png"));
 }
 
 #[test]

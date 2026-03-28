@@ -145,13 +145,21 @@ fn render_output(args: &DriftArgs, report: &DriftReport) -> Result<(), Error> {
                 .clone()
                 .unwrap_or_else(|| PathBuf::from("drift_output"));
             std::fs::create_dir_all(&outdir)?;
+            let assets = render_drift_assets(report, &outdir)?;
             let path = outdir.join("report.html");
-            crate::viz::html::write_drift_report(report, &path)?;
-            OutputArtifactManifest::new("drift", OutputFormat::Html)
+            crate::viz::html::write_drift_report_with_assets(report, &assets, &path)?;
+            let mut manifest = OutputArtifactManifest::new("drift", OutputFormat::Html)
                 .with_primary_artifact("report.html")
                 .add_artifact("report.html", ArtifactKind::Html, "Drift report")
-                .with_validation(&report.validation)
-                .write_to_dir(&outdir)?;
+                .with_validation(&report.validation);
+            for asset in &assets.visuals {
+                manifest = manifest.add_artifact(
+                    asset.path.clone(),
+                    ArtifactKind::Png,
+                    asset.description.clone(),
+                );
+            }
+            manifest.write_to_dir(&outdir)?;
             println!("Report written to {}", path.display());
         }
         OutputFormat::Png => {
@@ -176,6 +184,27 @@ fn render_output(args: &DriftArgs, report: &DriftReport) -> Result<(), Error> {
     }
 
     Ok(())
+}
+
+fn render_drift_assets(
+    report: &DriftReport,
+    outdir: &Path,
+) -> Result<crate::viz::html::GalleryAssets, Error> {
+    if report.drift.is_empty() {
+        return Ok(crate::viz::html::GalleryAssets::default());
+    }
+
+    let filename = "consecutive_cka.png";
+    crate::viz::png::save_series_chart(&report.cka_series(), &outdir.join(filename))?;
+    Ok(crate::viz::html::GalleryAssets {
+        visuals: vec![crate::viz::html::VisualAsset {
+            title: "Consecutive checkpoint CKA".to_string(),
+            path: filename.to_string(),
+            alt: "Consecutive checkpoint CKA chart".to_string(),
+            description: "Linear CKA for each consecutive checkpoint transition in the drift run."
+                .to_string(),
+        }],
+    })
 }
 
 fn embed_dataset(

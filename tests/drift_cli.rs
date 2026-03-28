@@ -198,7 +198,7 @@ fn drift_json_and_png_outputs_are_written() {
 }
 
 #[test]
-fn drift_html_output_includes_validation_summary() {
+fn drift_html_output_embeds_chart_and_validation_summary() {
     let dir = tempdir().unwrap();
     let dataset_dir = dir.path().join("dataset");
     let checkpoints_dir = dir.path().join("checkpoints");
@@ -232,7 +232,19 @@ fn drift_html_output_includes_validation_summary() {
     assert_eq!(output.status.code(), Some(0));
 
     let html = fs::read_to_string(output_dir.join("report.html")).unwrap();
+    assert!(html.contains("Visual Artefacts"));
+    assert!(html.contains("consecutive_cka.png"));
     assert!(html.contains("Validation Summary"));
     assert!(html.contains("step-1"));
     assert!(html.contains("step-2"));
+    assert!(output_dir.join("consecutive_cka.png").exists());
+    let manifest = read_artifact_manifest(&output_dir);
+    assert_eq!(manifest["command"], "drift");
+    assert_eq!(manifest["format"], "html");
+    assert_eq!(manifest["primary_artifact"], "report.html");
+    assert!(manifest["artifacts"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|artifact| artifact["path"] == "consecutive_cka.png"));
 }

@@ -122,23 +122,38 @@ pub fn run(args: CompareArgs) -> Result<(), Error> {
                 .output
                 .unwrap_or_else(|| PathBuf::from("compare_output"));
             std::fs::create_dir_all(&outdir)?;
+            let pca_artifacts = render_pca_artifacts(&outputs, &outdir)?;
+            let heatmap_artifacts = render_pairwise_heatmap_artifacts(&report.overview, &outdir)?;
+            let assets = crate::viz::html::CompareHtmlAssets {
+                pca_images: pca_artifacts
+                    .iter()
+                    .map(RenderedImageArtifact::to_visual_asset)
+                    .collect(),
+                heatmaps: heatmap_artifacts
+                    .iter()
+                    .map(RenderedImageArtifact::to_visual_asset)
+                    .collect(),
+            };
             let image_name = args
                 .image
                 .file_name()
                 .and_then(|n| n.to_str())
                 .unwrap_or("image");
-            crate::viz::html::write_report_with_validation(
+            crate::viz::html::write_report_with_validation_and_assets(
                 image_name,
                 &report.metrics,
                 &report.comparisons,
                 &report.validation,
+                &assets,
                 &outdir.join("report.html"),
             )?;
-            OutputArtifactManifest::new("compare", OutputFormat::Html)
+            let mut manifest = OutputArtifactManifest::new("compare", OutputFormat::Html)
                 .with_primary_artifact("report.html")
                 .add_artifact("report.html", ArtifactKind::Html, "Compare report")
-                .with_validation(&report.validation)
-                .write_to_dir(&outdir)?;
+                .with_validation(&report.validation);
+            manifest = add_png_artifacts(manifest, &pca_artifacts);
+            manifest = add_png_artifacts(manifest, &heatmap_artifacts);
+            manifest.write_to_dir(&outdir)?;
             println!("Report written to {}/report.html", outdir.display());
         }
         OutputFormat::Png => {
@@ -146,23 +161,12 @@ pub fn run(args: CompareArgs) -> Result<(), Error> {
                 .output
                 .unwrap_or_else(|| PathBuf::from("compare_output"));
             std::fs::create_dir_all(&outdir)?;
+            let pca_artifacts = render_pca_artifacts(&outputs, &outdir)?;
+            let heatmap_artifacts = render_pairwise_heatmap_artifacts(&report.overview, &outdir)?;
             let mut manifest = OutputArtifactManifest::new("compare", OutputFormat::Png)
                 .with_validation(&report.validation);
-            // PCA RGB images
-            for (name, feat) in &outputs {
-                let pca_result = crate::analysis::pca(&feat.patch_tokens, 3, 300)?;
-                let projected = crate::analysis::transform(&feat.patch_tokens, &pca_result);
-                let grid = (feat.n_patches as f32).sqrt() as usize;
-                let filename = format!("{}_pca.png", slugify(name));
-                let path = outdir.join(&filename);
-                crate::viz::png::save_pca_rgb(&projected, grid, &path)?;
-                manifest = manifest.add_artifact(
-                    filename,
-                    ArtifactKind::Png,
-                    format!("PCA projection for {name}"),
-                );
-            }
-            manifest = save_pairwise_heatmaps(&outdir, &report.overview, manifest)?;
+            manifest = add_png_artifacts(manifest, &pca_artifacts);
+            manifest = add_png_artifacts(manifest, &heatmap_artifacts);
             manifest.write_to_dir(&outdir)?;
             println!("PNG outputs saved to {}", outdir.display());
         }
@@ -207,31 +211,106 @@ fn slugify(label: &str) -> String {
     slug.trim_matches('_').to_string()
 }
 
-fn save_pairwise_heatmaps(
-    outdir: &std::path::Path,
-    overview: &crate::viz::report::CompareOverview,
-    mut manifest: OutputArtifactManifest,
-) -> Result<OutputArtifactManifest, Error> {
-    let heatmaps = [
-        ("cls_cosine", &overview.cls_cosine_matrix),
-        ("linear_cka", &overview.linear_cka_matrix),
-        ("knn_overlap_k10", &overview.knn_overlap_matrix),
-        ("patch_correspondence", &overview.correspondence_matrix),
-    ];
+#[derive(Debug, Clone)]
+struct RenderedImageArtifact {
+    filename: String,
+    title: String,
+    description: String,
+}
 
-    for (name, matrix) in heatmaps {
-        if matrix.len() >= 2 && matrix.has_off_diagonal_values() {
-            let filename = format!("{name}.png");
-            crate::viz::png::save_pairwise_heatmap(matrix, &outdir.join(&filename))?;
-            manifest = manifest.add_artifact(
-                filename,
-                ArtifactKind::Png,
-                format!("Pairwise heatmap for {name}"),
-            );
+impl RenderedImageArtifact {
+    fn to_visual_asset(&self) -> crate::viz::html::VisualAsset {
+        crate::viz::html::VisualAsset {
+            title: self.title.clone(),
+            path: self.filename.clone(),
+            alt: self.title.clone(),
+            description: self.description.clone(),
         }
     }
+}
 
-    Ok(manifest)
+fn render_pca_artifacts(
+    outputs: &[(String, ExtractedFeatures)],
+    outdir: &std::path::Path,
+) -> Result<Vec<RenderedImageArtifact>, Error> {
+    let mut artifacts = Vec::with_capacity(outputs.len());
+    for (name, feat) in outputs {
+        let pca_result = crate::analysis::pca(&feat.patch_tokens, 3, 300)?;
+        let projected = crate::analysis::transform(&feat.patch_tokens, &pca_result);
+        let grid = (feat.n_patches as f32).sqrt() as usize;
+        let filename = format!("{}_pca.png", slugify(name));
+        let path = outdir.join(&filename);
+        crate::viz::png::save_pca_rgb(&projected, grid, &path)?;
+        artifacts.push(RenderedImageArtifact {
+            filename,
+            title: format!("{name} PCA projection"),
+            description: format!(
+                "Patch-space RGB projection derived from the top three PCA components for {name}."
+            ),
+        });
+    }
+    Ok(artifacts)
+}
+
+fn render_pairwise_heatmap_artifacts(
+    overview: &crate::viz::report::CompareOverview,
+    outdir: &std::path::Path,
+) -> Result<Vec<RenderedImageArtifact>, Error> {
+    let heatmaps = [
+        (
+            "cls_cosine.png",
+            "CLS cosine heatmap",
+            "Cross-model CLS cosine similarity matrix.",
+            &overview.cls_cosine_matrix,
+        ),
+        (
+            "linear_cka.png",
+            "Linear CKA heatmap",
+            "Cross-model representation alignment measured with linear CKA.",
+            &overview.linear_cka_matrix,
+        ),
+        (
+            "knn_overlap_k10.png",
+            "k-NN overlap heatmap",
+            "Cross-model neighborhood agreement using k=10.",
+            &overview.knn_overlap_matrix,
+        ),
+        (
+            "patch_correspondence.png",
+            "Patch correspondence heatmap",
+            "Direct patch-space correspondence for models with matching embedding dimensions.",
+            &overview.correspondence_matrix,
+        ),
+    ];
+
+    let mut artifacts = Vec::new();
+    for (filename, title, description, matrix) in heatmaps {
+        if matrix.len() < 2 || !matrix.has_off_diagonal_values() {
+            continue;
+        }
+        crate::viz::png::save_pairwise_heatmap(matrix, &outdir.join(filename))?;
+        artifacts.push(RenderedImageArtifact {
+            filename: filename.to_string(),
+            title: title.to_string(),
+            description: description.to_string(),
+        });
+    }
+
+    Ok(artifacts)
+}
+
+fn add_png_artifacts(
+    mut manifest: OutputArtifactManifest,
+    artifacts: &[RenderedImageArtifact],
+) -> OutputArtifactManifest {
+    for artifact in artifacts {
+        manifest = manifest.add_artifact(
+            artifact.filename.clone(),
+            ArtifactKind::Png,
+            artifact.description.clone(),
+        );
+    }
+    manifest
 }
 
 #[cfg(test)]

@@ -141,7 +141,7 @@ I-JEPA: 0.58 (moderate)  CLIP: 0.81 (very focused)
 ## Analysis modes
 
 ### `compare` — Side-by-side model comparison
-The main command. Takes an image and a list of models. Produces PCA projections, pairwise similarity matrices, highlight summaries, and validation-aware reports. When compared models expose different patch grids or incompatible CLS / embedding spaces, `compare` now keeps the dimension-agnostic metrics, marks unsupported metrics as `N/A`, and explains the reason in terminal, JSON, and HTML outputs instead of silently dropping them. `--format json` prints the structured compare report to stdout by default or writes `compare.json` when `--output <dir>` is provided. `--format png` writes per-model PCA images plus pairwise heatmaps for CKA, k-NN overlap, and direct patch correspondence.
+The main command. Takes an image and a list of models. Produces PCA projections, pairwise similarity matrices, highlight summaries, and validation-aware reports. When compared models expose different patch grids or incompatible CLS / embedding spaces, `compare` now keeps the dimension-agnostic metrics, marks unsupported metrics as `N/A`, and explains the reason in terminal, JSON, and HTML outputs instead of silently dropping them. `--format json` prints the structured compare report to stdout by default or writes `compare.json` when `--output <dir>` is provided. `--format png` writes per-model PCA images plus pairwise heatmaps for CKA, k-NN overlap, and direct patch correspondence. `--format html` now writes the report plus those companion PNG assets, embeds them in the page, and records them in `artifacts.json`.
 
 ### `inspect` — Deep dive into a single model
 Detailed analysis of one model's representation: rank/entropy metrics, dead dimension counts, variance spectrum, validation status, and exportable PCA + variance artefacts. `--format json` prints the structured inspect report to stdout by default or writes `inspect.json` when `--output <dir>` is provided. `--format html` now writes a dedicated single-model report with the variance-spectrum breakdown, concentration thresholds, validation summary, and linked PCA / variance artefacts instead of falling back to the generic compare layout.
@@ -158,14 +158,15 @@ while HTML/PNG emit a shareable report or ranking chart under
 HTML reports also attach the active model's validation summary so nearest-neighbor
 results keep their trust context. If a model does not expose a CLS token, the
 command now falls back to a mean-patch image embedding and records that basis in
-terminal, JSON, and HTML reports.
+terminal, JSON, and HTML reports. HTML exports also include the similarity chart
+PNG that the standalone `png` surface writes.
 
 ### `similarity` — Representation alignment between models
 Centered Kernel Alignment (CKA) and mutual k-NN overlap between two models across a dataset. Answers: "How similarly do these two models represent the world?"
 `similarity` now supports `--format terminal|json|html|png`; the JSON/HTML
 reports include the computed metric set plus dataset processing summary, and the
 PNG surface writes a compact metric chart for automation-friendly artifact
-capture. Terminal, JSON, and HTML outputs also include validation summaries for
+capture. HTML exports now embed that chart alongside the report. Terminal, JSON, and HTML outputs also include validation summaries for
 both compared models. Report payloads now also state that dataset-level
 similarity metrics are computed from mean-patch embeddings, with CLS cosine
 surfaced separately when available.
@@ -179,7 +180,8 @@ now skips that file, continues processing the rest of the dataset, and reports
 the skipped paths in the terminal summary instead of aborting the whole run.
 `drift` also supports `--format terminal|json|html|png`; the structured report
 captures checkpoint ordering, aggregate drift highlights, and dataset skip
-details, while the PNG output writes a consecutive-CKA chart to disk. Terminal,
+details, while the PNG output writes a consecutive-CKA chart to disk. HTML
+exports embed that chart when at least one consecutive comparison exists. Terminal,
 JSON, and HTML outputs now also surface per-checkpoint validation summaries so
 training-stage drift is read alongside contract and parity caveats. Dataset-based
 drift summaries now explicitly state that checkpoint comparisons use mean-patch

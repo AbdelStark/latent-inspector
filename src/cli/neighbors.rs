@@ -159,13 +159,21 @@ fn render_output(args: &NeighborsArgs, report: &NeighborsReport) -> Result<(), E
                 .clone()
                 .unwrap_or_else(|| PathBuf::from("neighbors_output"));
             std::fs::create_dir_all(&outdir)?;
+            let assets = render_neighbors_assets(report, &outdir)?;
             let path = outdir.join("report.html");
-            crate::viz::html::write_neighbors_report(report, &path)?;
-            OutputArtifactManifest::new("neighbors", OutputFormat::Html)
+            crate::viz::html::write_neighbors_report_with_assets(report, &assets, &path)?;
+            let mut manifest = OutputArtifactManifest::new("neighbors", OutputFormat::Html)
                 .with_primary_artifact("report.html")
                 .add_artifact("report.html", ArtifactKind::Html, "Neighbors report")
-                .with_validation(std::slice::from_ref(&report.validation))
-                .write_to_dir(&outdir)?;
+                .with_validation(std::slice::from_ref(&report.validation));
+            for asset in &assets.visuals {
+                manifest = manifest.add_artifact(
+                    asset.path.clone(),
+                    ArtifactKind::Png,
+                    asset.description.clone(),
+                );
+            }
+            manifest.write_to_dir(&outdir)?;
             println!("Report written to {}", path.display());
         }
         OutputFormat::Png => {
@@ -190,4 +198,21 @@ fn render_output(args: &NeighborsArgs, report: &NeighborsReport) -> Result<(), E
     }
 
     Ok(())
+}
+
+fn render_neighbors_assets(
+    report: &NeighborsReport,
+    outdir: &std::path::Path,
+) -> Result<crate::viz::html::GalleryAssets, Error> {
+    let filename = "neighbors.png";
+    crate::viz::png::save_series_chart(&report.similarity_series(), &outdir.join(filename))?;
+    Ok(crate::viz::html::GalleryAssets {
+        visuals: vec![crate::viz::html::VisualAsset {
+            title: "Neighbor similarity chart".to_string(),
+            path: filename.to_string(),
+            alt: "Neighbor similarity chart".to_string(),
+            description: "Rank-ordered cosine similarity for the returned neighbor set."
+                .to_string(),
+        }],
+    })
 }

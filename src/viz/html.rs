@@ -11,6 +11,37 @@ use crate::viz::report::{
 };
 use std::path::Path;
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VisualAsset {
+    pub title: String,
+    pub path: String,
+    pub alt: String,
+    pub description: String,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct CompareHtmlAssets {
+    pub pca_images: Vec<VisualAsset>,
+    pub heatmaps: Vec<VisualAsset>,
+}
+
+impl CompareHtmlAssets {
+    fn is_empty(&self) -> bool {
+        self.pca_images.is_empty() && self.heatmaps.is_empty()
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct GalleryAssets {
+    pub visuals: Vec<VisualAsset>,
+}
+
+impl GalleryAssets {
+    fn is_empty(&self) -> bool {
+        self.visuals.is_empty()
+    }
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct InspectHtmlAssets {
     pub pca_image: Option<String>,
@@ -40,7 +71,25 @@ pub fn write_report_with_validation(
     validation: &[ModelValidationSummary],
     output_path: &Path,
 ) -> Result<(), VizError> {
-    let html = render_html(image_name, metrics, comparisons, validation);
+    write_report_with_validation_and_assets(
+        image_name,
+        metrics,
+        comparisons,
+        validation,
+        &CompareHtmlAssets::default(),
+        output_path,
+    )
+}
+
+pub fn write_report_with_validation_and_assets(
+    image_name: &str,
+    metrics: &[ModelMetrics],
+    comparisons: &[ComparisonMetrics],
+    validation: &[ModelValidationSummary],
+    assets: &CompareHtmlAssets,
+    output_path: &Path,
+) -> Result<(), VizError> {
+    let html = render_html(image_name, metrics, comparisons, validation, assets);
     std::fs::write(output_path, &html)
         .map_err(|e| VizError::Html(format!("Failed to write {}: {e}", output_path.display())))?;
     Ok(())
@@ -60,7 +109,15 @@ pub fn write_neighbors_report(
     report: &NeighborsReport,
     output_path: &Path,
 ) -> Result<(), VizError> {
-    let html = render_neighbors_html(report);
+    write_neighbors_report_with_assets(report, &GalleryAssets::default(), output_path)
+}
+
+pub fn write_neighbors_report_with_assets(
+    report: &NeighborsReport,
+    assets: &GalleryAssets,
+    output_path: &Path,
+) -> Result<(), VizError> {
+    let html = render_neighbors_html(report, assets);
     std::fs::write(output_path, &html)
         .map_err(|e| VizError::Html(format!("Failed to write {}: {e}", output_path.display())))?;
     Ok(())
@@ -70,14 +127,30 @@ pub fn write_similarity_report(
     report: &SimilarityReport,
     output_path: &Path,
 ) -> Result<(), VizError> {
-    let html = render_similarity_html(report);
+    write_similarity_report_with_assets(report, &GalleryAssets::default(), output_path)
+}
+
+pub fn write_similarity_report_with_assets(
+    report: &SimilarityReport,
+    assets: &GalleryAssets,
+    output_path: &Path,
+) -> Result<(), VizError> {
+    let html = render_similarity_html(report, assets);
     std::fs::write(output_path, &html)
         .map_err(|e| VizError::Html(format!("Failed to write {}: {e}", output_path.display())))?;
     Ok(())
 }
 
 pub fn write_drift_report(report: &DriftReport, output_path: &Path) -> Result<(), VizError> {
-    let html = render_drift_html(report);
+    write_drift_report_with_assets(report, &GalleryAssets::default(), output_path)
+}
+
+pub fn write_drift_report_with_assets(
+    report: &DriftReport,
+    assets: &GalleryAssets,
+    output_path: &Path,
+) -> Result<(), VizError> {
+    let html = render_drift_html(report, assets);
     std::fs::write(output_path, &html)
         .map_err(|e| VizError::Html(format!("Failed to write {}: {e}", output_path.display())))?;
     Ok(())
@@ -113,6 +186,7 @@ fn render_html(
     metrics: &[ModelMetrics],
     comparisons: &[ComparisonMetrics],
     validation: &[ModelValidationSummary],
+    assets: &CompareHtmlAssets,
 ) -> String {
     let overview = build_compare_overview(metrics, comparisons);
     let comparison_rows = comparisons
@@ -165,6 +239,14 @@ fn render_html(
     let highlights = render_overview_cards(&overview);
     let comparison_table = render_comparison_table(&comparison_rows);
     let matrix_sections = render_matrix_sections(&overview);
+    let visual_section = if assets.is_empty() {
+        String::new()
+    } else {
+        format!(
+            r#"<div class="panel"><h2>Visual Artefacts</h2>{}</div>"#,
+            render_compare_asset_gallery(assets)
+        )
+    };
     let validation_section = render_validation_section_body(
         validation,
         "No validation evidence was attached to this report.",
@@ -267,6 +349,8 @@ fn render_html(
 {}
 </div>
 
+{}
+
 <div class="panel">
 <h2>Validation Summary</h2>
 {}
@@ -283,15 +367,22 @@ fn render_html(
         highlights,
         comparison_table,
         matrix_sections,
+        visual_section,
         validation_section,
     )
 }
 
 fn render_validation_html(validation: &[ModelValidationSummary]) -> String {
-    render_html("validation-run", &[], &[], validation)
+    render_html(
+        "validation-run",
+        &[],
+        &[],
+        validation,
+        &CompareHtmlAssets::default(),
+    )
 }
 
-fn render_neighbors_html(report: &NeighborsReport) -> String {
+fn render_neighbors_html(report: &NeighborsReport, assets: &GalleryAssets) -> String {
     let rows = report
         .neighbors
         .iter()
@@ -313,20 +404,24 @@ fn render_neighbors_html(report: &NeighborsReport) -> String {
         )
     };
 
-    let sections = vec![
-        ("Top Matches", table),
-        (
-            "Dataset Processing",
-            render_dataset_summary_html(&report.dataset_summary),
+    let mut sections = vec![("Top Matches", table)];
+    if !assets.is_empty() {
+        sections.push((
+            "Visual Artefacts",
+            render_gallery_assets(assets, "No neighbor chart was generated for this report."),
+        ));
+    }
+    sections.push((
+        "Dataset Processing",
+        render_dataset_summary_html(&report.dataset_summary),
+    ));
+    sections.push((
+        "Validation Summary",
+        render_validation_section_body(
+            std::slice::from_ref(&report.validation),
+            "No validation evidence was attached to this report.",
         ),
-        (
-            "Validation Summary",
-            render_validation_section_body(
-                std::slice::from_ref(&report.validation),
-                "No validation evidence was attached to this report.",
-            ),
-        ),
-    ];
+    ));
 
     render_secondary_html(
         "Nearest Neighbors",
@@ -349,7 +444,7 @@ fn render_neighbors_html(report: &NeighborsReport) -> String {
     )
 }
 
-fn render_similarity_html(report: &SimilarityReport) -> String {
+fn render_similarity_html(report: &SimilarityReport, assets: &GalleryAssets) -> String {
     let metrics = if report.metrics.is_empty() {
         "<p class=\"empty-state\">No similarity metric was available for the selected mode.</p>"
             .to_string()
@@ -374,20 +469,24 @@ fn render_similarity_html(report: &SimilarityReport) -> String {
         .map(|note| format!("<p class=\"caveat\">{}</p>", escape_html(note)))
         .unwrap_or_default();
 
-    let sections = vec![
-        ("Similarity Metrics", format!("{metrics}{note}")),
-        (
-            "Dataset Processing",
-            render_dataset_summary_html(&report.dataset_summary),
+    let mut sections = vec![("Similarity Metrics", format!("{metrics}{note}"))];
+    if !assets.is_empty() {
+        sections.push((
+            "Visual Artefacts",
+            render_gallery_assets(assets, "No similarity chart was generated for this report."),
+        ));
+    }
+    sections.push((
+        "Dataset Processing",
+        render_dataset_summary_html(&report.dataset_summary),
+    ));
+    sections.push((
+        "Validation Summary",
+        render_validation_section_body(
+            &report.validation,
+            "No validation evidence was attached to this report.",
         ),
-        (
-            "Validation Summary",
-            render_validation_section_body(
-                &report.validation,
-                "No validation evidence was attached to this report.",
-            ),
-        ),
-    ];
+    ));
 
     render_secondary_html(
         "Representation Similarity",
@@ -411,7 +510,7 @@ fn render_similarity_html(report: &SimilarityReport) -> String {
     )
 }
 
-fn render_drift_html(report: &DriftReport) -> String {
+fn render_drift_html(report: &DriftReport, assets: &GalleryAssets) -> String {
     let rows = if report.drift.is_empty() {
         "<p class=\"empty-state\">Need at least two checkpoints to compute consecutive drift.</p>"
             .to_string()
@@ -456,18 +555,22 @@ fn render_drift_html(report: &DriftReport) -> String {
                 .to_string()
         });
 
-    let sections = vec![
-        ("Consecutive Drift", rows),
-        ("Highlights", largest_shift),
-        ("Dataset Processing", summary_section),
-        (
-            "Validation Summary",
-            render_validation_section_body(
-                &report.validation,
-                "No validation evidence was attached to this report.",
-            ),
+    let mut sections = vec![("Consecutive Drift", rows)];
+    if !assets.is_empty() {
+        sections.push((
+            "Visual Artefacts",
+            render_gallery_assets(assets, "No drift chart was generated for this report."),
+        ));
+    }
+    sections.push(("Highlights", largest_shift));
+    sections.push(("Dataset Processing", summary_section));
+    sections.push((
+        "Validation Summary",
+        render_validation_section_body(
+            &report.validation,
+            "No validation evidence was attached to this report.",
         ),
-    ];
+    ));
 
     render_secondary_html(
         "Representation Drift",
@@ -650,30 +753,90 @@ fn render_inspect_html(report: &InspectReport, assets: &InspectHtmlAssets) -> St
 }
 
 fn render_inspect_asset_gallery(assets: &InspectHtmlAssets) -> String {
-    let mut cards = Vec::new();
+    let mut visuals = Vec::new();
 
     if let Some(path) = &assets.pca_image {
-        cards.push(format!(
-            "<article class=\"inspect-asset-card\"><h3>PCA Projection</h3><img src=\"{}\" alt=\"Inspect PCA projection\" /><p class=\"caveat\">Patch-space RGB projection derived from the top three PCA components.</p></article>",
-            escape_html(path),
-        ));
+        visuals.push(VisualAsset {
+            title: "PCA Projection".to_string(),
+            path: path.clone(),
+            alt: "Inspect PCA projection".to_string(),
+            description: "Patch-space RGB projection derived from the top three PCA components."
+                .to_string(),
+        });
     }
     if let Some(path) = &assets.variance_image {
-        cards.push(format!(
-            "<article class=\"inspect-asset-card\"><h3>Variance Chart</h3><img src=\"{}\" alt=\"Inspect variance spectrum chart\" /><p class=\"caveat\">Component-wise variance concentration across the inspected representation.</p></article>",
-            escape_html(path),
+        visuals.push(VisualAsset {
+            title: "Variance Chart".to_string(),
+            path: path.clone(),
+            alt: "Inspect variance spectrum chart".to_string(),
+            description:
+                "Component-wise variance concentration across the inspected representation."
+                    .to_string(),
+        });
+    }
+
+    render_visual_asset_cards(
+        &visuals,
+        "No inspect artefacts were generated for this report.",
+    )
+}
+
+fn render_compare_asset_gallery(assets: &CompareHtmlAssets) -> String {
+    let mut sections = Vec::new();
+
+    if !assets.pca_images.is_empty() {
+        sections.push(format!(
+            "<div><h3>Per-model PCA projections</h3>{}</div>",
+            render_visual_asset_cards(
+                &assets.pca_images,
+                "No per-model PCA projections were generated for this report.",
+            ),
+        ));
+    }
+    if !assets.heatmaps.is_empty() {
+        sections.push(format!(
+            "<div><h3>Pairwise metric heatmaps</h3>{}</div>",
+            render_visual_asset_cards(
+                &assets.heatmaps,
+                "No pairwise heatmaps were generated for this report.",
+            ),
         ));
     }
 
-    if cards.is_empty() {
-        "<p class=\"empty-state\">No inspect artefacts were generated for this report.</p>"
+    if sections.is_empty() {
+        "<p class=\"empty-state\">No compare artefacts were generated for this report.</p>"
             .to_string()
     } else {
-        format!(
-            "<div class=\"inspect-asset-grid\">{}</div>",
-            cards.join("\n")
-        )
+        sections.join("\n")
     }
+}
+
+fn render_gallery_assets(assets: &GalleryAssets, empty_message: &str) -> String {
+    render_visual_asset_cards(&assets.visuals, empty_message)
+}
+
+fn render_visual_asset_cards(visuals: &[VisualAsset], empty_message: &str) -> String {
+    if visuals.is_empty() {
+        return format!(
+            "<p class=\"empty-state\">{}</p>",
+            escape_html(empty_message)
+        );
+    }
+
+    let cards = visuals
+        .iter()
+        .map(|asset| {
+            format!(
+                "<article class=\"inspect-asset-card\"><h3>{}</h3><img src=\"{}\" alt=\"{}\" /><p class=\"caveat\">{}</p></article>",
+                escape_html(&asset.title),
+                escape_html(&asset.path),
+                escape_html(&asset.alt),
+                escape_html(&asset.description),
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    format!("<div class=\"inspect-asset-grid\">{cards}</div>")
 }
 
 fn render_validation_section_body(
@@ -1214,7 +1377,7 @@ mod tests {
 
     #[test]
     fn test_html_contains_title() {
-        let html = render_html("test.jpg", &[], &[], &[]);
+        let html = render_html("test.jpg", &[], &[], &[], &CompareHtmlAssets::default());
         assert!(html.contains("test.jpg"));
     }
 
@@ -1264,7 +1427,13 @@ mod tests {
             metric_caveats: Vec::new(),
         }];
 
-        let html = render_html("test.jpg", &metrics, &comparisons, &[]);
+        let html = render_html(
+            "test.jpg",
+            &metrics,
+            &comparisons,
+            &[],
+            &CompareHtmlAssets::default(),
+        );
         assert!(html.contains("Pairwise matrices"));
         assert!(html.contains("Linear CKA"));
         assert!(html.contains("Strongest CKA alignment"));
@@ -1323,11 +1492,42 @@ mod tests {
             }],
         }];
 
-        let html = render_html("test.jpg", &metrics, &comparisons, &[]);
+        let html = render_html(
+            "test.jpg",
+            &metrics,
+            &comparisons,
+            &[],
+            &CompareHtmlAssets::default(),
+        );
         assert!(html.contains("Patch alignment"));
         assert!(html.contains("196 shared patches (from 256 vs 196)"));
         assert!(html.contains("Metric caveats"));
         assert!(html.contains("only one model exposes a CLS token"));
+    }
+
+    #[test]
+    fn test_html_renders_compare_visual_assets() {
+        let assets = CompareHtmlAssets {
+            pca_images: vec![VisualAsset {
+                title: "dinov2 PCA projection".into(),
+                path: "dinov2_pca.png".into(),
+                alt: "dinov2 PCA projection".into(),
+                description: "Top-three PCA components.".into(),
+            }],
+            heatmaps: vec![VisualAsset {
+                title: "Linear CKA heatmap".into(),
+                path: "linear_cka.png".into(),
+                alt: "Linear CKA heatmap".into(),
+                description: "Pairwise linear CKA matrix.".into(),
+            }],
+        };
+
+        let html = render_html("test.jpg", &[], &[], &[], &assets);
+        assert!(html.contains("Visual Artefacts"));
+        assert!(html.contains("Per-model PCA projections"));
+        assert!(html.contains("Pairwise metric heatmaps"));
+        assert!(html.contains("dinov2_pca.png"));
+        assert!(html.contains("linear_cka.png"));
     }
 
     #[test]
