@@ -263,9 +263,14 @@ fn inspect_html_includes_variance_spectrum_and_validation_summary() {
     let html = fs::read_to_string(output_dir.join("report.html")).unwrap();
     assert!(html.contains("Representation Inspect"));
     assert!(html.contains("Variance Spectrum"));
+    assert!(html.contains("Visual Artefacts"));
+    assert!(html.contains("dinov2-vit-l14_pca.png"));
+    assert!(html.contains("dinov2-vit-l14_variance.png"));
     assert!(html.contains("Components @ 99%"));
     assert!(html.contains("Validation Summary"));
     assert!(html.contains("dinov2-vit-l14"));
+    assert!(output_dir.join("dinov2-vit-l14_pca.png").exists());
+    assert!(output_dir.join("dinov2-vit-l14_variance.png").exists());
 }
 
 #[test]

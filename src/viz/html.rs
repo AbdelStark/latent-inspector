@@ -10,6 +10,18 @@ use crate::viz::report::{
 };
 use std::path::Path;
 
+#[derive(Debug, Clone, Default)]
+pub struct InspectHtmlAssets {
+    pub pca_image: Option<String>,
+    pub variance_image: Option<String>,
+}
+
+impl InspectHtmlAssets {
+    fn is_empty(&self) -> bool {
+        self.pca_image.is_none() && self.variance_image.is_none()
+    }
+}
+
 /// Generate a self-contained HTML report and write it to `output_path`.
 pub fn write_report(
     image_name: &str,
@@ -71,7 +83,15 @@ pub fn write_drift_report(report: &DriftReport, output_path: &Path) -> Result<()
 }
 
 pub fn write_inspect_report(report: &InspectReport, output_path: &Path) -> Result<(), VizError> {
-    let html = render_inspect_html(report);
+    write_inspect_report_with_assets(report, &InspectHtmlAssets::default(), output_path)
+}
+
+pub fn write_inspect_report_with_assets(
+    report: &InspectReport,
+    assets: &InspectHtmlAssets,
+    output_path: &Path,
+) -> Result<(), VizError> {
+    let html = render_inspect_html(report, assets);
     std::fs::write(output_path, &html)
         .map_err(|e| VizError::Html(format!("Failed to write {}: {e}", output_path.display())))?;
     Ok(())
@@ -465,7 +485,7 @@ fn render_drift_html(report: &DriftReport) -> String {
     )
 }
 
-fn render_inspect_html(report: &InspectReport) -> String {
+fn render_inspect_html(report: &InspectReport, assets: &InspectHtmlAssets) -> String {
     let metrics = &report.metrics;
     let variance = &report.variance_spectrum;
     let variance_rows = variance
@@ -493,7 +513,7 @@ fn render_inspect_html(report: &InspectReport) -> String {
             "<table><thead><tr><th>Component</th><th>Variance</th><th>Cumulative</th><th>Profile</th></tr></thead><tbody>{variance_rows}</tbody></table>"
         )
     };
-    let sections = vec![
+    let mut sections = vec![
         (
             "Representation Metrics",
             format!(
@@ -540,14 +560,17 @@ fn render_inspect_html(report: &InspectReport) -> String {
                 variance_table,
             ),
         ),
-        (
-            "Validation Summary",
-            render_validation_section_body(
-                std::slice::from_ref(&report.validation),
-                "No validation evidence was attached to this report.",
-            ),
-        ),
     ];
+    if !assets.is_empty() {
+        sections.push(("Visual Artefacts", render_inspect_asset_gallery(assets)));
+    }
+    sections.push((
+        "Validation Summary",
+        render_validation_section_body(
+            std::slice::from_ref(&report.validation),
+            "No validation evidence was attached to this report.",
+        ),
+    ));
 
     render_secondary_html(
         "Representation Inspect",
@@ -564,6 +587,33 @@ fn render_inspect_html(report: &InspectReport) -> String {
         ],
         &sections,
     )
+}
+
+fn render_inspect_asset_gallery(assets: &InspectHtmlAssets) -> String {
+    let mut cards = Vec::new();
+
+    if let Some(path) = &assets.pca_image {
+        cards.push(format!(
+            "<article class=\"inspect-asset-card\"><h3>PCA Projection</h3><img src=\"{}\" alt=\"Inspect PCA projection\" /><p class=\"caveat\">Patch-space RGB projection derived from the top three PCA components.</p></article>",
+            escape_html(path),
+        ));
+    }
+    if let Some(path) = &assets.variance_image {
+        cards.push(format!(
+            "<article class=\"inspect-asset-card\"><h3>Variance Chart</h3><img src=\"{}\" alt=\"Inspect variance spectrum chart\" /><p class=\"caveat\">Component-wise variance concentration across the inspected representation.</p></article>",
+            escape_html(path),
+        ));
+    }
+
+    if cards.is_empty() {
+        "<p class=\"empty-state\">No inspect artefacts were generated for this report.</p>"
+            .to_string()
+    } else {
+        format!(
+            "<div class=\"inspect-asset-grid\">{}</div>",
+            cards.join("\n")
+        )
+    }
 }
 
 fn render_validation_section_body(
@@ -844,6 +894,10 @@ fn render_secondary_html(
   .badge.failed, .badge.unverified {{ color: var(--bad); border-color: rgba(248,81,73,0.35); }}
   .validation-grid {{ display: grid; gap: 1rem; }}
   .validation-card {{ border: 1px solid var(--border); border-radius: 14px; padding: 1rem; background: rgba(255,255,255,0.02); }}
+  .inspect-asset-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1rem; }}
+  .inspect-asset-card {{ border: 1px solid var(--border); border-radius: 14px; padding: 1rem; background: rgba(255,255,255,0.02); }}
+  .inspect-asset-card h3 {{ margin-bottom: 0.75rem; }}
+  .inspect-asset-card img {{ width: 100%; display: block; border-radius: 10px; border: 1px solid var(--border); background: rgba(255,255,255,0.02); }}
   .delta-list {{ margin: 0.5rem 0 0; padding-left: 1.1rem; color: var(--muted); }}
   .delta-list li {{ margin: 0.25rem 0; }}
   .spectrum-bar-track {{ width: 100%; min-width: 140px; height: 0.75rem; border-radius: 999px; background: rgba(255,255,255,0.08); overflow: hidden; }}
@@ -1106,12 +1160,18 @@ mod tests {
     #[test]
     fn test_render_inspect_html_includes_variance_spectrum_and_validation() {
         let report = inspect_report("dinov2-vit-l14");
-        let html = render_inspect_html(&report);
+        let assets = InspectHtmlAssets {
+            pca_image: Some("dinov2-vit-l14_pca.png".into()),
+            variance_image: Some("dinov2-vit-l14_variance.png".into()),
+        };
+        let html = render_inspect_html(&report, &assets);
 
         assert!(html.contains("Representation Inspect"));
         assert!(html.contains("Variance Spectrum"));
         assert!(html.contains("Components @ 99%"));
         assert!(html.contains("PC01"));
+        assert!(html.contains("Visual Artefacts"));
+        assert!(html.contains("dinov2-vit-l14_pca.png"));
         assert!(html.contains("Validation Summary"));
         assert!(html.contains("dinov2-vit-l14"));
     }
@@ -1141,6 +1201,23 @@ mod tests {
         let content = std::fs::read_to_string(&path).unwrap();
         assert!(content.contains("Variance Spectrum"));
         assert!(content.contains("fixture.png"));
+    }
+
+    #[test]
+    fn test_write_inspect_report_with_assets() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("inspect-assets.html");
+        let report = inspect_report("dinov2-vit-l14");
+        let assets = InspectHtmlAssets {
+            pca_image: Some("dinov2-vit-l14_pca.png".into()),
+            variance_image: Some("dinov2-vit-l14_variance.png".into()),
+        };
+
+        write_inspect_report_with_assets(&report, &assets, &path).unwrap();
+
+        let content = std::fs::read_to_string(&path).unwrap();
+        assert!(content.contains("Visual Artefacts"));
+        assert!(content.contains("dinov2-vit-l14_variance.png"));
     }
 
     #[test]

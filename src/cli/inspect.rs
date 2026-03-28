@@ -1,11 +1,11 @@
-use crate::analysis::{compute_metrics, variance_spectrum};
+use crate::analysis::{compute_metrics, pca, transform, variance_spectrum};
 use crate::errors::Error;
 use crate::extract::ExtractedFeatures;
 use crate::models::ModelSession;
 use crate::validation::summarize_session_or_unverified;
 use crate::viz::OutputFormat;
 use clap::Args;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use tracing::info;
 
 #[derive(Args, Debug)]
@@ -114,15 +114,7 @@ pub fn run(args: InspectArgs) -> Result<(), Error> {
                 .output
                 .unwrap_or_else(|| PathBuf::from("inspect_output"));
             std::fs::create_dir_all(&outdir)?;
-            let pca_result = crate::analysis::pca(&features.patch_tokens, 3, 300)?;
-            let projected = crate::analysis::transform(&features.patch_tokens, &pca_result);
-            let grid = (features.n_patches as f32).sqrt() as usize;
-            let path = outdir.join(format!("{}_pca.png", report.model));
-            crate::viz::png::save_pca_rgb(&projected, grid, &path)?;
-            crate::viz::png::save_variance_spectrum_chart(
-                &report.variance_spectrum.ratios,
-                &outdir.join(format!("{}_variance.png", report.model)),
-            )?;
+            write_inspect_visual_artifacts(&features, &report, &outdir)?;
             println!("PNG saved to {}", outdir.display());
         }
         OutputFormat::Html => {
@@ -130,10 +122,53 @@ pub fn run(args: InspectArgs) -> Result<(), Error> {
                 .output
                 .unwrap_or_else(|| PathBuf::from("inspect_output"));
             std::fs::create_dir_all(&outdir)?;
-            crate::viz::html::write_inspect_report(&report, &outdir.join("report.html"))?;
+            let assets = write_inspect_visual_artifacts(&features, &report, &outdir)?;
+            crate::viz::html::write_inspect_report_with_assets(
+                &report,
+                &assets,
+                &outdir.join("report.html"),
+            )?;
             println!("Report written to {}/report.html", outdir.display());
         }
     }
 
     Ok(())
+}
+
+fn write_inspect_visual_artifacts(
+    features: &ExtractedFeatures,
+    report: &crate::viz::report::InspectReport,
+    outdir: &Path,
+) -> Result<crate::viz::html::InspectHtmlAssets, Error> {
+    let prefix = slugify(&report.model);
+    let pca_filename = format!("{prefix}_pca.png");
+    let variance_filename = format!("{prefix}_variance.png");
+    let pca_result = pca(&features.patch_tokens, 3, 300)?;
+    let projected = transform(&features.patch_tokens, &pca_result);
+    let grid = (features.n_patches as f32).sqrt() as usize;
+
+    crate::viz::png::save_pca_rgb(&projected, grid, &outdir.join(&pca_filename))?;
+    crate::viz::png::save_variance_spectrum_chart(
+        &report.variance_spectrum.ratios,
+        &outdir.join(&variance_filename),
+    )?;
+
+    Ok(crate::viz::html::InspectHtmlAssets {
+        pca_image: Some(pca_filename),
+        variance_image: Some(variance_filename),
+    })
+}
+
+fn slugify(label: &str) -> String {
+    let mut slug = String::with_capacity(label.len());
+    for ch in label.chars() {
+        if ch.is_ascii_alphanumeric() {
+            slug.push(ch.to_ascii_lowercase());
+        } else if matches!(ch, '-' | '_') {
+            slug.push(ch);
+        } else {
+            slug.push('_');
+        }
+    }
+    slug.trim_matches('_').to_string()
 }
