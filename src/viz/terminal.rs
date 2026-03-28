@@ -2,6 +2,7 @@
 
 use crate::analysis::{ComparisonMetrics, ModelMetrics};
 use crate::dataset::DatasetProcessingSummary;
+use crate::models::{EvidenceStatus, ModelCatalogReport};
 use crate::validation::report::ModelValidationSummary;
 use crate::viz::report::{
     CompareOverview, DriftReport, NeighborsReport, PairwiseMatrix, SimilarityReport,
@@ -211,6 +212,85 @@ pub fn print_pairwise_matrix(title: &str, matrix: &PairwiseMatrix) {
         }
         println!();
     }
+}
+
+pub fn print_model_catalog(report: &ModelCatalogReport, verbose: bool) {
+    println!();
+    println!("Available models ({})", report.entries.len());
+    println!("{}", "═".repeat(112));
+    println!(
+        "{:<20} {:<10} {:<12} {:<10} {:<8} {:<12} {:>10}",
+        "Name", "Status", "Evidence", "Cache", "Verify", "Method", "Params (M)"
+    );
+    println!("{}", "─".repeat(112));
+
+    for entry in &report.entries {
+        println!(
+            "{:<20} {:<10} {:<12} {:<10} {:<8} {:<12} {:>10}",
+            truncate(&entry.name, 19),
+            entry.availability_status.to_string(),
+            entry.evidence_status.label(),
+            entry.cache_status.label(),
+            truncate(&entry.verification_label, 7),
+            entry.method,
+            entry.params_m,
+        );
+
+        if verbose {
+            println!("    Phase: {}", entry.phase);
+            println!("    Note: {}", entry.availability_note);
+            println!("    Arch: {}", entry.architecture);
+            println!("    Input: {}×{}", entry.input_size, entry.input_size);
+            println!("    Embed dim: {}", entry.embed_dim);
+            println!(
+                "    Layers: {}, Heads: {}",
+                entry.num_layers, entry.num_heads
+            );
+            println!(
+                "    Evidence: {} [{} @ {}]",
+                entry.evidence_summary,
+                entry.approved_fixture_set,
+                entry.approved_evidence_timestamp,
+            );
+            for detail in &entry.evidence_details {
+                println!("      detail: {}", detail);
+            }
+            println!("    Cache: {}", entry.cache_summary);
+            if let Some(note) = &entry.verification_note {
+                println!("    Verify note: {}", note);
+            }
+            for artifact in &entry.artifacts {
+                println!("    Artifact: {}", artifact.relative_path);
+                println!("    URL: {}", artifact.url);
+            }
+        } else if matches!(
+            entry.evidence_status,
+            EvidenceStatus::Stale | EvidenceStatus::Missing
+        ) {
+            println!("  evidence: {}", entry.evidence_summary);
+        }
+    }
+
+    println!("{}", "═".repeat(112));
+
+    let fixture_summary = if let Some(error) = &report.fixture_error {
+        format!("unavailable ({error})")
+    } else {
+        match (&report.fixture_set, &report.evidence_timestamp) {
+            (Some(fixture_set), Some(timestamp)) => format!("{fixture_set} @ {timestamp}"),
+            (Some(fixture_set), None) => fixture_set.clone(),
+            _ => "unavailable".to_string(),
+        }
+    };
+
+    println!("Validation fixtures: {fixture_summary}");
+    println!(
+        "Evidence summary: {} approved, {} stale, {} missing, {} unverified",
+        report.evidence_count(EvidenceStatus::Approved),
+        report.evidence_count(EvidenceStatus::Stale),
+        report.evidence_count(EvidenceStatus::Missing),
+        report.evidence_count(EvidenceStatus::Unverified),
+    );
 }
 
 pub fn print_validation_summaries(summaries: &[ModelValidationSummary]) {

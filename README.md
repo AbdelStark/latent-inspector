@@ -208,6 +208,11 @@ remote host honors byte-range requests.
 
 In the current Phase 1 build, `dinov2-vit-l14` is the only loadable model. The remaining registry entries are intentionally marked as planned so the CLI does not imply support that has not been implemented yet.
 
+Use `latent-inspector models` to inspect the live registry inventory. The
+catalog now reports each model's phase status, whether the local cache contains
+the full artifact bundle, and whether the approved validation evidence is
+current, stale, missing, or intentionally withheld for planned integrations.
+
 ## License
 
 MIT OR Apache-2.0
