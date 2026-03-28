@@ -1,9 +1,13 @@
 //! Self-contained interactive HTML report generation.
 
 use crate::analysis::{ComparisonMetrics, ModelMetrics};
+use crate::dataset::DatasetProcessingSummary;
 use crate::errors::VizError;
 use crate::validation::report::ModelValidationSummary;
-use crate::viz::report::{build_compare_overview, CompareOverview, PairwiseMatrix};
+use crate::viz::report::{
+    build_compare_overview, CompareOverview, DriftReport, NeighborsReport, PairwiseMatrix,
+    SimilarityReport,
+};
 use std::path::Path;
 
 /// Generate a self-contained HTML report and write it to `output_path`.
@@ -34,6 +38,33 @@ pub fn write_validation_report(
     output_path: &Path,
 ) -> Result<(), VizError> {
     let html = render_validation_html(validation);
+    std::fs::write(output_path, &html)
+        .map_err(|e| VizError::Html(format!("Failed to write {}: {e}", output_path.display())))?;
+    Ok(())
+}
+
+pub fn write_neighbors_report(
+    report: &NeighborsReport,
+    output_path: &Path,
+) -> Result<(), VizError> {
+    let html = render_neighbors_html(report);
+    std::fs::write(output_path, &html)
+        .map_err(|e| VizError::Html(format!("Failed to write {}: {e}", output_path.display())))?;
+    Ok(())
+}
+
+pub fn write_similarity_report(
+    report: &SimilarityReport,
+    output_path: &Path,
+) -> Result<(), VizError> {
+    let html = render_similarity_html(report);
+    std::fs::write(output_path, &html)
+        .map_err(|e| VizError::Html(format!("Failed to write {}: {e}", output_path.display())))?;
+    Ok(())
+}
+
+pub fn write_drift_report(report: &DriftReport, output_path: &Path) -> Result<(), VizError> {
+    let html = render_drift_html(report);
     std::fs::write(output_path, &html)
         .map_err(|e| VizError::Html(format!("Failed to write {}: {e}", output_path.display())))?;
     Ok(())
@@ -227,6 +258,169 @@ fn render_validation_html(validation: &[ModelValidationSummary]) -> String {
     render_html("validation-run", &[], &[], validation)
 }
 
+fn render_neighbors_html(report: &NeighborsReport) -> String {
+    let rows = report
+        .neighbors
+        .iter()
+        .map(|neighbor| {
+            format!(
+                "<tr><td>{}</td><td><code>{}</code></td><td>{:.4}</td></tr>",
+                neighbor.rank,
+                escape_html(&neighbor.image),
+                neighbor.similarity,
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    let table = if rows.is_empty() {
+        "<p class=\"empty-state\">No neighbors were returned for this query.</p>".to_string()
+    } else {
+        format!(
+            "<table><thead><tr><th>Rank</th><th>Image</th><th>Cosine similarity</th></tr></thead><tbody>{rows}</tbody></table>"
+        )
+    };
+
+    render_secondary_html(
+        "Nearest Neighbors",
+        &format!(
+            "Query <code>{}</code> searched with model <code>{}</code>.",
+            escape_html(&report.query_image),
+            escape_html(&report.model),
+        ),
+        &[
+            ("Requested k", report.requested_k.to_string()),
+            ("Neighbors returned", report.neighbors.len().to_string()),
+            ("Loaded images", report.dataset_summary.loaded.to_string()),
+        ],
+        &[
+            ("Top Matches", table),
+            (
+                "Dataset Processing",
+                render_dataset_summary_html(&report.dataset_summary),
+            ),
+        ],
+    )
+}
+
+fn render_similarity_html(report: &SimilarityReport) -> String {
+    let metrics = if report.metrics.is_empty() {
+        "<p class=\"empty-state\">No similarity metric was available for the selected mode.</p>"
+            .to_string()
+    } else {
+        let rows = report
+            .metrics
+            .iter()
+            .map(|metric| {
+                format!(
+                    "<tr><td>{}</td><td>{:.4}</td></tr>",
+                    escape_html(&metric.label),
+                    metric.value
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        format!("<table><thead><tr><th>Metric</th><th>Value</th></tr></thead><tbody>{rows}</tbody></table>")
+    };
+    let note = report
+        .note
+        .as_ref()
+        .map(|note| format!("<p class=\"caveat\">{}</p>", escape_html(note)))
+        .unwrap_or_default();
+
+    render_secondary_html(
+        "Representation Similarity",
+        &format!(
+            "<code>{}</code> vs <code>{}</code> across <code>{}</code>.",
+            escape_html(&report.model_a),
+            escape_html(&report.model_b),
+            escape_html(&report.dataset),
+        ),
+        &[
+            ("Requested mode", report.requested_metric.clone()),
+            ("Loaded samples", report.sample_count.to_string()),
+            ("Metrics reported", report.metrics.len().to_string()),
+        ],
+        &[
+            ("Similarity Metrics", format!("{metrics}{note}")),
+            (
+                "Dataset Processing",
+                render_dataset_summary_html(&report.dataset_summary),
+            ),
+        ],
+    )
+}
+
+fn render_drift_html(report: &DriftReport) -> String {
+    let rows = if report.drift.is_empty() {
+        "<p class=\"empty-state\">Need at least two checkpoints to compute consecutive drift.</p>"
+            .to_string()
+    } else {
+        let body = report
+            .drift
+            .iter()
+            .map(|step| {
+                format!(
+                    "<tr><td><code>{}</code></td><td><code>{}</code></td><td>{:.4}</td></tr>",
+                    escape_html(&step.from_checkpoint),
+                    escape_html(&step.to_checkpoint),
+                    step.linear_cka
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        format!(
+            "<table><thead><tr><th>From</th><th>To</th><th>Linear CKA</th></tr></thead><tbody>{body}</tbody></table>"
+        )
+    };
+    let largest_shift = report
+        .largest_shift
+        .as_ref()
+        .map(|step| {
+            format!(
+                "<p><strong>Largest shift:</strong> <code>{}</code> → <code>{}</code> ({:.4})</p>",
+                escape_html(&step.from_checkpoint),
+                escape_html(&step.to_checkpoint),
+                step.linear_cka,
+            )
+        })
+        .unwrap_or_else(|| {
+            "<p class=\"empty-state\">No drift highlight available yet.</p>".to_string()
+        });
+    let summary_section = report
+        .dataset_summary
+        .as_ref()
+        .map(render_dataset_summary_html)
+        .unwrap_or_else(|| {
+            "<p class=\"empty-state\">Dataset processing did not run because no checkpoints were available.</p>"
+                .to_string()
+        });
+
+    render_secondary_html(
+        "Representation Drift",
+        &format!(
+            "Model <code>{}</code> across checkpoints in <code>{}</code>.",
+            escape_html(&report.model),
+            escape_html(&report.checkpoints),
+        ),
+        &[
+            ("Checkpoints", report.checkpoint_names.len().to_string()),
+            ("Consecutive comparisons", report.drift.len().to_string()),
+            (
+                "Mean CKA",
+                report
+                    .mean_consecutive_cka
+                    .map(|value| format!("{value:.4}"))
+                    .unwrap_or_else(|| "N/A".to_string()),
+            ),
+        ],
+        &[
+            ("Consecutive Drift", rows),
+            ("Highlights", largest_shift),
+            ("Dataset Processing", summary_section),
+        ],
+    )
+}
+
 fn render_validation_row(summary: &ModelValidationSummary) -> String {
     let tensor_summary = summary
         .tensors
@@ -408,6 +602,123 @@ fn render_matrix_table(matrix: &PairwiseMatrix) -> String {
     )
 }
 
+fn render_secondary_html(
+    title: &str,
+    subtitle: &str,
+    stats: &[(&str, String)],
+    sections: &[(&str, String)],
+) -> String {
+    let stats_html = render_secondary_stats(stats);
+    let sections_html = sections
+        .iter()
+        .map(|(heading, body)| {
+            format!(
+                "<div class=\"panel\"><h2>{}</h2>{}</div>",
+                escape_html(heading),
+                body
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    format!(
+        r#"<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>latent-inspector: {}</title>
+<style>
+  :root {{
+    color-scheme: dark;
+    --bg: #0d1117;
+    --panel: #161b22;
+    --panel-2: #11161d;
+    --text: #e6edf3;
+    --muted: #8b949e;
+    --accent: #79c0ff;
+    --border: #30363d;
+  }}
+  body {{ font-family: 'Segoe UI', system-ui, sans-serif; margin: 2rem; background: radial-gradient(circle at top, #182032 0%, var(--bg) 45%); color: var(--text); }}
+  h1, h2 {{ color: var(--accent); }}
+  .panel {{ background: linear-gradient(180deg, var(--panel), var(--panel-2)); border: 1px solid var(--border); border-radius: 16px; padding: 1rem 1.25rem; margin: 1rem 0 1.5rem; }}
+  .stats-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 0.9rem; margin-top: 1rem; }}
+  .stat-card {{ border: 1px solid var(--border); border-radius: 14px; padding: 0.9rem 1rem; background: rgba(255,255,255,0.03); }}
+  .stat-card strong {{ display: block; font-size: 1.4rem; margin-top: 0.25rem; }}
+  table {{ border-collapse: collapse; width: 100%; margin: 1rem 0; }}
+  th {{ background: var(--panel); padding: 0.5rem 1rem; text-align: left; color: var(--accent); border-bottom: 2px solid var(--border); }}
+  td {{ padding: 0.4rem 1rem; border-bottom: 1px solid #21262d; vertical-align: top; }}
+  tr:hover td {{ background: #161b22; }}
+  .empty-state, .caveat, li {{ color: var(--muted); }}
+  ul {{ margin: 0.6rem 0 0; padding-left: 1.2rem; }}
+  code {{ color: #c9d1d9; }}
+</style>
+</head>
+<body>
+<h1>latent-inspector</h1>
+<div class="panel">
+  <h2>{}</h2>
+  <p>{}</p>
+  {}
+</div>
+{}
+</body>
+</html>"#,
+        escape_html(title),
+        escape_html(title),
+        subtitle,
+        stats_html,
+        sections_html
+    )
+}
+
+fn render_secondary_stats(stats: &[(&str, String)]) -> String {
+    if stats.is_empty() {
+        return String::new();
+    }
+
+    let cards = stats
+        .iter()
+        .map(|(label, value)| {
+            format!(
+                "<div class=\"stat-card\"><span>{}</span><strong>{}</strong></div>",
+                escape_html(label),
+                escape_html(value),
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    format!("<div class=\"stats-grid\">{cards}</div>")
+}
+
+fn render_dataset_summary_html(summary: &DatasetProcessingSummary) -> String {
+    let skipped = if summary.skipped_examples.is_empty() {
+        "<p class=\"empty-state\">No skipped images.</p>".to_string()
+    } else {
+        let items = summary
+            .skipped_examples
+            .iter()
+            .map(|item| {
+                format!(
+                    "<li><code>{}</code>: {}</li>",
+                    escape_html(&item.path),
+                    escape_html(&item.reason),
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("");
+        format!("<ul>{items}</ul>")
+    };
+
+    format!(
+        "<p><strong>Supported files:</strong> {}</p><p><strong>Loaded images:</strong> {}</p><p><strong>Skipped images:</strong> {}</p>{}",
+        summary.discovered,
+        summary.loaded,
+        summary.skipped,
+        skipped,
+    )
+}
+
 fn escape_html(s: &str) -> String {
     s.replace('&', "&amp;")
         .replace('<', "&lt;")
@@ -418,6 +729,11 @@ fn escape_html(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::dataset::{DatasetProcessingSummary, SkippedImage};
+    use crate::viz::report::{
+        DriftReport, DriftStep, NeighborMatch, NeighborsReport, SimilarityMetricValue,
+        SimilarityReport,
+    };
     use tempfile::tempdir;
 
     #[test]
@@ -483,5 +799,96 @@ mod tests {
         write_report("img.jpg", &[], &[], &path).unwrap();
         let content = std::fs::read_to_string(&path).unwrap();
         assert!(content.contains("<!DOCTYPE html>"));
+    }
+
+    #[test]
+    fn test_write_neighbors_report() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("neighbors.html");
+        let report = NeighborsReport {
+            query_image: "query.png".into(),
+            dataset: "dataset".into(),
+            model: "dinov2".into(),
+            requested_k: 2,
+            dataset_summary: DatasetProcessingSummary {
+                discovered: 3,
+                loaded: 2,
+                skipped: 1,
+                skipped_examples: vec![SkippedImage {
+                    path: "broken.png".into(),
+                    reason: "decode failed".into(),
+                }],
+            },
+            neighbors: vec![NeighborMatch {
+                rank: 1,
+                image: "class-a/leaf".into(),
+                similarity: 0.91,
+            }],
+        };
+
+        write_neighbors_report(&report, &path).unwrap();
+        let html = std::fs::read_to_string(&path).unwrap();
+        assert!(html.contains("Nearest Neighbors"));
+        assert!(html.contains("class-a/leaf"));
+    }
+
+    #[test]
+    fn test_write_similarity_report() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("similarity.html");
+        let report = SimilarityReport {
+            model_a: "dinov2".into(),
+            model_b: "clip".into(),
+            dataset: "dataset".into(),
+            requested_metric: "all".into(),
+            sample_count: 2,
+            dataset_summary: DatasetProcessingSummary {
+                discovered: 2,
+                loaded: 2,
+                skipped: 0,
+                skipped_examples: Vec::new(),
+            },
+            metrics: vec![SimilarityMetricValue {
+                key: "linear_cka".into(),
+                label: "Linear CKA".into(),
+                value: 0.77,
+            }],
+            note: Some("N/A (CLS tokens unavailable)".into()),
+        };
+
+        write_similarity_report(&report, &path).unwrap();
+        let html = std::fs::read_to_string(&path).unwrap();
+        assert!(html.contains("Representation Similarity"));
+        assert!(html.contains("Linear CKA"));
+        assert!(html.contains("CLS tokens unavailable"));
+    }
+
+    #[test]
+    fn test_write_drift_report() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("drift.html");
+        let report = DriftReport::new(
+            "dinov2",
+            "checkpoints",
+            "dataset",
+            vec!["step-1".into(), "step-2".into()],
+            Some(DatasetProcessingSummary {
+                discovered: 2,
+                loaded: 2,
+                skipped: 0,
+                skipped_examples: Vec::new(),
+            }),
+            vec![DriftStep {
+                from_checkpoint: "step-1".into(),
+                to_checkpoint: "step-2".into(),
+                linear_cka: 0.88,
+            }],
+        );
+
+        write_drift_report(&report, &path).unwrap();
+        let html = std::fs::read_to_string(&path).unwrap();
+        assert!(html.contains("Representation Drift"));
+        assert!(html.contains("step-1"));
+        assert!(html.contains("Largest shift"));
     }
 }

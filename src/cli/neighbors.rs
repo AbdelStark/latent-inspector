@@ -1,6 +1,8 @@
 use crate::errors::Error;
 use crate::extract::ExtractedFeatures;
 use crate::models::ModelSession;
+use crate::viz::report::{NeighborMatch, NeighborsReport};
+use crate::viz::OutputFormat;
 use clap::Args;
 use std::path::PathBuf;
 use tracing::info;
@@ -21,6 +23,14 @@ pub struct NeighborsArgs {
     /// Number of nearest neighbors to return.
     #[arg(short = 'k', long, default_value_t = 10)]
     pub k: usize,
+
+    /// Output directory for JSON/HTML/PNG artefacts.
+    #[arg(short, long)]
+    pub output: Option<PathBuf>,
+
+    /// Output format.
+    #[arg(short, long, default_value = "terminal")]
+    pub format: OutputFormat,
 }
 
 pub fn run(args: NeighborsArgs) -> Result<(), Error> {
@@ -88,13 +98,63 @@ pub fn run(args: NeighborsArgs) -> Result<(), Error> {
 
     scores.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap());
 
-    println!("\nNearest neighbors for {}", args.image.display());
-    println!("Model: {}  k={}", args.model, args.k);
-    println!("{}", "─".repeat(50));
-    for (rank, (sim, name)) in scores.iter().take(args.k).enumerate() {
-        println!("  {:2}. {:40} sim={:.4}", rank + 1, name, sim);
+    let neighbors = scores
+        .iter()
+        .take(args.k)
+        .enumerate()
+        .map(|(rank, (similarity, name))| NeighborMatch {
+            rank: rank + 1,
+            image: (*name).to_string(),
+            similarity: *similarity,
+        })
+        .collect::<Vec<_>>();
+    let report = NeighborsReport {
+        query_image: args.image.display().to_string(),
+        dataset: args.dataset.display().to_string(),
+        model: args.model.clone(),
+        requested_k: args.k,
+        dataset_summary,
+        neighbors,
+    };
+    render_output(&args, &report)?;
+
+    Ok(())
+}
+
+fn render_output(args: &NeighborsArgs, report: &NeighborsReport) -> Result<(), Error> {
+    match args.format {
+        OutputFormat::Terminal => crate::viz::terminal::print_neighbors_report(report),
+        OutputFormat::Json => {
+            if let Some(outdir) = &args.output {
+                std::fs::create_dir_all(outdir)?;
+                let path = outdir.join("neighbors.json");
+                crate::viz::json::write_neighbors_report(report, &path)?;
+                println!("JSON report written to {}", path.display());
+            } else {
+                crate::viz::json::print_neighbors_report(report)?;
+            }
+        }
+        OutputFormat::Html => {
+            let outdir = args
+                .output
+                .clone()
+                .unwrap_or_else(|| PathBuf::from("neighbors_output"));
+            std::fs::create_dir_all(&outdir)?;
+            let path = outdir.join("report.html");
+            crate::viz::html::write_neighbors_report(report, &path)?;
+            println!("Report written to {}", path.display());
+        }
+        OutputFormat::Png => {
+            let outdir = args
+                .output
+                .clone()
+                .unwrap_or_else(|| PathBuf::from("neighbors_output"));
+            std::fs::create_dir_all(&outdir)?;
+            let path = outdir.join("neighbors.png");
+            crate::viz::png::save_series_chart(&report.similarity_series(), &path)?;
+            println!("PNG saved to {}", path.display());
+        }
     }
-    crate::viz::terminal::print_dataset_processing_summary(&dataset_summary);
 
     Ok(())
 }

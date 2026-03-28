@@ -3,7 +3,9 @@
 use crate::analysis::{ComparisonMetrics, ModelMetrics};
 use crate::dataset::DatasetProcessingSummary;
 use crate::validation::report::ModelValidationSummary;
-use crate::viz::report::{CompareOverview, PairwiseMatrix};
+use crate::viz::report::{
+    CompareOverview, DriftReport, NeighborsReport, PairwiseMatrix, SimilarityReport,
+};
 use ndarray::Array2;
 
 const BLOCK_CHARS: &[char] = &[' ', '░', '▒', '▓', '█'];
@@ -225,6 +227,42 @@ pub fn print_validation_summaries(summaries: &[ModelValidationSummary]) {
     println!("{}", "═".repeat(100));
 }
 
+pub fn print_neighbors_report(report: &NeighborsReport) {
+    println!();
+    println!("Nearest neighbors for {}", report.query_image);
+    println!("Model: {}  k={}", report.model, report.requested_k);
+    println!("{}", "─".repeat(50));
+    for neighbor in &report.neighbors {
+        println!(
+            "  {:2}. {:40} sim={:.4}",
+            neighbor.rank,
+            truncate(&neighbor.image, 40),
+            neighbor.similarity
+        );
+    }
+    print_dataset_processing_summary(&report.dataset_summary);
+}
+
+pub fn print_similarity_report(report: &SimilarityReport) {
+    println!();
+    println!(
+        "Representation similarity: {} vs {}",
+        report.model_a, report.model_b
+    );
+    println!("Dataset: {} images", report.sample_count);
+    println!("{}", "═".repeat(55));
+
+    for metric in &report.metrics {
+        println!("  {:<22} {:.4}", format!("{}:", metric.label), metric.value);
+    }
+
+    if let Some(note) = &report.note {
+        println!("  Mean CLS cosine sim: {note}");
+    }
+
+    print_dataset_processing_summary(&report.dataset_summary);
+}
+
 pub fn print_dataset_processing_summary(summary: &DatasetProcessingSummary) {
     println!();
     println!("Dataset Summary");
@@ -249,6 +287,25 @@ pub fn print_dataset_processing_summary(summary: &DatasetProcessingSummary) {
     }
 
     println!("{}", "═".repeat(84));
+}
+
+pub fn print_drift_report(report: &DriftReport) {
+    if let Some(summary) = &report.dataset_summary {
+        print_dataset_processing_summary(summary);
+    }
+
+    let rows = report
+        .drift
+        .iter()
+        .map(|step| {
+            (
+                step.from_checkpoint.clone(),
+                step.to_checkpoint.clone(),
+                step.linear_cka,
+            )
+        })
+        .collect::<Vec<_>>();
+    print_drift_summary(&report.checkpoint_names, &rows);
 }
 
 pub fn print_drift_summary(checkpoints: &[String], drift_rows: &[(String, String, f32)]) {

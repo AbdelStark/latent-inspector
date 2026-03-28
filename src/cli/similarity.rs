@@ -2,6 +2,8 @@ use crate::analysis::{cls_cosine_similarity, knn_overlap, linear_cka};
 use crate::errors::Error;
 use crate::extract::ExtractedFeatures;
 use crate::models::ModelSession;
+use crate::viz::report::{SimilarityMetricValue, SimilarityReport};
+use crate::viz::OutputFormat;
 use clap::Args;
 use ndarray::Array2;
 use std::path::PathBuf;
@@ -24,6 +26,14 @@ pub struct SimilarityArgs {
     /// Similarity metric to use.
     #[arg(short, long, default_value = "cka", value_parser = ["cka", "knn", "cosine", "all"])]
     pub metric: String,
+
+    /// Output directory for JSON/HTML/PNG artefacts.
+    #[arg(short, long)]
+    pub output: Option<PathBuf>,
+
+    /// Output format.
+    #[arg(short, long, default_value = "terminal")]
+    pub format: OutputFormat,
 }
 
 pub fn run(args: SimilarityArgs) -> Result<(), Error> {
@@ -80,56 +90,113 @@ pub fn run(args: SimilarityArgs) -> Result<(), Error> {
         mat_b.row_mut(i).assign(&patch_rows_b[i]);
     }
 
-    println!(
-        "\nRepresentation similarity: {} vs {}",
-        args.model_a, args.model_b
-    );
-    println!("Dataset: {} images", n);
-    println!("{}", "═".repeat(55));
-
-    match args.metric.as_str() {
-        "cka" | "all" => {
-            let cka = linear_cka(&mat_a, &mat_b)?;
-            println!("  Linear CKA:          {:.4}", cka);
-        }
-        _ => {}
+    let mut metrics = Vec::new();
+    if matches!(args.metric.as_str(), "cka" | "all") {
+        metrics.push(SimilarityMetricValue {
+            key: "linear_cka".to_string(),
+            label: "Linear CKA".to_string(),
+            value: linear_cka(&mat_a, &mat_b)?,
+        });
     }
 
-    match args.metric.as_str() {
-        "knn" | "all" => {
-            let overlap = knn_overlap(&mat_a, &mat_b, 10)?;
-            println!("  k-NN overlap (k=10): {:.4}", overlap);
-        }
-        _ => {}
+    if matches!(args.metric.as_str(), "knn" | "all") {
+        metrics.push(SimilarityMetricValue {
+            key: "knn_overlap_k10".to_string(),
+            label: "k-NN overlap (k=10)".to_string(),
+            value: knn_overlap(&mat_a, &mat_b, 10)?,
+        });
     }
 
-    match args.metric.as_str() {
-        "cosine" | "all" => {
-            if !cls_a.is_empty() {
-                let same_width = cls_a.iter().zip(&cls_b).all(|(a, b)| a.len() == b.len());
+    let note = if matches!(args.metric.as_str(), "cosine" | "all") {
+        match mean_cls_cosine(&cls_a, &cls_b) {
+            Ok(mean_sim) => {
+                metrics.push(SimilarityMetricValue {
+                    key: "mean_cls_cosine".to_string(),
+                    label: "Mean CLS cosine sim".to_string(),
+                    value: mean_sim,
+                });
+                None
+            }
+            Err(note) => Some(note),
+        }
+    } else {
+        None
+    };
 
-                if same_width {
-                    let mut total_sim = 0.0f32;
-                    for i in 0..cls_a.len() {
-                        total_sim += cls_cosine_similarity(&cls_a[i], &cls_b[i]);
-                    }
-                    let mean_sim = total_sim / cls_a.len() as f32;
-                    println!("  Mean CLS cosine sim: {:.4}", mean_sim);
-                } else {
-                    println!(
-                        "  Mean CLS cosine sim: N/A (embedding dims differ: {} vs {})",
-                        cls_a[0].len(),
-                        cls_b[0].len()
-                    );
-                }
+    let report = SimilarityReport {
+        model_a: args.model_a.clone(),
+        model_b: args.model_b.clone(),
+        dataset: args.dataset.display().to_string(),
+        requested_metric: args.metric.clone(),
+        sample_count: n,
+        dataset_summary,
+        metrics,
+        note,
+    };
+    render_output(&args, &report)?;
+
+    Ok(())
+}
+
+fn mean_cls_cosine(
+    cls_a: &[ndarray::Array1<f32>],
+    cls_b: &[ndarray::Array1<f32>],
+) -> Result<f32, String> {
+    if cls_a.is_empty() {
+        return Err("N/A (CLS tokens unavailable)".to_string());
+    }
+
+    let same_width = cls_a.iter().zip(cls_b).all(|(a, b)| a.len() == b.len());
+    if !same_width {
+        return Err(format!(
+            "N/A (embedding dims differ: {} vs {})",
+            cls_a[0].len(),
+            cls_b[0].len()
+        ));
+    }
+
+    let total = cls_a
+        .iter()
+        .zip(cls_b.iter())
+        .map(|(left, right)| cls_cosine_similarity(left, right))
+        .sum::<f32>();
+    Ok(total / cls_a.len() as f32)
+}
+
+fn render_output(args: &SimilarityArgs, report: &SimilarityReport) -> Result<(), Error> {
+    match args.format {
+        OutputFormat::Terminal => crate::viz::terminal::print_similarity_report(report),
+        OutputFormat::Json => {
+            if let Some(outdir) = &args.output {
+                std::fs::create_dir_all(outdir)?;
+                let path = outdir.join("similarity.json");
+                crate::viz::json::write_similarity_report(report, &path)?;
+                println!("JSON report written to {}", path.display());
             } else {
-                println!("  Mean CLS cosine sim: N/A (CLS tokens unavailable)");
+                crate::viz::json::print_similarity_report(report)?;
             }
         }
-        _ => {}
+        OutputFormat::Html => {
+            let outdir = args
+                .output
+                .clone()
+                .unwrap_or_else(|| PathBuf::from("similarity_output"));
+            std::fs::create_dir_all(&outdir)?;
+            let path = outdir.join("report.html");
+            crate::viz::html::write_similarity_report(report, &path)?;
+            println!("Report written to {}", path.display());
+        }
+        OutputFormat::Png => {
+            let outdir = args
+                .output
+                .clone()
+                .unwrap_or_else(|| PathBuf::from("similarity_output"));
+            std::fs::create_dir_all(&outdir)?;
+            let path = outdir.join("similarity.png");
+            crate::viz::png::save_series_chart(&report.metric_series(), &path)?;
+            println!("PNG saved to {}", path.display());
+        }
     }
-
-    crate::viz::terminal::print_dataset_processing_summary(&dataset_summary);
 
     Ok(())
 }

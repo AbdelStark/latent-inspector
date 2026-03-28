@@ -2,7 +2,8 @@ use crate::analysis::linear_cka;
 use crate::errors::Error;
 use crate::extract::ExtractedFeatures;
 use crate::models::ModelSession;
-use crate::viz::terminal;
+use crate::viz::report::{DriftReport, DriftStep};
+use crate::viz::{terminal, OutputFormat};
 use clap::Args;
 use ndarray::Array2;
 use std::cmp::Ordering;
@@ -22,6 +23,14 @@ pub struct DriftArgs {
     /// Dataset directory to measure drift on.
     #[arg(short, long)]
     pub dataset: PathBuf,
+
+    /// Output directory for JSON/HTML/PNG artefacts.
+    #[arg(short, long)]
+    pub output: Option<PathBuf>,
+
+    /// Output format.
+    #[arg(short, long, default_value = "terminal")]
+    pub format: OutputFormat,
 }
 
 pub fn run(args: DriftArgs) -> Result<(), Error> {
@@ -38,7 +47,15 @@ pub fn run(args: DriftArgs) -> Result<(), Error> {
         .collect();
 
     if ckpt_paths.is_empty() {
-        terminal::print_drift_summary(&[], &[]);
+        let report = DriftReport::new(
+            args.model.clone(),
+            args.checkpoints.display().to_string(),
+            args.dataset.display().to_string(),
+            Vec::new(),
+            None,
+            Vec::new(),
+        );
+        render_output(&args, &report)?;
         return Ok(());
     }
 
@@ -70,13 +87,60 @@ pub fn run(args: DriftArgs) -> Result<(), Error> {
         let (name_a, mat_a) = &window[0];
         let (name_b, mat_b) = &window[1];
         let cka = linear_cka(mat_a, mat_b)?;
-        drift_rows.push((name_a.clone(), name_b.clone(), cka));
+        drift_rows.push(DriftStep {
+            from_checkpoint: name_a.clone(),
+            to_checkpoint: name_b.clone(),
+            linear_cka: cka,
+        });
     }
 
-    if let Some(summary) = &dataset_summary {
-        terminal::print_dataset_processing_summary(summary);
+    let report = DriftReport::new(
+        args.model.clone(),
+        args.checkpoints.display().to_string(),
+        args.dataset.display().to_string(),
+        checkpoint_names,
+        dataset_summary,
+        drift_rows,
+    );
+    render_output(&args, &report)?;
+
+    Ok(())
+}
+
+fn render_output(args: &DriftArgs, report: &DriftReport) -> Result<(), Error> {
+    match args.format {
+        OutputFormat::Terminal => terminal::print_drift_report(report),
+        OutputFormat::Json => {
+            if let Some(outdir) = &args.output {
+                std::fs::create_dir_all(outdir)?;
+                let path = outdir.join("drift.json");
+                crate::viz::json::write_drift_report(report, &path)?;
+                println!("JSON report written to {}", path.display());
+            } else {
+                crate::viz::json::print_drift_report(report)?;
+            }
+        }
+        OutputFormat::Html => {
+            let outdir = args
+                .output
+                .clone()
+                .unwrap_or_else(|| PathBuf::from("drift_output"));
+            std::fs::create_dir_all(&outdir)?;
+            let path = outdir.join("report.html");
+            crate::viz::html::write_drift_report(report, &path)?;
+            println!("Report written to {}", path.display());
+        }
+        OutputFormat::Png => {
+            let outdir = args
+                .output
+                .clone()
+                .unwrap_or_else(|| PathBuf::from("drift_output"));
+            std::fs::create_dir_all(&outdir)?;
+            let path = outdir.join("consecutive_cka.png");
+            crate::viz::png::save_series_chart(&report.cka_series(), &path)?;
+            println!("PNG saved to {}", path.display());
+        }
     }
-    terminal::print_drift_summary(&checkpoint_names, &drift_rows);
 
     Ok(())
 }

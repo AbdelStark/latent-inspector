@@ -1,6 +1,7 @@
 use crate::errors::DatasetError;
 use image::DynamicImage;
 use indicatif::{ProgressBar, ProgressStyle};
+use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use tracing::debug;
 
@@ -14,13 +15,13 @@ pub struct ImageEntry {
     pub stem: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SkippedImage {
     pub path: String,
     pub reason: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DatasetProcessingSummary {
     pub discovered: usize,
     pub loaded: usize,

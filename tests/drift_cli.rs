@@ -1,3 +1,4 @@
+use serde_json::Value;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -26,6 +27,10 @@ fn extract_cka_scores(stdout: &str) -> Vec<f32> {
         .filter_map(|line| line.split("CKA=").nth(1))
         .filter_map(|value| value.trim().parse::<f32>().ok())
         .collect()
+}
+
+fn read_json(path: &Path) -> Value {
+    serde_json::from_str(&fs::read_to_string(path).unwrap()).unwrap()
 }
 
 #[test]
@@ -81,4 +86,71 @@ fn drift_reports_consecutive_checkpoint_scores() {
     let scores = extract_cka_scores(&stdout);
     assert_eq!(scores.len(), 2);
     assert!(scores.iter().all(|score| *score < 0.9999));
+}
+
+#[test]
+fn drift_json_and_png_outputs_are_written() {
+    let dir = tempdir().unwrap();
+    let dataset_dir = dir.path().join("dataset");
+    let checkpoints_dir = dir.path().join("checkpoints");
+    fs::create_dir_all(&dataset_dir).unwrap();
+    fs::create_dir_all(&checkpoints_dir).unwrap();
+
+    write_dataset_image(&dataset_dir, "sample-a", 5);
+    write_dataset_image(&dataset_dir, "sample-b", 29);
+    fs::write(dataset_dir.join("broken.png"), b"not an image").unwrap();
+
+    fs::write(checkpoints_dir.join("step-1.onnx"), b"checkpoint-a").unwrap();
+    fs::write(checkpoints_dir.join("step-2.onnx"), b"checkpoint-b").unwrap();
+    fs::write(checkpoints_dir.join("step-10.onnx"), b"checkpoint-c").unwrap();
+
+    let json_output_dir = dir.path().join("drift-json");
+    let json_output = Command::new(bin())
+        .env("LATENT_INSPECTOR_MODEL_BACKEND", "stub")
+        .args([
+            "drift",
+            "--model",
+            "dinov2-vit-l14",
+            "--checkpoints",
+            checkpoints_dir.to_str().unwrap(),
+            "--dataset",
+            dataset_dir.to_str().unwrap(),
+            "--format",
+            "json",
+            "--output",
+            json_output_dir.to_str().unwrap(),
+        ])
+        .output()
+        .unwrap();
+
+    assert_eq!(json_output.status.code(), Some(0));
+
+    let payload = read_json(&json_output_dir.join("drift.json"));
+    assert_eq!(payload["model"], "dinov2-vit-l14");
+    assert_eq!(payload["checkpoint_names"].as_array().unwrap().len(), 3);
+    assert_eq!(payload["drift"].as_array().unwrap().len(), 2);
+    assert_eq!(payload["dataset_summary"]["skipped"], 1);
+    assert_eq!(payload["largest_shift"]["from_checkpoint"], "step-2");
+
+    let png_output_dir = dir.path().join("drift-png");
+    let png_output = Command::new(bin())
+        .env("LATENT_INSPECTOR_MODEL_BACKEND", "stub")
+        .args([
+            "drift",
+            "--model",
+            "dinov2-vit-l14",
+            "--checkpoints",
+            checkpoints_dir.to_str().unwrap(),
+            "--dataset",
+            dataset_dir.to_str().unwrap(),
+            "--format",
+            "png",
+            "--output",
+            png_output_dir.to_str().unwrap(),
+        ])
+        .output()
+        .unwrap();
+
+    assert_eq!(png_output.status.code(), Some(0));
+    assert!(png_output_dir.join("consecutive_cka.png").exists());
 }

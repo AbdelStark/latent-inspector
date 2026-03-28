@@ -1,4 +1,5 @@
 use crate::analysis::{ComparisonMetrics, ModelMetrics};
+use crate::dataset::DatasetProcessingSummary;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -71,6 +72,120 @@ pub fn build_compare_overview(
             comparisons,
             MetricKind::MeanPatchCorrespondence,
         ),
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NeighborMatch {
+    pub rank: usize,
+    pub image: String,
+    pub similarity: f32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NeighborsReport {
+    pub query_image: String,
+    pub dataset: String,
+    pub model: String,
+    pub requested_k: usize,
+    pub dataset_summary: DatasetProcessingSummary,
+    pub neighbors: Vec<NeighborMatch>,
+}
+
+impl NeighborsReport {
+    pub fn similarity_series(&self) -> Vec<f32> {
+        self.neighbors
+            .iter()
+            .map(|neighbor| neighbor.similarity)
+            .collect()
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SimilarityMetricValue {
+    pub key: String,
+    pub label: String,
+    pub value: f32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SimilarityReport {
+    pub model_a: String,
+    pub model_b: String,
+    pub dataset: String,
+    pub requested_metric: String,
+    pub sample_count: usize,
+    pub dataset_summary: DatasetProcessingSummary,
+    pub metrics: Vec<SimilarityMetricValue>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub note: Option<String>,
+}
+
+impl SimilarityReport {
+    pub fn metric_series(&self) -> Vec<f32> {
+        self.metrics.iter().map(|metric| metric.value).collect()
+    }
+
+    pub fn metric_value(&self, key: &str) -> Option<f32> {
+        self.metrics
+            .iter()
+            .find(|metric| metric.key == key)
+            .map(|metric| metric.value)
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct DriftStep {
+    pub from_checkpoint: String,
+    pub to_checkpoint: String,
+    pub linear_cka: f32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DriftReport {
+    pub model: String,
+    pub checkpoints: String,
+    pub dataset: String,
+    pub checkpoint_names: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub dataset_summary: Option<DatasetProcessingSummary>,
+    pub drift: Vec<DriftStep>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mean_consecutive_cka: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub largest_shift: Option<DriftStep>,
+}
+
+impl DriftReport {
+    pub fn new(
+        model: impl Into<String>,
+        checkpoints: impl Into<String>,
+        dataset: impl Into<String>,
+        checkpoint_names: Vec<String>,
+        dataset_summary: Option<DatasetProcessingSummary>,
+        drift: Vec<DriftStep>,
+    ) -> Self {
+        let mean_consecutive_cka = (!drift.is_empty())
+            .then(|| drift.iter().map(|step| step.linear_cka).sum::<f32>() / drift.len() as f32);
+        let largest_shift = drift
+            .iter()
+            .min_by(|left, right| left.linear_cka.total_cmp(&right.linear_cka))
+            .cloned();
+
+        Self {
+            model: model.into(),
+            checkpoints: checkpoints.into(),
+            dataset: dataset.into(),
+            checkpoint_names,
+            dataset_summary,
+            drift,
+            mean_consecutive_cka,
+            largest_shift,
+        }
+    }
+
+    pub fn cka_series(&self) -> Vec<f32> {
+        self.drift.iter().map(|step| step.linear_cka).collect()
     }
 }
 
@@ -299,5 +414,108 @@ mod tests {
             .comparison_highlights
             .iter()
             .any(|highlight| highlight.label == "Strongest CKA alignment"));
+    }
+
+    #[test]
+    fn neighbors_report_exposes_similarity_series() {
+        let report = NeighborsReport {
+            query_image: "query.png".into(),
+            dataset: "dataset".into(),
+            model: "dinov2".into(),
+            requested_k: 2,
+            dataset_summary: DatasetProcessingSummary {
+                discovered: 3,
+                loaded: 2,
+                skipped: 1,
+                skipped_examples: Vec::new(),
+            },
+            neighbors: vec![
+                NeighborMatch {
+                    rank: 1,
+                    image: "class-a/leaf".into(),
+                    similarity: 0.91,
+                },
+                NeighborMatch {
+                    rank: 2,
+                    image: "root".into(),
+                    similarity: 0.82,
+                },
+            ],
+        };
+
+        assert_eq!(report.similarity_series(), vec![0.91, 0.82]);
+    }
+
+    #[test]
+    fn similarity_report_supports_metric_lookup() {
+        let report = SimilarityReport {
+            model_a: "dinov2".into(),
+            model_b: "clip".into(),
+            dataset: "dataset".into(),
+            requested_metric: "all".into(),
+            sample_count: 4,
+            dataset_summary: DatasetProcessingSummary {
+                discovered: 4,
+                loaded: 4,
+                skipped: 0,
+                skipped_examples: Vec::new(),
+            },
+            metrics: vec![
+                SimilarityMetricValue {
+                    key: "linear_cka".into(),
+                    label: "Linear CKA".into(),
+                    value: 0.77,
+                },
+                SimilarityMetricValue {
+                    key: "knn_overlap_k10".into(),
+                    label: "k-NN overlap (k=10)".into(),
+                    value: 0.43,
+                },
+            ],
+            note: None,
+        };
+
+        assert_eq!(report.metric_value("linear_cka"), Some(0.77));
+        assert_eq!(report.metric_series(), vec![0.77, 0.43]);
+        assert_eq!(report.metric_value("mean_cls_cosine"), None);
+    }
+
+    #[test]
+    fn drift_report_computes_aggregate_fields() {
+        let report = DriftReport::new(
+            "dinov2",
+            "checkpoints",
+            "dataset",
+            vec!["step-1".into(), "step-2".into(), "step-10".into()],
+            Some(DatasetProcessingSummary {
+                discovered: 3,
+                loaded: 3,
+                skipped: 0,
+                skipped_examples: Vec::new(),
+            }),
+            vec![
+                DriftStep {
+                    from_checkpoint: "step-1".into(),
+                    to_checkpoint: "step-2".into(),
+                    linear_cka: 0.93,
+                },
+                DriftStep {
+                    from_checkpoint: "step-2".into(),
+                    to_checkpoint: "step-10".into(),
+                    linear_cka: 0.71,
+                },
+            ],
+        );
+
+        assert_eq!(report.mean_consecutive_cka, Some(0.82));
+        assert_eq!(
+            report.largest_shift,
+            Some(DriftStep {
+                from_checkpoint: "step-2".into(),
+                to_checkpoint: "step-10".into(),
+                linear_cka: 0.71,
+            })
+        );
+        assert_eq!(report.cka_series(), vec![0.93, 0.71]);
     }
 }

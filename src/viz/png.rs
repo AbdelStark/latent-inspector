@@ -173,6 +173,44 @@ pub fn save_pairwise_heatmap(matrix: &PairwiseMatrix, output_path: &Path) -> Res
     Ok(())
 }
 
+pub fn save_series_chart(values: &[f32], output_path: &Path) -> Result<(), VizError> {
+    let values = if values.is_empty() {
+        vec![0.0]
+    } else {
+        values.to_vec()
+    };
+
+    let min = values.iter().copied().fold(f32::INFINITY, f32::min);
+    let max = values.iter().copied().fold(f32::NEG_INFINITY, f32::max);
+    let range = (max - min).max(1e-8);
+    let bar_width = 22u32;
+    let gap = 8u32;
+    let padding = 16u32;
+    let chart_height = 180u32;
+    let width =
+        padding * 2 + values.len() as u32 * bar_width + values.len().saturating_sub(1) as u32 * gap;
+    let height = chart_height + padding * 2;
+    let mut img = RgbImage::from_pixel(width, height, Rgb([13, 17, 23]));
+
+    for (index, value) in values.iter().enumerate() {
+        let normalized = ((*value - min) / range).clamp(0.0, 1.0);
+        let bar_height = (normalized * chart_height as f32).round() as u32;
+        let x0 = padding + index as u32 * (bar_width + gap);
+        let y0 = padding + chart_height.saturating_sub(bar_height);
+        let color = heatmap_color((index as f32 + 1.0) / values.len() as f32);
+
+        for y in y0..(padding + chart_height) {
+            for x in x0..(x0 + bar_width) {
+                img.put_pixel(x, y, Rgb(color));
+            }
+        }
+    }
+
+    img.save(output_path)
+        .map_err(|e| VizError::Png(format!("Failed to save {}: {e}", output_path.display())))?;
+    Ok(())
+}
+
 pub fn save_variance_spectrum_chart(ratios: &[f32], output_path: &Path) -> Result<(), VizError> {
     if ratios.is_empty() {
         return Err(VizError::Png(
@@ -247,6 +285,15 @@ mod tests {
         let path = dir.path().join("variance.png");
 
         save_variance_spectrum_chart(&[0.4, 0.25, 0.2, 0.1], &path).unwrap();
+        assert!(path.exists());
+    }
+
+    #[test]
+    fn test_save_series_chart() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("series.png");
+
+        save_series_chart(&[0.2, 0.6, 0.4], &path).unwrap();
         assert!(path.exists());
     }
 }
