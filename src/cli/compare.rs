@@ -305,6 +305,12 @@ fn compare_manifest_summary(report: &crate::viz::report::CompareReport) -> serde
         "comparison_count": report.comparisons.len(),
         "model_highlights": report.overview.model_highlights,
         "comparison_highlights": report.overview.comparison_highlights,
+        "pairwise_support": {
+            "cls_cosine": report.overview.cls_cosine_support,
+            "linear_cka": report.overview.linear_cka_support,
+            "knn_overlap_k10": report.overview.knn_overlap_support,
+            "mean_patch_correspondence": report.overview.correspondence_support,
+        },
     })
 }
 

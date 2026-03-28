@@ -5,7 +5,8 @@ use crate::dataset::DatasetProcessingSummary;
 use crate::models::{EvidenceStatus, ModelCatalogReport};
 use crate::validation::report::ModelValidationSummary;
 use crate::viz::report::{
-    CompareOverview, DriftReport, NeighborsReport, PairwiseMatrix, SimilarityReport,
+    CompareOverview, DriftReport, NeighborsReport, PairwiseMatrix, PairwiseMetricSupport,
+    SimilarityReport,
 };
 use ndarray::Array2;
 
@@ -157,10 +158,26 @@ pub fn print_compare_overview(overview: &CompareOverview) {
         println!("{}", "═".repeat(80));
     }
 
-    print_pairwise_matrix("CLS cosine similarity", &overview.cls_cosine_matrix);
-    print_pairwise_matrix("Linear CKA", &overview.linear_cka_matrix);
-    print_pairwise_matrix("k-NN overlap (k=10)", &overview.knn_overlap_matrix);
-    print_pairwise_matrix("Mean patch correspondence", &overview.correspondence_matrix);
+    print_pairwise_matrix(
+        "CLS cosine similarity",
+        &overview.cls_cosine_matrix,
+        &overview.cls_cosine_support,
+    );
+    print_pairwise_matrix(
+        "Linear CKA",
+        &overview.linear_cka_matrix,
+        &overview.linear_cka_support,
+    );
+    print_pairwise_matrix(
+        "k-NN overlap (k=10)",
+        &overview.knn_overlap_matrix,
+        &overview.knn_overlap_support,
+    );
+    print_pairwise_matrix(
+        "Mean patch correspondence",
+        &overview.correspondence_matrix,
+        &overview.correspondence_support,
+    );
 }
 
 pub fn print_comparison_caveats(comparisons: &[ComparisonMetrics]) {
@@ -188,13 +205,27 @@ pub fn print_comparison_caveats(comparisons: &[ComparisonMetrics]) {
     }
 }
 
-pub fn print_pairwise_matrix(title: &str, matrix: &PairwiseMatrix) {
-    if matrix.len() < 2 || !matrix.has_off_diagonal_values() {
+pub fn print_pairwise_matrix(
+    title: &str,
+    matrix: &PairwiseMatrix,
+    support: &PairwiseMetricSupport,
+) {
+    if matrix.len() < 2 {
         return;
     }
 
     println!();
     println!("{title}:");
+    println!(
+        "Comparable model pairs: {}/{}",
+        support.supported_pairs, support.total_pairs
+    );
+    if support.unavailable_pairs > 0 {
+        println!("Unavailable pairs: {}", support.unavailable_pairs);
+        for reason in &support.unavailable_reasons {
+            println!("  x{} {}", reason.count, reason.reason);
+        }
+    }
     let width = 12;
     print!("{:<14}", "");
     for name in &matrix.labels {

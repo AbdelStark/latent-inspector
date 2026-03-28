@@ -7,7 +7,7 @@ use crate::models::ModelCatalogReport;
 use crate::validation::report::ModelValidationSummary;
 use crate::viz::report::{
     build_compare_overview, CompareOverview, DriftReport, InspectReport, NeighborsReport,
-    PairwiseMatrix, SimilarityReport,
+    PairwiseMatrix, PairwiseMetricSupport, SimilarityReport,
 };
 use std::path::Path;
 
@@ -955,30 +955,67 @@ fn render_overview_cards(overview: &CompareOverview) -> String {
 
 fn render_matrix_sections(overview: &CompareOverview) -> String {
     let matrices = [
-        ("CLS cosine similarity", &overview.cls_cosine_matrix),
-        ("Linear CKA", &overview.linear_cka_matrix),
-        ("k-NN overlap (k=10)", &overview.knn_overlap_matrix),
-        ("Mean patch correspondence", &overview.correspondence_matrix),
+        (
+            "CLS cosine similarity",
+            &overview.cls_cosine_matrix,
+            &overview.cls_cosine_support,
+        ),
+        (
+            "Linear CKA",
+            &overview.linear_cka_matrix,
+            &overview.linear_cka_support,
+        ),
+        (
+            "k-NN overlap (k=10)",
+            &overview.knn_overlap_matrix,
+            &overview.knn_overlap_support,
+        ),
+        (
+            "Mean patch correspondence",
+            &overview.correspondence_matrix,
+            &overview.correspondence_support,
+        ),
     ];
 
     let cards = matrices
         .into_iter()
-        .filter(|(_, matrix)| matrix.len() >= 2 && matrix.has_off_diagonal_values())
-        .map(|(title, matrix)| {
+        .filter(|(_, matrix, _)| matrix.len() >= 2)
+        .map(|(title, matrix, support)| {
             format!(
-                "<article class=\"matrix-card\"><h3>{}</h3>{}</article>",
+                "<article class=\"matrix-card\"><h3>{}</h3>{}{}</article>",
                 escape_html(title),
+                render_matrix_support_summary(support),
                 render_matrix_table(matrix),
             )
         })
         .collect::<Vec<_>>();
 
     if cards.is_empty() {
-        "<p class=\"empty-state\">Pairwise matrices require at least two comparable models.</p>"
-            .to_string()
+        "<p class=\"empty-state\">Pairwise matrices require at least two models.</p>".to_string()
     } else {
         format!("<div class=\"matrix-grid\">{}</div>", cards.join("\n"))
     }
+}
+
+fn render_matrix_support_summary(support: &PairwiseMetricSupport) -> String {
+    let mut lines = vec![format!(
+        "<p class=\"caveat\"><strong>Comparable model pairs:</strong> {}/{}</p>",
+        support.supported_pairs, support.total_pairs
+    )];
+    if support.unavailable_pairs > 0 {
+        lines.push(format!(
+            "<p class=\"caveat\"><strong>Unavailable pairs:</strong> {}</p>",
+            support.unavailable_pairs
+        ));
+        lines.extend(support.unavailable_reasons.iter().map(|reason| {
+            format!(
+                "<p class=\"caveat\">x{} {}</p>",
+                reason.count,
+                escape_html(&reason.reason),
+            )
+        }));
+    }
+    lines.join("")
 }
 
 fn render_comparison_table(rows: &str) -> String {

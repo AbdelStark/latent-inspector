@@ -527,6 +527,14 @@ fn compare_json_output_writes_structured_report() {
     assert_eq!(manifest["summary"]["model_count"], 2);
     assert_eq!(manifest["summary"]["comparison_count"], 1);
     assert_eq!(
+        manifest["summary"]["pairwise_support"]["cls_cosine"]["supported_pairs"],
+        1
+    );
+    assert_eq!(
+        manifest["summary"]["pairwise_support"]["cls_cosine"]["total_pairs"],
+        1
+    );
+    assert_eq!(
         manifest["validation_summary"]["overall_status"],
         "unverified"
     );
@@ -570,6 +578,29 @@ fn compare_json_reports_alignment_and_metric_caveats_for_stubbed_planned_models(
                 .as_str()
                 .unwrap()
                 .contains("only one model exposes a CLS token")));
+    assert_eq!(
+        payload["overview"]["cls_cosine_matrix"]["rows"][1][1],
+        Value::Null
+    );
+    assert_eq!(
+        payload["overview"]["cls_cosine_support"]["supported_pairs"],
+        0
+    );
+    assert_eq!(payload["overview"]["cls_cosine_support"]["total_pairs"], 3);
+    assert_eq!(
+        payload["overview"]["cls_cosine_support"]["unavailable_pairs"],
+        3
+    );
+    assert!(
+        payload["overview"]["cls_cosine_support"]["unavailable_reasons"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|reason| reason["reason"]
+                .as_str()
+                .unwrap()
+                .contains("only one model exposes a CLS token"))
+    );
 
     let dinov2_siglip = comparisons
         .iter()
@@ -593,6 +624,31 @@ fn compare_json_reports_alignment_and_metric_caveats_for_stubbed_planned_models(
     assert_eq!(validation[0]["backend"]["status"], "unverified");
     assert_eq!(validation[1]["status"], "unverified");
     assert_eq!(validation[2]["status"], "unverified");
+}
+
+#[test]
+fn compare_html_reports_matrix_support_for_unavailable_metrics() {
+    let dir = tempdir().unwrap();
+    let image = write_test_image(dir.path());
+    let output_dir = dir.path().join("compare-mixed-html");
+    let output = run(&[
+        "compare",
+        image.to_str().unwrap(),
+        "--models",
+        "dinov2-vit-l14,mae-vit-l16",
+        "--format",
+        "html",
+        "--output",
+        output_dir.to_str().unwrap(),
+    ]);
+
+    assert_eq!(output.status.code(), Some(0));
+    let html = fs::read_to_string(output_dir.join("report.html")).unwrap();
+    assert!(html.contains("CLS cosine similarity"));
+    assert!(html.contains("Comparable model pairs:</strong> 0/1"));
+    assert!(html.contains("Unavailable pairs:</strong> 1"));
+    assert!(html.contains("only one model exposes a CLS token"));
+    assert!(html.contains("<td>N/A</td>"));
 }
 
 #[test]

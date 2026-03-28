@@ -29,6 +29,21 @@ impl PairwiseMatrix {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PairwiseMetricUnavailability {
+    pub reason: String,
+    pub count: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PairwiseMetricSupport {
+    pub supported_pairs: usize,
+    pub total_pairs: usize,
+    pub unavailable_pairs: usize,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub unavailable_reasons: Vec<PairwiseMetricUnavailability>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ModelHighlight {
     pub label: String,
@@ -49,9 +64,13 @@ pub struct CompareOverview {
     pub model_highlights: Vec<ModelHighlight>,
     pub comparison_highlights: Vec<ComparisonHighlight>,
     pub cls_cosine_matrix: PairwiseMatrix,
+    pub cls_cosine_support: PairwiseMetricSupport,
     pub linear_cka_matrix: PairwiseMatrix,
+    pub linear_cka_support: PairwiseMetricSupport,
     pub knn_overlap_matrix: PairwiseMatrix,
+    pub knn_overlap_support: PairwiseMetricSupport,
     pub correspondence_matrix: PairwiseMatrix,
+    pub correspondence_support: PairwiseMetricSupport,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -77,11 +96,34 @@ pub fn build_compare_overview(
     CompareOverview {
         model_highlights: build_model_highlights(metrics),
         comparison_highlights: build_comparison_highlights(comparisons),
-        cls_cosine_matrix: build_pairwise_matrix(&labels, comparisons, MetricKind::ClsCosine),
-        linear_cka_matrix: build_pairwise_matrix(&labels, comparisons, MetricKind::LinearCka),
-        knn_overlap_matrix: build_pairwise_matrix(&labels, comparisons, MetricKind::KnnOverlap),
+        cls_cosine_matrix: build_pairwise_matrix(
+            &labels,
+            metrics,
+            comparisons,
+            MetricKind::ClsCosine,
+        ),
+        cls_cosine_support: build_pairwise_support(comparisons, MetricKind::ClsCosine),
+        linear_cka_matrix: build_pairwise_matrix(
+            &labels,
+            metrics,
+            comparisons,
+            MetricKind::LinearCka,
+        ),
+        linear_cka_support: build_pairwise_support(comparisons, MetricKind::LinearCka),
+        knn_overlap_matrix: build_pairwise_matrix(
+            &labels,
+            metrics,
+            comparisons,
+            MetricKind::KnnOverlap,
+        ),
+        knn_overlap_support: build_pairwise_support(comparisons, MetricKind::KnnOverlap),
         correspondence_matrix: build_pairwise_matrix(
             &labels,
+            metrics,
+            comparisons,
+            MetricKind::MeanPatchCorrespondence,
+        ),
+        correspondence_support: build_pairwise_support(
             comparisons,
             MetricKind::MeanPatchCorrespondence,
         ),
@@ -289,6 +331,7 @@ enum MetricKind {
 
 fn build_pairwise_matrix(
     labels: &[String],
+    metrics: &[ModelMetrics],
     comparisons: &[ComparisonMetrics],
     kind: MetricKind,
 ) -> PairwiseMatrix {
@@ -299,8 +342,17 @@ fn build_pairwise_matrix(
         .map(|(index, label)| (label.as_str(), index))
         .collect::<HashMap<_, _>>();
 
+    let metric_indexes = metrics
+        .iter()
+        .enumerate()
+        .map(|(index, metric)| (metric.model_name.as_str(), index))
+        .collect::<HashMap<_, _>>();
+
     for (index, row) in rows.iter_mut().enumerate() {
-        row[index] = Some(1.0);
+        row[index] = indexes
+            .get(labels[index].as_str())
+            .and_then(|_| metric_indexes.get(labels[index].as_str()))
+            .and_then(|metric_index| diagonal_metric_value(kind, &metrics[*metric_index]));
     }
 
     for comparison in comparisons {
@@ -321,12 +373,76 @@ fn build_pairwise_matrix(
     }
 }
 
+fn build_pairwise_support(
+    comparisons: &[ComparisonMetrics],
+    kind: MetricKind,
+) -> PairwiseMetricSupport {
+    let supported_pairs = comparisons
+        .iter()
+        .filter(|comparison| metric_value(comparison, kind).is_some())
+        .count();
+    let total_pairs = comparisons.len();
+
+    let mut reasons = HashMap::<String, usize>::new();
+    for comparison in comparisons {
+        if let Some(reason) = metric_unavailable_reason(comparison, kind) {
+            *reasons.entry(reason.to_string()).or_insert(0) += 1;
+        }
+    }
+
+    let mut unavailable_reasons = reasons
+        .into_iter()
+        .map(|(reason, count)| PairwiseMetricUnavailability { reason, count })
+        .collect::<Vec<_>>();
+    unavailable_reasons.sort_by(|left, right| {
+        right
+            .count
+            .cmp(&left.count)
+            .then_with(|| left.reason.cmp(&right.reason))
+    });
+
+    PairwiseMetricSupport {
+        supported_pairs,
+        total_pairs,
+        unavailable_pairs: total_pairs.saturating_sub(supported_pairs),
+        unavailable_reasons,
+    }
+}
+
+fn diagonal_metric_value(kind: MetricKind, metric: &ModelMetrics) -> Option<f32> {
+    match kind {
+        MetricKind::ClsCosine => metric.cls_l2_norm.map(|_| 1.0),
+        MetricKind::LinearCka | MetricKind::KnnOverlap | MetricKind::MeanPatchCorrespondence => {
+            Some(1.0)
+        }
+    }
+}
+
 fn metric_value(comparison: &ComparisonMetrics, kind: MetricKind) -> Option<f32> {
     match kind {
         MetricKind::ClsCosine => comparison.cls_cosine_sim,
         MetricKind::LinearCka => Some(comparison.linear_cka),
         MetricKind::KnnOverlap => Some(comparison.knn_overlap_k10),
         MetricKind::MeanPatchCorrespondence => comparison.mean_patch_correspondence,
+    }
+}
+
+fn metric_unavailable_reason(comparison: &ComparisonMetrics, kind: MetricKind) -> Option<&str> {
+    comparison
+        .metric_caveats
+        .iter()
+        .find(|caveat| caveat.key == kind.key())
+        .map(|caveat| caveat.reason.as_str())
+}
+
+impl MetricKind {
+    fn key(self) -> &'static str {
+        match self {
+            MetricKind::ClsCosine => "cls_cosine_sim",
+            MetricKind::LinearCka => "linear_cka",
+            MetricKind::KnnOverlap => "knn_overlap_k10",
+            MetricKind::MeanPatchCorrespondence => "mean_patch_correspondence",
+        }
     }
 }
 
@@ -521,6 +637,9 @@ mod tests {
         assert_eq!(overview.linear_cka_matrix.rows[1][0], Some(0.77));
         assert_eq!(overview.cls_cosine_matrix.rows[0][1], Some(0.42));
         assert_eq!(overview.correspondence_matrix.rows[0][1], Some(0.51));
+        assert_eq!(overview.cls_cosine_support.supported_pairs, 1);
+        assert_eq!(overview.cls_cosine_support.total_pairs, 1);
+        assert!(overview.cls_cosine_support.unavailable_reasons.is_empty());
     }
 
     #[test]
@@ -551,6 +670,76 @@ mod tests {
         assert_eq!(report.requested_models, vec!["dinov2", "clip"]);
         assert_eq!(report.overview.linear_cka_matrix.rows[0][1], Some(0.77));
         assert_eq!(report.validation.len(), 2);
+    }
+
+    #[test]
+    fn compare_overview_marks_clsless_diagonal_unavailable_and_tracks_support() {
+        let metrics = vec![
+            ModelMetrics {
+                model_name: "dinov2".into(),
+                n_patches: 256,
+                embed_dim: 1024,
+                effective_rank: 300,
+                dead_dimensions: 4,
+                patch_entropy: 6.1,
+                cls_l2_norm: Some(1.0),
+                patch_norm_mean: 2.0,
+                patch_norm_std: 0.4,
+                top10_variance_pct: 25.0,
+                components_90pct: 64,
+            },
+            ModelMetrics {
+                model_name: "mae".into(),
+                n_patches: 196,
+                embed_dim: 1024,
+                effective_rank: 210,
+                dead_dimensions: 2,
+                patch_entropy: 5.0,
+                cls_l2_norm: None,
+                patch_norm_mean: 2.0,
+                patch_norm_std: 0.4,
+                top10_variance_pct: 41.0,
+                components_90pct: 52,
+            },
+        ];
+        let comparisons = vec![ComparisonMetrics {
+            model_a: "dinov2".into(),
+            model_b: "mae".into(),
+            alignment: crate::analysis::ComparisonAlignment {
+                patch_count_a: 256,
+                patch_count_b: 196,
+                compared_patch_count: 196,
+                note: Some(
+                    "Compared the first 196 shared patches because the models expose different patch grids (256 vs 196)."
+                        .into(),
+                ),
+            },
+            cls_cosine_sim: None,
+            linear_cka: 0.77,
+            knn_overlap_k10: 0.33,
+            mean_patch_correspondence: Some(0.51),
+            metric_caveats: vec![crate::analysis::MetricCaveat {
+                key: "cls_cosine_sim".into(),
+                label: "CLS cosine similarity".into(),
+                reason: "Unavailable because only one model exposes a CLS token.".into(),
+            }],
+        }];
+
+        let overview = build_compare_overview(&metrics, &comparisons);
+
+        assert_eq!(overview.cls_cosine_matrix.rows[0][0], Some(1.0));
+        assert_eq!(overview.cls_cosine_matrix.rows[1][1], None);
+        assert_eq!(overview.cls_cosine_matrix.rows[0][1], None);
+        assert_eq!(overview.cls_cosine_support.supported_pairs, 0);
+        assert_eq!(overview.cls_cosine_support.total_pairs, 1);
+        assert_eq!(overview.cls_cosine_support.unavailable_pairs, 1);
+        assert_eq!(
+            overview.cls_cosine_support.unavailable_reasons,
+            vec![PairwiseMetricUnavailability {
+                reason: "Unavailable because only one model exposes a CLS token.".into(),
+                count: 1,
+            }]
+        );
     }
 
     #[test]
