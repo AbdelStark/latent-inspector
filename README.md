@@ -102,6 +102,10 @@ cargo run -- validate --model dinov2-vit-l14 --refresh-goldens
 The validation summary reports preprocessing status, tensor semantics, approved
 reference parity, caveats, and a plain-language recommendation for whether the
 model is safe to interpret as source-aligned.
+`validate` is the only command that re-executes the fixture set against the
+active backend. The normal report commands (`compare`, `inspect`, `neighbors`,
+`similarity`, `drift`, and `models`) reuse the checked-in approved evidence plus
+freshness checks so trust summaries stay fast and deterministic.
 If the checked-in contract or reference artifacts no longer match the current
 registry profile, the summary now reports `stale` instead of treating outdated
 evidence as a fresh pass or a runtime failure.

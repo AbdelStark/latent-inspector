@@ -1,9 +1,8 @@
 use crate::models::cache;
 use crate::models::registry::{self, AvailabilityStatus, RegistryEntry, SSLMethod};
+use crate::validation::evidence::summarize_registered_evidence_with_fixture_set;
 use crate::validation::fixtures::{load_fixture_set, LoadedFixtureSet};
-use crate::validation::freshness::{
-    parity_evidence_freshness, preprocess_evidence_freshness, tensor_evidence_freshness,
-};
+use crate::validation::ValidationStatus;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -299,65 +298,32 @@ fn assess_evidence(
         );
     };
 
-    let contract = match fixture_set.load_contract(&entry.info.name) {
-        Ok(contract) => contract,
-        Err(err) => {
-            return (
-                EvidenceStatus::Missing,
-                "Approved validation contract could not be loaded from the fixture set."
+    match summarize_registered_evidence_with_fixture_set(entry, fixture_set) {
+        Ok(summary) => match summary.status {
+            ValidationStatus::Validated => (
+                EvidenceStatus::Approved,
+                "Approved validation contract and parity artifacts are current for the active registry profile.".to_string(),
+                Vec::new(),
+            ),
+            ValidationStatus::Stale => (
+                EvidenceStatus::Stale,
+                "Approved validation evidence is stale against the active registry profile."
                     .to_string(),
-                vec![err.to_string()],
-            );
-        }
-    };
-
-    let reference = match fixture_set.load_reference(&entry.info.name) {
-        Ok(reference) => reference,
-        Err(err) => {
-            return (
+                summary.caveats,
+            ),
+            ValidationStatus::Failed | ValidationStatus::Partial | ValidationStatus::Unverified => (
                 EvidenceStatus::Missing,
-                "Approved parity reference artifact could not be loaded from the fixture set."
+                "Validation evidence could not be fully interpreted from the fixture set."
                     .to_string(),
-                vec![err.to_string()],
-            );
-        }
-    };
-
-    let mut stale_reasons = Vec::new();
-    extend_unique(
-        &mut stale_reasons,
-        preprocess_evidence_freshness(entry, &contract, fixture_set).reasons(),
-    );
-    extend_unique(
-        &mut stale_reasons,
-        tensor_evidence_freshness(entry, &contract, fixture_set).reasons(),
-    );
-    extend_unique(
-        &mut stale_reasons,
-        parity_evidence_freshness(entry, &reference, fixture_set).reasons(),
-    );
-
-    if stale_reasons.is_empty() {
-        (
-            EvidenceStatus::Approved,
-            "Approved validation contract and parity artifacts are current for the active registry profile.".to_string(),
-            Vec::new(),
-        )
-    } else {
-        (
-            EvidenceStatus::Stale,
-            "Approved validation evidence is stale against the active registry profile."
+                summary.caveats,
+            ),
+        },
+        Err(err) => (
+            EvidenceStatus::Missing,
+            "Approved validation evidence could not be loaded from the fixture set."
                 .to_string(),
-            stale_reasons,
-        )
-    }
-}
-
-fn extend_unique(target: &mut Vec<String>, items: &[String]) {
-    for item in items {
-        if !target.iter().any(|existing| existing == item) {
-            target.push(item.clone());
-        }
+            vec![err.to_string()],
+        ),
     }
 }
 

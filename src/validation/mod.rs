@@ -1,3 +1,4 @@
+pub(crate) mod evidence;
 pub mod fixtures;
 pub mod freshness;
 pub mod parity;
@@ -6,6 +7,7 @@ pub mod semantics;
 
 use crate::errors::{ModelError, ValidationError};
 use crate::models::ModelSession;
+use evidence::summarize_registered_evidence;
 use fixtures::{build_reference_artifact_id, load_fixture_set, ContractArtifact, LoadedFixtureSet};
 use parity::{build_reference_artifact, evaluate_reference_parity, summarize_outputs};
 use report::ModelValidationSummary;
@@ -73,12 +75,12 @@ pub fn summarize_session_or_unverified(
         .with_backend(session.backend());
     }
 
-    match validate_session(session, fixture_selection, false) {
-        Ok(summary) => summary,
+    match summarize_registered_evidence(session.entry(), fixture_selection) {
+        Ok(summary) => summary.with_backend(session.backend()),
         Err(err) => ModelValidationSummary::unverified(
             &session.info().name,
             &session.entry().validation.evidence_timestamp,
-            format!("Validation evidence could not be loaded: {err}"),
+            format!("Approved validation evidence could not be loaded: {err}"),
         )
         .with_backend(session.backend()),
     }
