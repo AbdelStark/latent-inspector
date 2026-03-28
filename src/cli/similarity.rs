@@ -3,6 +3,7 @@ use crate::errors::Error;
 use crate::extract::{EmbeddingBasis, ExtractedFeatures};
 use crate::models::ModelSession;
 use crate::validation::summarize_session_or_unverified;
+use crate::viz::manifest::{ArtifactKind, OutputArtifactManifest};
 use crate::viz::report::{SimilarityMetricValue, SimilarityReport};
 use crate::viz::OutputFormat;
 use clap::Args;
@@ -188,6 +189,11 @@ fn render_output(args: &SimilarityArgs, report: &SimilarityReport) -> Result<(),
                 std::fs::create_dir_all(outdir)?;
                 let path = outdir.join("similarity.json");
                 crate::viz::json::write_similarity_report(report, &path)?;
+                OutputArtifactManifest::new("similarity", OutputFormat::Json)
+                    .with_primary_artifact("similarity.json")
+                    .add_artifact("similarity.json", ArtifactKind::Json, "Similarity report")
+                    .with_validation(&report.validation)
+                    .write_to_dir(outdir)?;
                 println!("JSON report written to {}", path.display());
             } else {
                 crate::viz::json::print_similarity_report(report)?;
@@ -201,6 +207,11 @@ fn render_output(args: &SimilarityArgs, report: &SimilarityReport) -> Result<(),
             std::fs::create_dir_all(&outdir)?;
             let path = outdir.join("report.html");
             crate::viz::html::write_similarity_report(report, &path)?;
+            OutputArtifactManifest::new("similarity", OutputFormat::Html)
+                .with_primary_artifact("report.html")
+                .add_artifact("report.html", ArtifactKind::Html, "Similarity report")
+                .with_validation(&report.validation)
+                .write_to_dir(&outdir)?;
             println!("Report written to {}", path.display());
         }
         OutputFormat::Png => {
@@ -211,6 +222,15 @@ fn render_output(args: &SimilarityArgs, report: &SimilarityReport) -> Result<(),
             std::fs::create_dir_all(&outdir)?;
             let path = outdir.join("similarity.png");
             crate::viz::png::save_series_chart(&report.metric_series(), &path)?;
+            OutputArtifactManifest::new("similarity", OutputFormat::Png)
+                .with_primary_artifact("similarity.png")
+                .add_artifact(
+                    "similarity.png",
+                    ArtifactKind::Png,
+                    "Similarity metric chart",
+                )
+                .with_validation(&report.validation)
+                .write_to_dir(&outdir)?;
             println!("PNG saved to {}", path.display());
         }
     }

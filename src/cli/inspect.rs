@@ -3,6 +3,7 @@ use crate::errors::Error;
 use crate::extract::ExtractedFeatures;
 use crate::models::ModelSession;
 use crate::validation::summarize_session_or_unverified;
+use crate::viz::manifest::{ArtifactKind, OutputArtifactManifest};
 use crate::viz::OutputFormat;
 use clap::Args;
 use std::path::{Path, PathBuf};
@@ -104,6 +105,11 @@ pub fn run(args: InspectArgs) -> Result<(), Error> {
                 std::fs::create_dir_all(outdir)?;
                 let path = outdir.join("inspect.json");
                 crate::viz::json::write_inspect_report(&report, &path)?;
+                OutputArtifactManifest::new("inspect", OutputFormat::Json)
+                    .with_primary_artifact("inspect.json")
+                    .add_artifact("inspect.json", ArtifactKind::Json, "Inspect report")
+                    .with_validation(std::slice::from_ref(&report.validation))
+                    .write_to_dir(outdir)?;
                 println!("JSON report written to {}", path.display());
             } else {
                 crate::viz::json::print_inspect_report(&report)?;
@@ -114,7 +120,9 @@ pub fn run(args: InspectArgs) -> Result<(), Error> {
                 .output
                 .unwrap_or_else(|| PathBuf::from("inspect_output"));
             std::fs::create_dir_all(&outdir)?;
-            write_inspect_visual_artifacts(&features, &report, &outdir)?;
+            let assets = write_inspect_visual_artifacts(&features, &report, &outdir)?;
+            let manifest = build_inspect_manifest(&report, Some(&assets), OutputFormat::Png);
+            manifest.write_to_dir(&outdir)?;
             println!("PNG saved to {}", outdir.display());
         }
         OutputFormat::Html => {
@@ -128,6 +136,10 @@ pub fn run(args: InspectArgs) -> Result<(), Error> {
                 &assets,
                 &outdir.join("report.html"),
             )?;
+            let manifest = build_inspect_manifest(&report, Some(&assets), OutputFormat::Html)
+                .add_artifact("report.html", ArtifactKind::Html, "Inspect report")
+                .with_primary_artifact("report.html");
+            manifest.write_to_dir(&outdir)?;
             println!("Report written to {}/report.html", outdir.display());
         }
     }
@@ -157,6 +169,34 @@ fn write_inspect_visual_artifacts(
         pca_image: Some(pca_filename),
         variance_image: Some(variance_filename),
     })
+}
+
+fn build_inspect_manifest(
+    report: &crate::viz::report::InspectReport,
+    assets: Option<&crate::viz::html::InspectHtmlAssets>,
+    format: OutputFormat,
+) -> OutputArtifactManifest {
+    let mut manifest = OutputArtifactManifest::new("inspect", format)
+        .with_validation(std::slice::from_ref(&report.validation));
+
+    if let Some(assets) = assets {
+        if let Some(pca_image) = &assets.pca_image {
+            manifest = manifest.add_artifact(
+                pca_image.clone(),
+                ArtifactKind::Png,
+                format!("PCA projection for {}", report.model),
+            );
+        }
+        if let Some(variance_image) = &assets.variance_image {
+            manifest = manifest.add_artifact(
+                variance_image.clone(),
+                ArtifactKind::Png,
+                format!("Variance spectrum chart for {}", report.model),
+            );
+        }
+    }
+
+    manifest
 }
 
 fn slugify(label: &str) -> String {

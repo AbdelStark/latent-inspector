@@ -1,5 +1,6 @@
 use crate::errors::{Error, ValidationError};
 use crate::models::{build_model_catalog, cache, registry};
+use crate::viz::manifest::{ArtifactKind, OutputArtifactManifest};
 use crate::viz::OutputFormat;
 use clap::Args;
 use std::path::PathBuf;
@@ -58,6 +59,10 @@ fn list_models(args: &ModelsArgs) -> Result<(), Error> {
                 std::fs::create_dir_all(outdir)?;
                 let path = outdir.join("models.json");
                 crate::viz::json::write_model_catalog(&report, &path)?;
+                OutputArtifactManifest::new("models", OutputFormat::Json)
+                    .with_primary_artifact("models.json")
+                    .add_artifact("models.json", ArtifactKind::Json, "Model catalog")
+                    .write_to_dir(outdir)?;
                 println!("Model catalog written to {}", path.display());
             } else {
                 crate::viz::json::print_model_catalog(&report)?;
@@ -71,6 +76,10 @@ fn list_models(args: &ModelsArgs) -> Result<(), Error> {
             std::fs::create_dir_all(&outdir)?;
             let path = outdir.join("models.html");
             crate::viz::html::write_model_catalog_report(&report, &path)?;
+            OutputArtifactManifest::new("models", OutputFormat::Html)
+                .with_primary_artifact("models.html")
+                .add_artifact("models.html", ArtifactKind::Html, "Model catalog")
+                .write_to_dir(&outdir)?;
             println!("Model catalog written to {}", path.display());
         }
         OutputFormat::Png => unreachable!("validated earlier"),

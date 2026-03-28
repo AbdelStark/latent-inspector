@@ -46,6 +46,12 @@ latent-inspector makes these differences visible and measurable.
 - **JSON** — Raw metrics plus pairwise overview matrices and highlights
 - **HTML** — Interactive report with pairwise matrices, highlights, and embedded validation summaries
 
+When a command writes files to an output directory, latent-inspector now also
+emits `artifacts.json` in that directory. The manifest records the command,
+requested format, primary report path when there is one, every generated asset,
+and any attached validation statuses so automation can discover outputs without
+hard-coding filenames.
+
 ### Validation workflow:
 
 - `validate` checks preprocessing against the approved model contract

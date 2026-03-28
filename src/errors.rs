@@ -126,6 +126,9 @@ pub enum VizError {
 
     #[error("HTML generation error: {0}")]
     Html(String),
+
+    #[error("Artifact manifest error: {0}")]
+    Artifact(String),
 }
 
 #[derive(Error, Debug)]

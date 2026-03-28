@@ -1,5 +1,6 @@
 pub mod html;
 pub mod json;
+pub mod manifest;
 pub mod png;
 pub mod report;
 pub mod terminal;

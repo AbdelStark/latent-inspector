@@ -40,6 +40,10 @@ fn read_json(path: &Path) -> Value {
     serde_json::from_str(&fs::read_to_string(path).unwrap()).unwrap()
 }
 
+fn read_artifact_manifest(dir: &Path) -> Value {
+    read_json(&dir.join("artifacts.json"))
+}
+
 fn write_test_image(dir: &Path) -> PathBuf {
     let path = dir.join("fixture.png");
     let image = image::RgbImage::from_fn(224, 224, |x, y| {
@@ -93,6 +97,12 @@ fn validate_json_output_matches_contract_shape() {
     assert!(summary["preprocess"]["summary"].is_string());
     assert!(summary["parity"]["artifact_id"].is_string());
     assert!(summary["tensors"].is_array());
+    let manifest = read_artifact_manifest(outdir.path());
+    assert_eq!(manifest["command"], "validate");
+    assert_eq!(manifest["format"], "json");
+    assert_eq!(manifest["primary_artifact"], "validation.json");
+    assert_eq!(manifest["artifacts"][0]["path"], "validation.json");
+    assert_eq!(manifest["validation"][0]["status"], "unverified");
 }
 
 #[test]
@@ -276,6 +286,26 @@ fn inspect_html_includes_variance_spectrum_and_validation_summary() {
     assert!(html.contains("Stub backend"));
     assert!(output_dir.join("dinov2-vit-l14_pca.png").exists());
     assert!(output_dir.join("dinov2-vit-l14_variance.png").exists());
+    let manifest = read_artifact_manifest(&output_dir);
+    assert_eq!(manifest["command"], "inspect");
+    assert_eq!(manifest["format"], "html");
+    assert_eq!(manifest["primary_artifact"], "report.html");
+    assert!(manifest["artifacts"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|artifact| artifact["path"] == "report.html"));
+    assert!(manifest["artifacts"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|artifact| artifact["path"] == "dinov2-vit-l14_pca.png"));
+    assert!(manifest["artifacts"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|artifact| artifact["path"] == "dinov2-vit-l14_variance.png"));
+    assert_eq!(manifest["validation"][0]["status"], "unverified");
 }
 
 #[test]
@@ -353,6 +383,11 @@ fn compare_json_output_writes_structured_report() {
     assert_eq!(payload["image"], Value::from(image.display().to_string()));
     assert_eq!(payload["metrics"].as_array().unwrap().len(), 2);
     assert!(payload["overview"]["cls_cosine_matrix"]["rows"].is_array());
+    let manifest = read_artifact_manifest(&output_dir);
+    assert_eq!(manifest["command"], "compare");
+    assert_eq!(manifest["format"], "json");
+    assert_eq!(manifest["primary_artifact"], "compare.json");
+    assert_eq!(manifest["validation"].as_array().unwrap().len(), 2);
 }
 
 #[test]
@@ -439,6 +474,20 @@ fn compare_png_writes_pairwise_heatmaps() {
     assert!(output_dir.join("linear_cka.png").exists());
     assert!(output_dir.join("knn_overlap_k10.png").exists());
     assert!(output_dir.join("patch_correspondence.png").exists());
+    let manifest = read_artifact_manifest(&output_dir);
+    assert_eq!(manifest["command"], "compare");
+    assert_eq!(manifest["format"], "png");
+    assert!(manifest["primary_artifact"].is_null());
+    assert!(manifest["artifacts"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|artifact| artifact["path"] == "dinov2-vit-l14_1_pca.png"));
+    assert!(manifest["artifacts"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|artifact| artifact["path"] == "linear_cka.png"));
 }
 
 #[test]
@@ -460,6 +509,19 @@ fn inspect_png_writes_variance_chart() {
     assert_eq!(output.status.code(), Some(0));
     assert!(output_dir.join("dinov2-vit-l14_pca.png").exists());
     assert!(output_dir.join("dinov2-vit-l14_variance.png").exists());
+    let manifest = read_artifact_manifest(&output_dir);
+    assert_eq!(manifest["command"], "inspect");
+    assert_eq!(manifest["format"], "png");
+    assert!(manifest["artifacts"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|artifact| artifact["path"] == "dinov2-vit-l14_pca.png"));
+    assert!(manifest["artifacts"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|artifact| artifact["path"] == "dinov2-vit-l14_variance.png"));
 }
 
 #[test]
@@ -489,4 +551,9 @@ fn inspect_json_output_writes_structured_report() {
     assert_eq!(payload["validation"]["backend"]["kind"], "stub");
     assert!(payload["variance_spectrum"]["ratios"].is_array());
     assert!(payload["variance_spectrum"]["top10_concentration"].is_number());
+    let manifest = read_artifact_manifest(&output_dir);
+    assert_eq!(manifest["command"], "inspect");
+    assert_eq!(manifest["format"], "json");
+    assert_eq!(manifest["primary_artifact"], "inspect.json");
+    assert_eq!(manifest["validation"][0]["status"], "unverified");
 }

@@ -11,6 +11,10 @@ fn read_json(path: &std::path::Path) -> Value {
     serde_json::from_str(&fs::read_to_string(path).unwrap()).unwrap()
 }
 
+fn read_artifact_manifest(dir: &std::path::Path) -> Value {
+    read_json(&dir.join("artifacts.json"))
+}
+
 #[test]
 fn models_output_includes_evidence_and_fixture_summary() {
     let output = Command::new(bin()).args(["models"]).output().unwrap();
@@ -83,6 +87,11 @@ fn models_json_output_writes_structured_catalog() {
         dinov2["artifacts"][0]["relative_path"],
         "dinov2-vit-l14.onnx"
     );
+    let manifest = read_artifact_manifest(outdir.path());
+    assert_eq!(manifest["command"], "models");
+    assert_eq!(manifest["format"], "json");
+    assert_eq!(manifest["primary_artifact"], "models.json");
+    assert_eq!(manifest["artifacts"][0]["path"], "models.json");
 }
 
 #[test]
@@ -107,6 +116,11 @@ fn models_html_output_writes_shareable_catalog() {
     assert!(html.contains("Runtime"));
     assert!(html.contains("dinov2-vit-l14"));
     assert!(html.contains("Registry availability, cache state, and validation evidence"));
+    let manifest = read_artifact_manifest(outdir.path());
+    assert_eq!(manifest["command"], "models");
+    assert_eq!(manifest["format"], "html");
+    assert_eq!(manifest["primary_artifact"], "models.html");
+    assert_eq!(manifest["artifacts"][0]["path"], "models.html");
 }
 
 #[test]

@@ -33,6 +33,10 @@ fn read_json(path: &Path) -> Value {
     serde_json::from_str(&fs::read_to_string(path).unwrap()).unwrap()
 }
 
+fn read_artifact_manifest(dir: &Path) -> Value {
+    read_json(&dir.join("artifacts.json"))
+}
+
 #[test]
 fn drift_reports_consecutive_checkpoint_scores() {
     let dir = tempdir().unwrap();
@@ -155,6 +159,11 @@ fn drift_json_and_png_outputs_are_written() {
         payload["drift"][0]["linear_cka"].as_f64().unwrap()
             > payload["drift"][1]["linear_cka"].as_f64().unwrap()
     );
+    let json_manifest = read_artifact_manifest(&json_output_dir);
+    assert_eq!(json_manifest["command"], "drift");
+    assert_eq!(json_manifest["format"], "json");
+    assert_eq!(json_manifest["primary_artifact"], "drift.json");
+    assert_eq!(json_manifest["validation"].as_array().unwrap().len(), 3);
 
     let png_output_dir = dir.path().join("drift-png");
     let png_output = Command::new(bin())
@@ -177,6 +186,15 @@ fn drift_json_and_png_outputs_are_written() {
 
     assert_eq!(png_output.status.code(), Some(0));
     assert!(png_output_dir.join("consecutive_cka.png").exists());
+    let png_manifest = read_artifact_manifest(&png_output_dir);
+    assert_eq!(png_manifest["command"], "drift");
+    assert_eq!(png_manifest["format"], "png");
+    assert_eq!(png_manifest["primary_artifact"], "consecutive_cka.png");
+    assert!(png_manifest["artifacts"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|artifact| artifact["path"] == "consecutive_cka.png"));
 }
 
 #[test]

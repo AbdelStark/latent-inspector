@@ -29,6 +29,10 @@ fn read_json(path: &Path) -> Value {
     serde_json::from_str(&fs::read_to_string(path).unwrap()).unwrap()
 }
 
+fn read_artifact_manifest(dir: &Path) -> Value {
+    read_json(&dir.join("artifacts.json"))
+}
+
 #[test]
 fn neighbors_recurses_into_nested_dataset_and_reports_skips() {
     let dir = tempdir().unwrap();
@@ -159,6 +163,11 @@ fn neighbors_json_output_writes_structured_report() {
         .unwrap()
         .iter()
         .any(|neighbor| neighbor["image"] == "class-a/leaf"));
+    let manifest = read_artifact_manifest(&output_dir);
+    assert_eq!(manifest["command"], "neighbors");
+    assert_eq!(manifest["format"], "json");
+    assert_eq!(manifest["primary_artifact"], "neighbors.json");
+    assert_eq!(manifest["validation"][0]["status"], "unverified");
 }
 
 #[test]
@@ -254,6 +263,12 @@ fn similarity_json_output_writes_structured_report() {
     assert!(metric_keys.contains(&"linear_cka"));
     assert!(metric_keys.contains(&"knn_overlap_k10"));
     assert!(metric_keys.contains(&"mean_cls_cosine"));
+    let manifest = read_artifact_manifest(&output_dir);
+    assert_eq!(manifest["command"], "similarity");
+    assert_eq!(manifest["format"], "json");
+    assert_eq!(manifest["primary_artifact"], "similarity.json");
+    assert_eq!(manifest["validation"].as_array().unwrap().len(), 2);
+    assert_eq!(manifest["validation"][0]["status"], "unverified");
 }
 
 #[test]

@@ -3,6 +3,7 @@ use crate::models::ModelSession;
 use crate::validation::fixtures::load_fixture_set;
 use crate::validation::report::{ModelValidationSummary, ValidationStatus};
 use crate::validation::validate_session_with_fixture_set;
+use crate::viz::manifest::{ArtifactKind, OutputArtifactManifest};
 use crate::viz::OutputFormat;
 use clap::Args;
 use std::path::PathBuf;
@@ -114,10 +115,13 @@ fn render_validate_output(
         OutputFormat::Json => {
             if let Some(outdir) = &args.output {
                 std::fs::create_dir_all(outdir)?;
-                crate::viz::json::write_validation_report(
-                    summaries,
-                    &outdir.join("validation.json"),
-                )?;
+                let path = outdir.join("validation.json");
+                crate::viz::json::write_validation_report(summaries, &path)?;
+                OutputArtifactManifest::new("validate", OutputFormat::Json)
+                    .with_primary_artifact("validation.json")
+                    .add_artifact("validation.json", ArtifactKind::Json, "Validation report")
+                    .with_validation(summaries)
+                    .write_to_dir(outdir)?;
                 println!(
                     "Validation report written to {}/validation.json",
                     outdir.display()
@@ -133,6 +137,11 @@ fn render_validate_output(
                 .unwrap_or_else(|| PathBuf::from("validation_output"));
             std::fs::create_dir_all(&outdir)?;
             crate::viz::html::write_validation_report(summaries, &outdir.join("validation.html"))?;
+            OutputArtifactManifest::new("validate", OutputFormat::Html)
+                .with_primary_artifact("validation.html")
+                .add_artifact("validation.html", ArtifactKind::Html, "Validation report")
+                .with_validation(summaries)
+                .write_to_dir(&outdir)?;
             println!(
                 "Validation report written to {}/validation.html",
                 outdir.display()

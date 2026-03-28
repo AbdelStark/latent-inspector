@@ -2,6 +2,7 @@ use crate::errors::Error;
 use crate::extract::{EmbeddingBasis, ExtractedFeatures};
 use crate::models::ModelSession;
 use crate::validation::summarize_session_or_unverified;
+use crate::viz::manifest::{ArtifactKind, OutputArtifactManifest};
 use crate::viz::report::{NeighborMatch, NeighborsReport};
 use crate::viz::OutputFormat;
 use clap::Args;
@@ -142,6 +143,11 @@ fn render_output(args: &NeighborsArgs, report: &NeighborsReport) -> Result<(), E
                 std::fs::create_dir_all(outdir)?;
                 let path = outdir.join("neighbors.json");
                 crate::viz::json::write_neighbors_report(report, &path)?;
+                OutputArtifactManifest::new("neighbors", OutputFormat::Json)
+                    .with_primary_artifact("neighbors.json")
+                    .add_artifact("neighbors.json", ArtifactKind::Json, "Neighbors report")
+                    .with_validation(std::slice::from_ref(&report.validation))
+                    .write_to_dir(outdir)?;
                 println!("JSON report written to {}", path.display());
             } else {
                 crate::viz::json::print_neighbors_report(report)?;
@@ -155,6 +161,11 @@ fn render_output(args: &NeighborsArgs, report: &NeighborsReport) -> Result<(), E
             std::fs::create_dir_all(&outdir)?;
             let path = outdir.join("report.html");
             crate::viz::html::write_neighbors_report(report, &path)?;
+            OutputArtifactManifest::new("neighbors", OutputFormat::Html)
+                .with_primary_artifact("report.html")
+                .add_artifact("report.html", ArtifactKind::Html, "Neighbors report")
+                .with_validation(std::slice::from_ref(&report.validation))
+                .write_to_dir(&outdir)?;
             println!("Report written to {}", path.display());
         }
         OutputFormat::Png => {
@@ -165,6 +176,15 @@ fn render_output(args: &NeighborsArgs, report: &NeighborsReport) -> Result<(), E
             std::fs::create_dir_all(&outdir)?;
             let path = outdir.join("neighbors.png");
             crate::viz::png::save_series_chart(&report.similarity_series(), &path)?;
+            OutputArtifactManifest::new("neighbors", OutputFormat::Png)
+                .with_primary_artifact("neighbors.png")
+                .add_artifact(
+                    "neighbors.png",
+                    ArtifactKind::Png,
+                    "Neighbors similarity chart",
+                )
+                .with_validation(std::slice::from_ref(&report.validation))
+                .write_to_dir(&outdir)?;
             println!("PNG saved to {}", path.display());
         }
     }

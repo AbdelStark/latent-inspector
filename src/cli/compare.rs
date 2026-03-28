@@ -3,6 +3,7 @@ use crate::errors::Error;
 use crate::extract::ExtractedFeatures;
 use crate::models::ModelSession;
 use crate::validation::summarize_session_or_unverified;
+use crate::viz::manifest::{ArtifactKind, OutputArtifactManifest};
 use crate::viz::OutputFormat;
 use clap::Args;
 use rayon::prelude::*;
@@ -106,6 +107,11 @@ pub fn run(args: CompareArgs) -> Result<(), Error> {
                 std::fs::create_dir_all(outdir)?;
                 let path = outdir.join("compare.json");
                 crate::viz::json::write_compare_report(&report, &path)?;
+                OutputArtifactManifest::new("compare", OutputFormat::Json)
+                    .with_primary_artifact("compare.json")
+                    .add_artifact("compare.json", ArtifactKind::Json, "Compare report")
+                    .with_validation(&report.validation)
+                    .write_to_dir(outdir)?;
                 println!("JSON report written to {}", path.display());
             } else {
                 crate::viz::json::print_compare_report(&report)?;
@@ -128,6 +134,11 @@ pub fn run(args: CompareArgs) -> Result<(), Error> {
                 &report.validation,
                 &outdir.join("report.html"),
             )?;
+            OutputArtifactManifest::new("compare", OutputFormat::Html)
+                .with_primary_artifact("report.html")
+                .add_artifact("report.html", ArtifactKind::Html, "Compare report")
+                .with_validation(&report.validation)
+                .write_to_dir(&outdir)?;
             println!("Report written to {}/report.html", outdir.display());
         }
         OutputFormat::Png => {
@@ -135,15 +146,24 @@ pub fn run(args: CompareArgs) -> Result<(), Error> {
                 .output
                 .unwrap_or_else(|| PathBuf::from("compare_output"));
             std::fs::create_dir_all(&outdir)?;
+            let mut manifest = OutputArtifactManifest::new("compare", OutputFormat::Png)
+                .with_validation(&report.validation);
             // PCA RGB images
             for (name, feat) in &outputs {
                 let pca_result = crate::analysis::pca(&feat.patch_tokens, 3, 300)?;
                 let projected = crate::analysis::transform(&feat.patch_tokens, &pca_result);
                 let grid = (feat.n_patches as f32).sqrt() as usize;
-                let path = outdir.join(format!("{}_pca.png", slugify(name)));
+                let filename = format!("{}_pca.png", slugify(name));
+                let path = outdir.join(&filename);
                 crate::viz::png::save_pca_rgb(&projected, grid, &path)?;
+                manifest = manifest.add_artifact(
+                    filename,
+                    ArtifactKind::Png,
+                    format!("PCA projection for {name}"),
+                );
             }
-            save_pairwise_heatmaps(&outdir, &report.overview)?;
+            manifest = save_pairwise_heatmaps(&outdir, &report.overview, manifest)?;
+            manifest.write_to_dir(&outdir)?;
             println!("PNG outputs saved to {}", outdir.display());
         }
     }
@@ -190,7 +210,8 @@ fn slugify(label: &str) -> String {
 fn save_pairwise_heatmaps(
     outdir: &std::path::Path,
     overview: &crate::viz::report::CompareOverview,
-) -> Result<(), Error> {
+    mut manifest: OutputArtifactManifest,
+) -> Result<OutputArtifactManifest, Error> {
     let heatmaps = [
         ("cls_cosine", &overview.cls_cosine_matrix),
         ("linear_cka", &overview.linear_cka_matrix),
@@ -200,11 +221,17 @@ fn save_pairwise_heatmaps(
 
     for (name, matrix) in heatmaps {
         if matrix.len() >= 2 && matrix.has_off_diagonal_values() {
-            crate::viz::png::save_pairwise_heatmap(matrix, &outdir.join(format!("{name}.png")))?;
+            let filename = format!("{name}.png");
+            crate::viz::png::save_pairwise_heatmap(matrix, &outdir.join(&filename))?;
+            manifest = manifest.add_artifact(
+                filename,
+                ArtifactKind::Png,
+                format!("Pairwise heatmap for {name}"),
+            );
         }
     }
 
-    Ok(())
+    Ok(manifest)
 }
 
 #[cfg(test)]

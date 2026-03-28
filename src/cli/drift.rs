@@ -3,6 +3,7 @@ use crate::errors::Error;
 use crate::extract::{EmbeddingBasis, ExtractedFeatures};
 use crate::models::ModelSession;
 use crate::validation::summarize_session_or_unverified;
+use crate::viz::manifest::{ArtifactKind, OutputArtifactManifest};
 use crate::viz::report::{DriftReport, DriftStep};
 use crate::viz::{terminal, OutputFormat};
 use clap::Args;
@@ -128,6 +129,11 @@ fn render_output(args: &DriftArgs, report: &DriftReport) -> Result<(), Error> {
                 std::fs::create_dir_all(outdir)?;
                 let path = outdir.join("drift.json");
                 crate::viz::json::write_drift_report(report, &path)?;
+                OutputArtifactManifest::new("drift", OutputFormat::Json)
+                    .with_primary_artifact("drift.json")
+                    .add_artifact("drift.json", ArtifactKind::Json, "Drift report")
+                    .with_validation(&report.validation)
+                    .write_to_dir(outdir)?;
                 println!("JSON report written to {}", path.display());
             } else {
                 crate::viz::json::print_drift_report(report)?;
@@ -141,6 +147,11 @@ fn render_output(args: &DriftArgs, report: &DriftReport) -> Result<(), Error> {
             std::fs::create_dir_all(&outdir)?;
             let path = outdir.join("report.html");
             crate::viz::html::write_drift_report(report, &path)?;
+            OutputArtifactManifest::new("drift", OutputFormat::Html)
+                .with_primary_artifact("report.html")
+                .add_artifact("report.html", ArtifactKind::Html, "Drift report")
+                .with_validation(&report.validation)
+                .write_to_dir(&outdir)?;
             println!("Report written to {}", path.display());
         }
         OutputFormat::Png => {
@@ -151,6 +162,15 @@ fn render_output(args: &DriftArgs, report: &DriftReport) -> Result<(), Error> {
             std::fs::create_dir_all(&outdir)?;
             let path = outdir.join("consecutive_cka.png");
             crate::viz::png::save_series_chart(&report.cka_series(), &path)?;
+            OutputArtifactManifest::new("drift", OutputFormat::Png)
+                .with_primary_artifact("consecutive_cka.png")
+                .add_artifact(
+                    "consecutive_cka.png",
+                    ArtifactKind::Png,
+                    "Consecutive checkpoint CKA chart",
+                )
+                .with_validation(&report.validation)
+                .write_to_dir(&outdir)?;
             println!("PNG saved to {}", path.display());
         }
     }
