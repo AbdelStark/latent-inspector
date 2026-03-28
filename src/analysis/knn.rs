@@ -1,5 +1,6 @@
 //! Mutual k-NN overlap between two representation sets.
 
+use crate::analysis::finite::ensure_finite_2d;
 use crate::errors::AnalysisError;
 use ndarray::Array2;
 
@@ -38,7 +39,7 @@ pub fn top_k_neighbors(sim: &Array2<f32>, k: usize) -> Vec<Vec<usize>> {
                 .filter(|&j| j != i)
                 .map(|j| (j, sim[[i, j]]))
                 .collect();
-            indexed.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
+            indexed.sort_by(|a, b| b.1.total_cmp(&a.1));
             indexed.truncate(k);
             indexed.into_iter().map(|(j, _)| j).collect()
         })
@@ -63,6 +64,8 @@ pub fn knn_overlap(a: &Array2<f32>, b: &Array2<f32>, k: usize) -> Result<f32, An
             "knn_overlap requires ≥2 samples, got {na}"
         )));
     }
+    ensure_finite_2d(a, "left representation for k-NN overlap")?;
+    ensure_finite_2d(b, "right representation for k-NN overlap")?;
 
     let sim_a = cosine_similarity_matrix(a);
     let sim_b = cosine_similarity_matrix(b);
@@ -114,5 +117,16 @@ mod tests {
         for i in 0..4 {
             assert_relative_eq!(sim[[i, i]], 1.0, epsilon = 1e-5);
         }
+    }
+
+    #[test]
+    fn test_knn_overlap_rejects_non_finite_values() {
+        let a = Array2::from_elem((10, 4), 1.0_f32);
+        let mut b = Array2::from_elem((10, 4), 1.0_f32);
+        b[[4, 2]] = f32::NAN;
+
+        let error = knn_overlap(&a, &b, 3).unwrap_err();
+
+        assert!(matches!(error, AnalysisError::NonFiniteValues { .. }));
     }
 }

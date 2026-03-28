@@ -1,5 +1,6 @@
 //! Centered Kernel Alignment (CKA) for comparing representations.
 
+use crate::analysis::finite::ensure_finite_2d;
 use crate::errors::AnalysisError;
 use ndarray::Array2;
 
@@ -56,6 +57,8 @@ pub fn linear_cka(x: &Array2<f32>, y: &Array2<f32>) -> Result<f32, AnalysisError
             "CKA requires ≥2 samples, got {nx}"
         )));
     }
+    ensure_finite_2d(x, "left representation for CKA")?;
+    ensure_finite_2d(y, "right representation for CKA")?;
 
     let kx = linear_kernel(x);
     let ky = linear_kernel(y);
@@ -125,5 +128,16 @@ mod tests {
         let a = ndarray::array![1.0f32, 0.0];
         let b = ndarray::array![0.0f32, 1.0];
         assert_relative_eq!(cls_cosine_similarity(&a, &b), 0.0, epsilon = 1e-5);
+    }
+
+    #[test]
+    fn test_cka_rejects_non_finite_values() {
+        let x = Array2::from_elem((10, 4), 1.0_f32);
+        let mut y = Array2::from_elem((10, 4), 1.0_f32);
+        y[[3, 1]] = f32::INFINITY;
+
+        let error = linear_cka(&x, &y).unwrap_err();
+
+        assert!(matches!(error, AnalysisError::NonFiniteValues { .. }));
     }
 }

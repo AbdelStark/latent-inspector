@@ -121,6 +121,9 @@ and fixture plumbing but marks the run as `unverified`; synthetic stub outputs
 are not treated as release-grade source-alignment evidence.
 `validate --format html --output <dir>` now writes both `validation.html` and
 `validation.json` so reviewed evidence bundles stay machine-readable.
+If an export emits `NaN`/`Inf` tensors or a non-square patch grid, the analysis
+now fails explicitly instead of producing misleading metrics or corrupted PCA
+artefacts.
 
 ## Example: How different models see a street scene
 

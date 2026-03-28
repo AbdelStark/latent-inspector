@@ -1,3 +1,6 @@
+use crate::analysis::finite::{
+    ensure_finite_1d, ensure_finite_2d, ensure_finite_4d, square_grid_side,
+};
 use crate::errors::AnalysisError;
 use crate::models::ModelOutput;
 use ndarray::{Array1, Array2, Array4, Axis};
@@ -86,6 +89,14 @@ impl ExtractedFeatures {
             return Err(AnalysisError::EmptyInput(
                 "patch_tokens has zero-size dimension".into(),
             ));
+        }
+
+        ensure_finite_2d(&output.patch_tokens, "patch tokens")?;
+        if let Some(cls_token) = output.cls_token.as_ref() {
+            ensure_finite_1d(cls_token, "CLS token")?;
+        }
+        if let Some(attention_weights) = output.attention_weights.as_ref() {
+            ensure_finite_4d(attention_weights, "attention weights")?;
         }
 
         let n_patches = shape[0];
@@ -214,8 +225,7 @@ fn l2_norm_view(v: &ndarray::ArrayView1<f32>) -> f32 {
 }
 
 fn attention_grid_size(n_patches: usize) -> Option<usize> {
-    let grid = (n_patches as f32).sqrt().round() as usize;
-    (grid > 0 && grid * grid == n_patches).then_some(grid)
+    square_grid_side(n_patches, "attention map").ok()
 }
 
 #[cfg(test)]
@@ -356,5 +366,29 @@ mod tests {
         assert_eq!(map.shape(), &[2, 2]);
         approx::assert_relative_eq!(map[[0, 0]], 0.1, epsilon = 1e-5);
         approx::assert_relative_eq!(map[[1, 1]], 0.2, epsilon = 1e-5);
+    }
+
+    #[test]
+    fn extracted_features_reject_non_finite_patch_tokens() {
+        let mut output = dummy_output(4, 4);
+        output.patch_tokens[[1, 2]] = f32::NAN;
+
+        let error = ExtractedFeatures::from_output(output).unwrap_err();
+
+        assert!(matches!(error, AnalysisError::NonFiniteValues { .. }));
+        assert!(error.to_string().contains("patch tokens"));
+    }
+
+    #[test]
+    fn extracted_features_reject_non_finite_attention_weights() {
+        let mut output = dummy_output(4, 4);
+        let mut attention = Array4::from_elem((1, 1, 5, 5), 0.2_f32);
+        attention[[0, 0, 0, 3]] = f32::INFINITY;
+        output.attention_weights = Some(attention);
+
+        let error = ExtractedFeatures::from_output(output).unwrap_err();
+
+        assert!(matches!(error, AnalysisError::NonFiniteValues { .. }));
+        assert!(error.to_string().contains("attention weights"));
     }
 }

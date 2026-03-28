@@ -198,7 +198,10 @@ fn write_inspect_visual_artifacts(
     let attention_filename = format!("{prefix}_attention.png");
     let pca_result = pca(&features.patch_tokens, 3, 300)?;
     let projected = transform(&features.patch_tokens, &pca_result);
-    let grid = (features.n_patches as f32).sqrt() as usize;
+    let grid = patch_grid_side(
+        features.n_patches,
+        &format!("{} PCA rendering", report.model),
+    )?;
 
     crate::viz::png::save_pca_rgb(&projected, grid, &outdir.join(&pca_filename))?;
     crate::viz::png::save_variance_spectrum_chart(
@@ -249,6 +252,19 @@ fn write_inspect_visual_artifacts(
         )),
         attention_image,
     })
+}
+
+fn patch_grid_side(patch_count: usize, context: &str) -> Result<usize, Error> {
+    let grid = (patch_count as f64).sqrt().round() as usize;
+    if grid > 0 && grid.checked_mul(grid) == Some(patch_count) {
+        Ok(grid)
+    } else {
+        Err(crate::errors::AnalysisError::InvalidPatchGrid {
+            context: context.to_string(),
+            patch_count,
+        }
+        .into())
+    }
 }
 
 fn build_inspect_manifest(
@@ -339,4 +355,18 @@ fn build_inspect_attention_summary(
         token_count,
         map_basis,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn patch_grid_side_rejects_non_square_patch_counts() {
+        let error = patch_grid_side(10, "inspect PCA").unwrap_err();
+
+        assert!(error
+            .to_string()
+            .contains("does not form a square patch grid"));
+    }
 }

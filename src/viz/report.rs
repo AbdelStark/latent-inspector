@@ -473,11 +473,10 @@ fn build_model_highlights(metrics: &[ModelMetrics]) -> Vec<ModelHighlight> {
         });
     }
 
-    if let Some(metric) = metrics.iter().max_by(|a, b| {
-        a.patch_entropy
-            .partial_cmp(&b.patch_entropy)
-            .unwrap_or(std::cmp::Ordering::Equal)
-    }) {
+    if let Some(metric) = metrics
+        .iter()
+        .max_by(|a, b| a.patch_entropy.total_cmp(&b.patch_entropy))
+    {
         highlights.push(ModelHighlight {
             label: "Highest patch entropy".to_string(),
             model: metric.model_name.clone(),
@@ -485,11 +484,10 @@ fn build_model_highlights(metrics: &[ModelMetrics]) -> Vec<ModelHighlight> {
         });
     }
 
-    if let Some(metric) = metrics.iter().max_by(|a, b| {
-        a.top10_variance_pct
-            .partial_cmp(&b.top10_variance_pct)
-            .unwrap_or(std::cmp::Ordering::Equal)
-    }) {
+    if let Some(metric) = metrics
+        .iter()
+        .max_by(|a, b| a.top10_variance_pct.total_cmp(&b.top10_variance_pct))
+    {
         highlights.push(ModelHighlight {
             label: "Most top-heavy variance".to_string(),
             model: metric.model_name.clone(),
@@ -503,8 +501,7 @@ fn build_model_highlights(metrics: &[ModelMetrics]) -> Vec<ModelHighlight> {
         .max_by(|a, b| {
             a.attention_gini
                 .unwrap_or(f32::NEG_INFINITY)
-                .partial_cmp(&b.attention_gini.unwrap_or(f32::NEG_INFINITY))
-                .unwrap_or(std::cmp::Ordering::Equal)
+                .total_cmp(&b.attention_gini.unwrap_or(f32::NEG_INFINITY))
         })
     {
         highlights.push(ModelHighlight {
@@ -520,11 +517,10 @@ fn build_model_highlights(metrics: &[ModelMetrics]) -> Vec<ModelHighlight> {
 fn build_comparison_highlights(comparisons: &[ComparisonMetrics]) -> Vec<ComparisonHighlight> {
     let mut highlights = Vec::new();
 
-    if let Some(comparison) = comparisons.iter().max_by(|a, b| {
-        a.linear_cka
-            .partial_cmp(&b.linear_cka)
-            .unwrap_or(std::cmp::Ordering::Equal)
-    }) {
+    if let Some(comparison) = comparisons
+        .iter()
+        .max_by(|a, b| a.linear_cka.total_cmp(&b.linear_cka))
+    {
         highlights.push(ComparisonHighlight {
             label: "Strongest CKA alignment".to_string(),
             model_a: comparison.model_a.clone(),
@@ -533,11 +529,10 @@ fn build_comparison_highlights(comparisons: &[ComparisonMetrics]) -> Vec<Compari
         });
     }
 
-    if let Some(comparison) = comparisons.iter().min_by(|a, b| {
-        a.linear_cka
-            .partial_cmp(&b.linear_cka)
-            .unwrap_or(std::cmp::Ordering::Equal)
-    }) {
+    if let Some(comparison) = comparisons
+        .iter()
+        .min_by(|a, b| a.linear_cka.total_cmp(&b.linear_cka))
+    {
         highlights.push(ComparisonHighlight {
             label: "Weakest CKA alignment".to_string(),
             model_a: comparison.model_a.clone(),
@@ -546,11 +541,10 @@ fn build_comparison_highlights(comparisons: &[ComparisonMetrics]) -> Vec<Compari
         });
     }
 
-    if let Some(comparison) = comparisons.iter().max_by(|a, b| {
-        a.knn_overlap_k10
-            .partial_cmp(&b.knn_overlap_k10)
-            .unwrap_or(std::cmp::Ordering::Equal)
-    }) {
+    if let Some(comparison) = comparisons
+        .iter()
+        .max_by(|a, b| a.knn_overlap_k10.total_cmp(&b.knn_overlap_k10))
+    {
         highlights.push(ComparisonHighlight {
             label: "Highest neighborhood overlap".to_string(),
             model_a: comparison.model_a.clone(),
@@ -565,8 +559,7 @@ fn build_comparison_highlights(comparisons: &[ComparisonMetrics]) -> Vec<Compari
         .max_by(|a, b| {
             a.mean_patch_correspondence
                 .unwrap_or(f32::NEG_INFINITY)
-                .partial_cmp(&b.mean_patch_correspondence.unwrap_or(f32::NEG_INFINITY))
-                .unwrap_or(std::cmp::Ordering::Equal)
+                .total_cmp(&b.mean_patch_correspondence.unwrap_or(f32::NEG_INFINITY))
         })
     {
         highlights.push(ComparisonHighlight {
@@ -690,6 +683,20 @@ mod tests {
             .comparison_highlights
             .iter()
             .any(|highlight| highlight.label == "Strongest CKA alignment"));
+    }
+
+    #[test]
+    fn compare_overview_handles_non_finite_highlight_values_without_panicking() {
+        let mut model_metrics = metrics();
+        model_metrics[0].patch_entropy = f32::NAN;
+        model_metrics[1].top10_variance_pct = f32::INFINITY;
+        let mut comparison_metrics = comparisons();
+        comparison_metrics[0].linear_cka = f32::NAN;
+
+        let overview = build_compare_overview(&model_metrics, &comparison_metrics);
+
+        assert!(!overview.model_highlights.is_empty());
+        assert!(!overview.comparison_highlights.is_empty());
     }
 
     #[test]

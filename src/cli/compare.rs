@@ -220,7 +220,7 @@ fn render_pca_artifacts(
     for (name, feat) in outputs {
         let pca_result = crate::analysis::pca(&feat.patch_tokens, 3, 300)?;
         let projected = crate::analysis::transform(&feat.patch_tokens, &pca_result);
-        let grid = (feat.n_patches as f32).sqrt() as usize;
+        let grid = patch_grid_side(feat.n_patches, &format!("{name} PCA rendering"))?;
         let filename = format!("{}_pca.png", assets::slugify_filename(name));
         let path = outdir.join(&filename);
         crate::viz::png::save_pca_rgb(&projected, grid, &path)?;
@@ -233,6 +233,19 @@ fn render_pca_artifacts(
         ));
     }
     Ok(artifacts)
+}
+
+fn patch_grid_side(patch_count: usize, context: &str) -> Result<usize, Error> {
+    let grid = (patch_count as f64).sqrt().round() as usize;
+    if grid > 0 && grid.checked_mul(grid) == Some(patch_count) {
+        Ok(grid)
+    } else {
+        Err(crate::errors::AnalysisError::InvalidPatchGrid {
+            context: context.to_string(),
+            patch_count,
+        }
+        .into())
+    }
 }
 
 fn render_pairwise_heatmap_artifacts(
@@ -342,5 +355,14 @@ mod tests {
             crate::viz::assets::slugify_filename("dinov2-vit-l14#2"),
             "dinov2-vit-l14_2"
         );
+    }
+
+    #[test]
+    fn patch_grid_side_rejects_non_square_patch_counts() {
+        let error = patch_grid_side(15, "compare PCA").unwrap_err();
+
+        assert!(error
+            .to_string()
+            .contains("does not form a square patch grid"));
     }
 }

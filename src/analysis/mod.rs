@@ -2,6 +2,7 @@ pub mod attention;
 pub mod cka;
 pub mod correspondence;
 pub mod entropy;
+pub(crate) mod finite;
 pub mod knn;
 pub mod pca;
 pub mod rank;

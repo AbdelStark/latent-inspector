@@ -1,5 +1,6 @@
 //! PCA via iterative power method — no LAPACK dependency.
 
+use crate::analysis::finite::ensure_finite_2d;
 use crate::errors::AnalysisError;
 use ndarray::{Array1, Array2, Axis};
 
@@ -27,6 +28,7 @@ pub fn pca(data: &Array2<f32>, k: usize, max_iter: usize) -> Result<PcaResult, A
             "PCA requires at least 2 samples, got {n}"
         )));
     }
+    ensure_finite_2d(data, "input data for PCA")?;
     let k = k.min(d).min(n - 1).max(1);
 
     // Centre the data
@@ -176,5 +178,15 @@ mod tests {
         assert_eq!(result.components.shape(), &[4, 64]);
         assert_eq!(projected.shape(), &[8, 4]);
         assert!(result.explained_variance.iter().all(|value| *value >= 0.0));
+    }
+
+    #[test]
+    fn test_pca_rejects_non_finite_values() {
+        let mut data = Array2::from_elem((8, 4), 1.0_f32);
+        data[[5, 2]] = f32::NAN;
+
+        let error = pca(&data, 2, 100).unwrap_err();
+
+        assert!(matches!(error, AnalysisError::NonFiniteValues { .. }));
     }
 }

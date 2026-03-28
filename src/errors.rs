@@ -114,6 +114,12 @@ pub enum AnalysisError {
 
     #[error("Empty input: {0}")]
     EmptyInput(String),
+
+    #[error("Non-finite numeric values detected: {context}")]
+    NonFiniteValues { context: String },
+
+    #[error("Patch count {patch_count} does not form a square patch grid for {context}")]
+    InvalidPatchGrid { context: String, patch_count: usize },
 }
 
 #[derive(Error, Debug)]

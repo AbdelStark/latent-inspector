@@ -1,5 +1,6 @@
 //! Attention concentration metrics (Gini coefficient).
 
+use crate::analysis::finite::ensure_finite_4d;
 use crate::errors::AnalysisError;
 use ndarray::{Array1, Array4};
 
@@ -17,7 +18,7 @@ pub fn gini(values: &Array1<f32>) -> f32 {
     }
 
     let mut sorted: Vec<f32> = values.iter().copied().map(|v| v.abs()).collect();
-    sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    sorted.sort_by(|a, b| a.total_cmp(b));
 
     let mut gini_sum = 0.0_f32;
     for (i, &v) in sorted.iter().enumerate() {
@@ -38,6 +39,7 @@ pub fn per_head_gini(weights: &Array4<f32>) -> Result<Array1<f32>, AnalysisError
             actual: shape.to_vec(),
         });
     }
+    ensure_finite_4d(weights, "attention weights for Gini")?;
     let (layers, heads, n, _) = (shape[0], shape[1], shape[2], shape[3]);
     let mut result = Array1::<f32>::zeros(heads);
 
@@ -97,5 +99,15 @@ mod tests {
         let weights = Array4::from_elem((2, 4, 8, 8), 0.125_f32);
         let result = per_head_gini(&weights).unwrap();
         assert_eq!(result.len(), 4);
+    }
+
+    #[test]
+    fn test_per_head_gini_rejects_non_finite_weights() {
+        let mut weights = Array4::from_elem((1, 1, 2, 2), 0.25_f32);
+        weights[[0, 0, 1, 1]] = f32::NAN;
+
+        let error = per_head_gini(&weights).unwrap_err();
+
+        assert!(matches!(error, AnalysisError::NonFiniteValues { .. }));
     }
 }

@@ -1,5 +1,6 @@
 //! Patch entropy via k-means clustering + Shannon entropy.
 
+use crate::analysis::finite::ensure_finite_2d;
 use crate::errors::AnalysisError;
 use ndarray::{Array1, Array2};
 
@@ -25,7 +26,7 @@ fn assign_clusters(data: &Array2<f32>, centroids: &Array2<f32>) -> Vec<usize> {
                     let diff = &row - &c;
                     (i, diff.dot(&diff))
                 })
-                .min_by(|a, b| a.1.partial_cmp(&b.1).unwrap())
+                .min_by(|a, b| a.1.total_cmp(&b.1))
                 .map(|(i, _)| i)
                 .unwrap_or(0)
         })
@@ -88,6 +89,7 @@ pub fn patch_entropy(
             "patch_entropy needs ≥2 patches, got {n}"
         )));
     }
+    ensure_finite_2d(patch_tokens, "patch tokens for entropy")?;
     let k = k.min(n);
     let assignments = kmeans(patch_tokens, k, max_iter);
 
@@ -159,5 +161,15 @@ mod tests {
         // All patches identical → 1 cluster → entropy = 0
         let e = patch_entropy(&data, 4, 20).unwrap();
         assert!(e >= 0.0);
+    }
+
+    #[test]
+    fn test_patch_entropy_rejects_non_finite_values() {
+        let mut data = Array2::from_elem((16, 4), 1.0_f32);
+        data[[2, 1]] = f32::INFINITY;
+
+        let error = patch_entropy(&data, 4, 20).unwrap_err();
+
+        assert!(matches!(error, AnalysisError::NonFiniteValues { .. }));
     }
 }

@@ -70,6 +70,19 @@ fn test_patch_entropy_positive() {
 }
 
 #[test]
+fn test_feature_extraction_rejects_non_finite_outputs() {
+    let mut output = make_output("dinov2-vit-l14", 16, 8);
+    output.patch_tokens[[0, 0]] = f32::NAN;
+
+    let error = ExtractedFeatures::from_output(output).unwrap_err();
+
+    assert!(matches!(
+        error,
+        latent_inspector::errors::AnalysisError::NonFiniteValues { .. }
+    ));
+}
+
+#[test]
 fn test_registry_has_all_models() {
     let names = latent_inspector::models::registry::model_names();
     assert!(names.contains(&"dinov2-vit-l14".to_string()));
