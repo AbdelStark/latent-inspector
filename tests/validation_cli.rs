@@ -50,14 +50,15 @@ fn write_test_image(dir: &Path) -> PathBuf {
 }
 
 #[test]
-fn validate_terminal_succeeds_for_known_model() {
+fn validate_terminal_marks_stub_backend_unverified() {
     let output = run(&["validate", "--model", "dinov2-vit-l14"]);
 
-    assert_eq!(output.status.code(), Some(0));
+    assert_eq!(output.status.code(), Some(1));
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("Validation Summary"));
     assert!(stdout.contains("dinov2-vit-l14"));
-    assert!(stdout.contains("validated"));
+    assert!(stdout.contains("unverified"));
+    assert!(stdout.contains("stub"));
 }
 
 #[test]
@@ -82,11 +83,13 @@ fn validate_json_output_matches_contract_shape() {
         outdir.path().to_str().unwrap(),
     ]);
 
-    assert_eq!(output.status.code(), Some(0));
+    assert_eq!(output.status.code(), Some(1));
     let payload = read_json(&outdir.path().join("validation.json"));
     let summary = &payload[0];
     assert_eq!(summary["model"], "dinov2-vit-l14");
-    assert_eq!(summary["status"], "validated");
+    assert_eq!(summary["status"], "unverified");
+    assert_eq!(summary["backend"]["kind"], "stub");
+    assert_eq!(summary["backend"]["status"], "unverified");
     assert!(summary["preprocess"]["summary"].is_string());
     assert!(summary["parity"]["artifact_id"].is_string());
     assert!(summary["tensors"].is_array());
@@ -160,7 +163,7 @@ fn validate_marks_stale_contract_evidence_without_reporting_runtime_failure() {
     assert_eq!(summary["status"], "stale");
     assert_eq!(summary["preprocess"]["status"], "stale");
     assert_eq!(summary["tensors"][0]["status"], "stale");
-    assert_eq!(summary["parity"]["status"], "validated");
+    assert_eq!(summary["parity"]["status"], "unverified");
 }
 
 #[test]
@@ -219,7 +222,7 @@ fn validate_refresh_goldens_rewrites_reference_artifact() {
         "--refresh-goldens",
     ]);
 
-    assert_eq!(output.status.code(), Some(0));
+    assert_eq!(output.status.code(), Some(1));
     let refreshed = read_json(&reference_path);
     assert_eq!(refreshed, original);
 }
@@ -240,7 +243,8 @@ fn inspect_json_includes_validation_summary() {
     assert_eq!(output.status.code(), Some(0));
     let payload: Value = serde_json::from_slice(&output.stdout).unwrap();
     assert_eq!(payload["validation"]["model"], "dinov2-vit-l14");
-    assert_eq!(payload["validation"]["status"], "validated");
+    assert_eq!(payload["validation"]["status"], "unverified");
+    assert_eq!(payload["validation"]["backend"]["kind"], "stub");
 }
 
 #[test]
@@ -269,6 +273,7 @@ fn inspect_html_includes_variance_spectrum_and_validation_summary() {
     assert!(html.contains("Components @ 99%"));
     assert!(html.contains("Validation Summary"));
     assert!(html.contains("dinov2-vit-l14"));
+    assert!(html.contains("Stub backend"));
     assert!(output_dir.join("dinov2-vit-l14_pca.png").exists());
     assert!(output_dir.join("dinov2-vit-l14_variance.png").exists());
 }
@@ -405,7 +410,9 @@ fn compare_json_reports_alignment_and_metric_caveats_for_stubbed_planned_models(
                 .contains("embedding dimensions differ")));
 
     let validation = payload["validation"].as_array().unwrap();
-    assert_eq!(validation[0]["status"], "validated");
+    assert_eq!(validation[0]["status"], "unverified");
+    assert_eq!(validation[0]["backend"]["kind"], "stub");
+    assert_eq!(validation[0]["backend"]["status"], "unverified");
     assert_eq!(validation[1]["status"], "unverified");
     assert_eq!(validation[2]["status"], "unverified");
 }
@@ -478,7 +485,8 @@ fn inspect_json_output_writes_structured_report() {
     let payload = read_json(&output_dir.join("inspect.json"));
     assert_eq!(payload["image"], Value::from(image.display().to_string()));
     assert_eq!(payload["model"], "dinov2-vit-l14");
-    assert_eq!(payload["validation"]["status"], "validated");
+    assert_eq!(payload["validation"]["status"], "unverified");
+    assert_eq!(payload["validation"]["backend"]["kind"], "stub");
     assert!(payload["variance_spectrum"]["ratios"].is_array());
     assert!(payload["variance_spectrum"]["top10_concentration"].is_number());
 }

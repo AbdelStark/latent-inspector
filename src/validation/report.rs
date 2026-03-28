@@ -1,3 +1,4 @@
+use crate::models::InferenceBackend;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -133,10 +134,36 @@ impl ParityValidationSummary {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BackendValidationSummary {
+    pub kind: InferenceBackend,
+    pub status: ValidationStatus,
+    pub summary: String,
+}
+
+impl BackendValidationSummary {
+    pub fn for_backend(kind: InferenceBackend) -> Self {
+        match kind {
+            InferenceBackend::OnnxRuntime => Self {
+                kind,
+                status: ValidationStatus::Validated,
+                summary: "Validation ran against live ONNX Runtime execution.".to_string(),
+            },
+            InferenceBackend::Stub => Self {
+                kind,
+                status: ValidationStatus::Unverified,
+                summary: "Stub backend is active. Outputs are synthetic development scaffolding and do not establish source alignment."
+                    .to_string(),
+            },
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ModelValidationSummary {
     pub model: String,
     pub status: ValidationStatus,
     pub evidence_timestamp: String,
+    pub backend: BackendValidationSummary,
     pub preprocess: CheckSummary,
     pub tensors: Vec<TensorValidationSummary>,
     pub parity: ParityValidationSummary,
@@ -152,24 +179,19 @@ impl ModelValidationSummary {
         tensors: Vec<TensorValidationSummary>,
         parity: ParityValidationSummary,
     ) -> Self {
-        let mut status = preprocess.status.combine(parity.status);
-        for tensor in &tensors {
-            status = status.combine(tensor.status);
-        }
-
-        let caveats = build_caveats(&preprocess, &tensors, &parity);
-        let recommendation = recommendation_for(status).to_string();
-
-        Self {
+        let mut summary = Self {
             model: model.into(),
-            status,
             evidence_timestamp: evidence_timestamp.into(),
+            status: ValidationStatus::Validated,
+            backend: BackendValidationSummary::for_backend(InferenceBackend::OnnxRuntime),
             preprocess,
             tensors,
             parity,
-            caveats,
-            recommendation,
-        }
+            caveats: Vec::new(),
+            recommendation: String::new(),
+        };
+        summary.recompute_aggregate_fields();
+        summary
     }
 
     pub fn unverified(
@@ -178,10 +200,11 @@ impl ModelValidationSummary {
         reason: impl Into<String>,
     ) -> Self {
         let reason = reason.into();
-        Self {
+        let mut summary = Self {
             model: model.into(),
-            status: ValidationStatus::Unverified,
             evidence_timestamp: evidence_timestamp.into(),
+            status: ValidationStatus::Unverified,
+            backend: BackendValidationSummary::for_backend(InferenceBackend::OnnxRuntime),
             preprocess: CheckSummary::unverified("Preprocessing evidence was not loaded."),
             tensors: vec![TensorValidationSummary {
                 name: "last_hidden_state".to_string(),
@@ -195,8 +218,10 @@ impl ModelValidationSummary {
                 "Reference parity evidence is unavailable for this report surface.",
             ),
             caveats: vec![reason],
-            recommendation: recommendation_for(ValidationStatus::Unverified).to_string(),
-        }
+            recommendation: String::new(),
+        };
+        summary.recompute_aggregate_fields();
+        summary
     }
 
     pub fn failed(
@@ -205,10 +230,11 @@ impl ModelValidationSummary {
         reason: impl Into<String>,
     ) -> Self {
         let reason = reason.into();
-        Self {
+        let mut summary = Self {
             model: model.into(),
-            status: ValidationStatus::Failed,
             evidence_timestamp: evidence_timestamp.into(),
+            status: ValidationStatus::Failed,
+            backend: BackendValidationSummary::for_backend(InferenceBackend::OnnxRuntime),
             preprocess: CheckSummary::failed("Preprocessing validation did not complete."),
             tensors: vec![TensorValidationSummary {
                 name: "last_hidden_state".to_string(),
@@ -222,8 +248,54 @@ impl ModelValidationSummary {
                 "Reference parity could not be evaluated because validation execution failed.",
             ),
             caveats: vec![reason],
-            recommendation: recommendation_for(ValidationStatus::Failed).to_string(),
+            recommendation: String::new(),
+        };
+        summary.recompute_aggregate_fields();
+        summary
+    }
+
+    pub fn with_backend(mut self, backend: InferenceBackend) -> Self {
+        self.backend = BackendValidationSummary::for_backend(backend);
+        if matches!(backend, InferenceBackend::Stub) {
+            self.degrade_for_stub_backend();
         }
+        self.recompute_aggregate_fields();
+        self
+    }
+
+    fn recompute_aggregate_fields(&mut self) {
+        let mut status = self
+            .backend
+            .status
+            .combine(self.preprocess.status)
+            .combine(self.parity.status);
+        for tensor in &self.tensors {
+            status = status.combine(tensor.status);
+        }
+
+        let existing_caveats = std::mem::take(&mut self.caveats);
+        let mut caveats = build_caveats(&self.preprocess, &self.tensors, &self.parity);
+        extend_unique(&mut caveats, existing_caveats);
+
+        self.status = status;
+        self.caveats = caveats;
+        self.recommendation = recommendation_for(status).to_string();
+    }
+
+    fn degrade_for_stub_backend(&mut self) {
+        for tensor in &mut self.tensors {
+            tensor.status = tensor.status.combine(ValidationStatus::Unverified);
+            append_detail(
+                &mut tensor.summary,
+                "Stub backend synthesizes output tensors and does not execute or inspect the live ONNX graph.",
+            );
+        }
+
+        self.parity.status = self.parity.status.combine(ValidationStatus::Unverified);
+        append_detail(
+            &mut self.parity.summary,
+            "Stub backend parity only compares synthetic development outputs and is not release evidence for source alignment.",
+        );
     }
 }
 
@@ -255,6 +327,26 @@ fn build_caveats(
         }
     }
     caveats
+}
+
+fn append_detail(summary: &mut String, detail: &str) {
+    if summary.contains(detail) {
+        return;
+    }
+
+    if !summary.ends_with('.') {
+        summary.push('.');
+    }
+    summary.push(' ');
+    summary.push_str(detail);
+}
+
+fn extend_unique(target: &mut Vec<String>, items: Vec<String>) {
+    for item in items {
+        if !target.iter().any(|existing| existing == &item) {
+            target.push(item);
+        }
+    }
 }
 
 fn describe_parity_delta(delta: &ParitySignalDelta) -> String {
@@ -304,5 +396,31 @@ mod tests {
             ValidationStatus::Stale.combine(ValidationStatus::Partial),
             ValidationStatus::Stale
         );
+    }
+
+    #[test]
+    fn stub_backend_downgrades_source_alignment_claims() {
+        let summary = ModelValidationSummary::from_checks(
+            "dinov2-vit-l14",
+            "2026-03-28T00:00:00Z",
+            CheckSummary::validated("Preprocess matches contract."),
+            vec![TensorValidationSummary {
+                name: "last_hidden_state".into(),
+                role: "patch embeddings".into(),
+                status: ValidationStatus::Validated,
+                summary: "Tensor semantics match the registry contract.".into(),
+            }],
+            ParityValidationSummary::new(
+                ValidationStatus::Validated,
+                "Reference parity matches approved evidence.",
+            ),
+        )
+        .with_backend(InferenceBackend::Stub);
+
+        assert_eq!(summary.status, ValidationStatus::Unverified);
+        assert_eq!(summary.backend.kind, InferenceBackend::Stub);
+        assert_eq!(summary.tensors[0].status, ValidationStatus::Unverified);
+        assert_eq!(summary.parity.status, ValidationStatus::Unverified);
+        assert!(summary.backend.summary.contains("Stub backend is active"));
     }
 }

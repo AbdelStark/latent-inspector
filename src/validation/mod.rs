@@ -69,7 +69,8 @@ pub fn summarize_session_or_unverified(
                 "{} is still a planned integration. Development reports may use stubbed outputs, but source-alignment validation remains withheld until the real ONNX path is wired.",
                 session.info().name
             ),
-        );
+        )
+        .with_backend(session.backend());
     }
 
     match validate_session(session, fixture_selection, false) {
@@ -78,7 +79,8 @@ pub fn summarize_session_or_unverified(
             &session.info().name,
             &session.entry().validation.evidence_timestamp,
             format!("Validation evidence could not be loaded: {err}"),
-        ),
+        )
+        .with_backend(session.backend()),
     }
 }
 
@@ -133,7 +135,8 @@ pub fn validate_session_with_fixture_set(
         preprocess,
         tensors,
         parity.with_artifact(Some(artifact_id), Some(fixture_set_id)),
-    );
+    )
+    .with_backend(session.backend());
 
     Ok(summary)
 }

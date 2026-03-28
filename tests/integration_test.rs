@@ -2,7 +2,7 @@ use latent_inspector::analysis::{compute_metrics, knn_overlap, linear_cka, patch
 use latent_inspector::extract::ExtractedFeatures;
 use latent_inspector::models::registry::{find, ModelInfo, SSLMethod};
 use latent_inspector::models::{ModelOutput, ModelSession, OutputTensorMetadata};
-use latent_inspector::validation::{fixtures::load_fixture_set, validate_model};
+use latent_inspector::validation::{fixtures::load_fixture_set, validate_model, ValidationStatus};
 use ndarray::{Array1, Array2};
 
 fn make_output(model_name: &str, n_patches: usize, embed_dim: usize) -> ModelOutput {
@@ -105,6 +105,11 @@ fn test_validate_model_returns_structured_summary() {
     let summary = validate_model("dinov2-vit-l14", None, false).unwrap();
     std::env::remove_var("LATENT_INSPECTOR_MODEL_BACKEND");
     assert_eq!(summary.model, "dinov2-vit-l14");
+    assert_eq!(summary.status, ValidationStatus::Unverified);
+    assert_eq!(
+        summary.backend.kind,
+        latent_inspector::models::InferenceBackend::Stub
+    );
     assert!(!summary.evidence_timestamp.is_empty());
     assert!(!summary.tensors.is_empty());
     assert!(!summary.recommendation.is_empty());

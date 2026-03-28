@@ -11,3 +11,9 @@ The fixture images are generated in-process from the manifest patterns so defaul
 tests stay offline-safe and deterministic. The standard fixture set currently
 uses gradient, checkerboard, and centered-square images so parity evidence can
 catch fixture-specific regressions instead of only aggregate drift.
+
+The checked-in reference artifacts are generated from the development stub
+backend so regression tests can stay offline-safe. The product now treats any
+stub-backed validation run as `unverified` even when those fixture comparisons
+match, because synthetic outputs are useful for plumbing checks but not for
+release-grade source-alignment claims.

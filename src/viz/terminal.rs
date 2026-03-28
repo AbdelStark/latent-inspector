@@ -217,18 +217,19 @@ pub fn print_pairwise_matrix(title: &str, matrix: &PairwiseMatrix) {
 pub fn print_model_catalog(report: &ModelCatalogReport, verbose: bool) {
     println!();
     println!("Available models ({})", report.summary.total_models);
-    println!("{}", "═".repeat(112));
+    println!("{}", "═".repeat(126));
     println!(
-        "{:<20} {:<10} {:<12} {:<10} {:<8} {:<12} {:>10}",
-        "Name", "Status", "Evidence", "Cache", "Verify", "Method", "Params (M)"
+        "{:<20} {:<10} {:<12} {:<12} {:<10} {:<8} {:<12} {:>10}",
+        "Name", "Status", "Runtime", "Evidence", "Cache", "Verify", "Method", "Params (M)"
     );
-    println!("{}", "─".repeat(112));
+    println!("{}", "─".repeat(126));
 
     for entry in &report.entries {
         println!(
-            "{:<20} {:<10} {:<12} {:<10} {:<8} {:<12} {:>10}",
+            "{:<20} {:<10} {:<12} {:<12} {:<10} {:<8} {:<12} {:>10}",
             truncate(&entry.name, 19),
             entry.availability_status.to_string(),
+            truncate(entry.runtime_support.label(), 11),
             entry.evidence_status.label(),
             entry.cache_status.label(),
             truncate(&entry.verification_label, 7),
@@ -239,6 +240,7 @@ pub fn print_model_catalog(report: &ModelCatalogReport, verbose: bool) {
         if verbose {
             println!("    Phase: {}", entry.phase);
             println!("    Note: {}", entry.availability_note);
+            println!("    Runtime: {}", entry.runtime_summary);
             println!("    Arch: {}", entry.architecture);
             println!("    Input: {}×{}", entry.input_size, entry.input_size);
             println!("    Embed dim: {}", entry.embed_dim);
@@ -271,7 +273,7 @@ pub fn print_model_catalog(report: &ModelCatalogReport, verbose: bool) {
         }
     }
 
-    println!("{}", "═".repeat(112));
+    println!("{}", "═".repeat(126));
 
     let fixture_summary = if let Some(error) = &report.fixture_error {
         format!("unavailable ({error})")
@@ -296,23 +298,27 @@ pub fn print_model_catalog(report: &ModelCatalogReport, verbose: bool) {
 pub fn print_validation_summaries(summaries: &[ModelValidationSummary]) {
     println!();
     println!("Validation Summary");
-    println!("{}", "═".repeat(100));
+    println!("{}", "═".repeat(116));
     println!(
-        "{:<20} {:<12} {:<12} {:<18} Recommendation",
-        "Model", "Status", "Parity", "Evidence"
+        "{:<20} {:<12} {:<12} {:<12} {:<18} Recommendation",
+        "Model", "Status", "Backend", "Parity", "Evidence"
     );
-    println!("{}", "─".repeat(100));
+    println!("{}", "─".repeat(116));
 
     for summary in summaries {
         println!(
-            "{:<20} {:<12} {:<12} {:<18} {}",
+            "{:<20} {:<12} {:<12} {:<12} {:<18} {}",
             truncate(&summary.model, 19),
             summary.status.label(),
+            truncate(summary.backend.kind.label(), 11),
             summary.parity.status.label(),
             truncate(&summary.evidence_timestamp, 17),
-            truncate(&summary.recommendation, 44),
+            truncate(&summary.recommendation, 42),
         );
 
+        if !summary.backend.status.is_validated() {
+            println!("  backend: {}", summary.backend.summary);
+        }
         if !summary.caveats.is_empty() {
             println!("  caveats: {}", summary.caveats.join(" | "));
         }
@@ -329,7 +335,7 @@ pub fn print_validation_summaries(summaries: &[ModelValidationSummary]) {
         }
     }
 
-    println!("{}", "═".repeat(100));
+    println!("{}", "═".repeat(116));
 }
 
 pub fn print_neighbors_report(report: &NeighborsReport) {

@@ -99,6 +99,10 @@ model is safe to interpret as source-aligned.
 If the checked-in contract or reference artifacts no longer match the current
 registry profile, the summary now reports `stale` instead of treating outdated
 evidence as a fresh pass or a runtime failure.
+When the development stub backend is enabled through
+`LATENT_INSPECTOR_MODEL_BACKEND=stub`, the command still exercises the report
+and fixture plumbing but marks the run as `unverified`; synthetic stub outputs
+are not treated as release-grade source-alignment evidence.
 
 ## Example: How different models see a street scene
 
@@ -209,9 +213,10 @@ remote host honors byte-range requests.
 In the current Phase 1 build, `dinov2-vit-l14` is the only loadable model. The remaining registry entries are intentionally marked as planned so the CLI does not imply support that has not been implemented yet.
 
 Use `latent-inspector models` to inspect the live registry inventory. The
-catalog now reports each model's phase status, whether the local cache contains
-the full artifact bundle, and whether the approved validation evidence is
-current, stale, missing, or intentionally withheld for planned integrations.
+catalog now reports each model's phase status, runtime support
+(`onnx-ready` vs `stub-only`), whether the local cache contains the full
+artifact bundle, and whether the approved validation evidence is current,
+stale, missing, or intentionally withheld for planned integrations.
 Use `latent-inspector models --format json` to emit the same catalog as
 structured JSON to stdout or `latent-inspector models --format json --output
 tmp/models` to write `models.json` for automation. For a shareable report, run

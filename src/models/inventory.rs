@@ -44,6 +44,22 @@ impl EvidenceStatus {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum RuntimeSupport {
+    OnnxReady,
+    StubOnly,
+}
+
+impl RuntimeSupport {
+    pub fn label(self) -> &'static str {
+        match self {
+            RuntimeSupport::OnnxReady => "onnx-ready",
+            RuntimeSupport::StubOnly => "stub-only",
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ModelArtifactInventory {
     pub relative_path: String,
@@ -56,6 +72,8 @@ pub struct ModelInventoryEntry {
     pub availability_status: AvailabilityStatus,
     pub phase: String,
     pub availability_note: String,
+    pub runtime_support: RuntimeSupport,
+    pub runtime_summary: String,
     pub method: SSLMethod,
     pub params_m: u32,
     pub architecture: String,
@@ -189,6 +207,7 @@ fn build_inventory_entry(
     fixture_set: Option<&LoadedFixtureSet>,
     fixture_error: Option<&str>,
 ) -> ModelInventoryEntry {
+    let (runtime_support, runtime_summary) = runtime_support(entry);
     let (cache_status, cache_summary) = match cache::is_cached(&entry.info.name) {
         Ok(true) => (
             CacheStatus::Complete,
@@ -212,6 +231,8 @@ fn build_inventory_entry(
         availability_status: entry.availability.status.clone(),
         phase: entry.availability.phase.clone(),
         availability_note: entry.availability.note.clone(),
+        runtime_support,
+        runtime_summary,
         method: entry.info.method.clone(),
         params_m: entry.info.params_m,
         architecture: entry.info.architecture.clone(),
@@ -236,6 +257,20 @@ fn build_inventory_entry(
                 url: artifact.download_url.clone(),
             })
             .collect(),
+    }
+}
+
+fn runtime_support(entry: &RegistryEntry) -> (RuntimeSupport, String) {
+    if entry.is_ready() {
+        (
+            RuntimeSupport::OnnxReady,
+            "Normal runs load the registered ONNX artifact. The stub backend remains available only when explicitly forced for development workflows.".to_string(),
+        )
+    } else {
+        (
+            RuntimeSupport::StubOnly,
+            "Normal runs remain blocked until this integration is promoted to ready. Only the development stub backend can be used for analysis scaffolding.".to_string(),
+        )
     }
 }
 

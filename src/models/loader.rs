@@ -6,6 +6,7 @@ use image::DynamicImage;
 use ndarray::{Array1, Array2, Array4, Axis, Ix3};
 use ort::session::Session;
 use ort::value::TensorRef;
+use serde::{Deserialize, Serialize};
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::path::Path;
@@ -37,6 +38,35 @@ pub struct OutputTensorMetadata {
     pub embedding_dim: usize,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum InferenceBackend {
+    OnnxRuntime,
+    Stub,
+}
+
+impl InferenceBackend {
+    pub fn label(self) -> &'static str {
+        match self {
+            InferenceBackend::OnnxRuntime => "onnx-runtime",
+            InferenceBackend::Stub => "stub",
+        }
+    }
+
+    pub fn display_name(self) -> &'static str {
+        match self {
+            InferenceBackend::OnnxRuntime => "ONNX Runtime",
+            InferenceBackend::Stub => "Stub backend",
+        }
+    }
+}
+
+impl std::fmt::Display for InferenceBackend {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.label())
+    }
+}
+
 /// A loaded model session ready to run inference.
 pub struct ModelSession {
     entry: RegistryEntry,
@@ -47,6 +77,15 @@ pub struct ModelSession {
 enum SessionInner {
     Onnx(Session),
     Stub(StubConfig),
+}
+
+impl SessionInner {
+    fn backend(&self) -> InferenceBackend {
+        match self {
+            SessionInner::Onnx(_) => InferenceBackend::OnnxRuntime,
+            SessionInner::Stub(_) => InferenceBackend::Stub,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -303,6 +342,10 @@ impl ModelSession {
 
     pub fn entry(&self) -> &RegistryEntry {
         &self.entry
+    }
+
+    pub fn backend(&self) -> InferenceBackend {
+        self.inner.backend()
     }
 
     fn load_impl(model_name: &str, allow_planned_stub: bool) -> Result<Self, ModelError> {

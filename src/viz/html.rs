@@ -740,11 +740,15 @@ fn render_validation_row(summary: &ModelValidationSummary) -> String {
     };
 
     format!(
-        "<article class=\"validation-card\"><div style=\"display:flex;justify-content:space-between;align-items:center;gap:1rem\"><strong>{}</strong><span class=\"badge {}\">{}</span></div><p>{}</p><p><strong>Preprocess:</strong> {}</p><p><strong>Tensor semantics:</strong> {}</p><p><strong>Parity:</strong> {}</p>{}{}</article>",
+        "<article class=\"validation-card\"><div style=\"display:flex;justify-content:space-between;align-items:center;gap:1rem\"><strong>{}</strong><span class=\"badge {}\">{}</span></div><p>{}</p><p><strong>Backend:</strong> {} <span class=\"badge {}\">{}</span></p><p class=\"caveat\">{}</p><p><strong>Preprocess:</strong> {}</p><p><strong>Tensor semantics:</strong> {}</p><p><strong>Parity:</strong> {}</p>{}{}</article>",
         escape_html(&summary.model),
         summary.status.label(),
         summary.status.label(),
         escape_html(&summary.recommendation),
+        escape_html(summary.backend.kind.display_name()),
+        summary.backend.status.label(),
+        summary.backend.status.label(),
+        escape_html(&summary.backend.summary),
         escape_html(&summary.preprocess.summary),
         tensor_summary,
         escape_html(&summary.parity.summary),
@@ -849,10 +853,11 @@ fn render_model_catalog_table(report: &ModelCatalogReport) -> String {
         .iter()
         .map(|entry| {
             format!(
-                "<tr><td><code>{}</code></td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>",
+                "<tr><td><code>{}</code></td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>",
                 escape_html(&entry.name),
                 escape_html(&entry.phase),
                 escape_html(&entry.availability_status.to_string()),
+                escape_html(entry.runtime_support.label()),
                 escape_html(entry.evidence_status.label()),
                 escape_html(entry.cache_status.label()),
                 escape_html(&entry.verification_label),
@@ -865,7 +870,7 @@ fn render_model_catalog_table(report: &ModelCatalogReport) -> String {
         .join("\n");
 
     format!(
-        "<table><thead><tr><th>Name</th><th>Phase</th><th>Status</th><th>Evidence</th><th>Cache</th><th>Verify</th><th>Method</th><th>Params (M)</th><th>Details</th></tr></thead><tbody>{rows}</tbody></table>"
+        "<table><thead><tr><th>Name</th><th>Phase</th><th>Status</th><th>Runtime</th><th>Evidence</th><th>Cache</th><th>Verify</th><th>Method</th><th>Params (M)</th><th>Details</th></tr></thead><tbody>{rows}</tbody></table>"
     )
 }
 
@@ -883,6 +888,11 @@ fn render_model_catalog_details(entry: &crate::models::ModelInventoryEntry) -> S
             entry.embed_dim,
             entry.num_layers,
             entry.num_heads,
+        ),
+        format!(
+            "<p><strong>Runtime:</strong> {} ({})</p>",
+            escape_html(&entry.runtime_summary),
+            escape_html(entry.runtime_support.label()),
         ),
         format!(
             "<p><strong>Evidence:</strong> {} [{} @ {}]</p>",

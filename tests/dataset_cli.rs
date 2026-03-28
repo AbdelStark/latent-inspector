@@ -63,7 +63,8 @@ fn neighbors_recurses_into_nested_dataset_and_reports_skips() {
     assert!(stdout.contains("class-a/leaf"));
     assert!(stdout.contains("Dataset Summary"));
     assert!(stdout.contains("Validation Summary"));
-    assert!(stdout.contains("validated"));
+    assert!(stdout.contains("unverified"));
+    assert!(stdout.contains("stub"));
     assert!(stdout.contains("Skipped images:"));
     assert!(stdout.contains("broken.png"));
 }
@@ -104,7 +105,8 @@ fn similarity_recurses_into_nested_dataset_and_reports_skips() {
     assert!(stdout.contains("Mean CLS cosine sim:"));
     assert!(stdout.contains("Dataset Summary"));
     assert!(stdout.contains("Validation Summary"));
-    assert!(stdout.contains("validated"));
+    assert!(stdout.contains("unverified"));
+    assert!(stdout.contains("stub"));
     assert!(stdout.contains("broken.png"));
 }
 
@@ -149,7 +151,8 @@ fn neighbors_json_output_writes_structured_report() {
     assert_eq!(payload["dataset_summary"]["loaded"], 2);
     assert_eq!(payload["dataset_summary"]["skipped"], 1);
     assert_eq!(payload["validation"]["model"], "dinov2-vit-l14");
-    assert_eq!(payload["validation"]["status"], "validated");
+    assert_eq!(payload["validation"]["status"], "unverified");
+    assert_eq!(payload["validation"]["backend"]["kind"], "stub");
     assert_eq!(payload["neighbors"].as_array().unwrap().len(), 2);
     assert!(payload["neighbors"]
         .as_array()
@@ -237,8 +240,10 @@ fn similarity_json_output_writes_structured_report() {
     assert_eq!(payload["sample_count"], 2);
     assert_eq!(payload["dataset_summary"]["skipped"], 1);
     assert_eq!(payload["validation"].as_array().unwrap().len(), 2);
-    assert_eq!(payload["validation"][0]["status"], "validated");
-    assert_eq!(payload["validation"][1]["status"], "validated");
+    assert_eq!(payload["validation"][0]["status"], "unverified");
+    assert_eq!(payload["validation"][1]["status"], "unverified");
+    assert_eq!(payload["validation"][0]["backend"]["kind"], "stub");
+    assert_eq!(payload["validation"][1]["backend"]["kind"], "stub");
     assert_eq!(payload["dataset_embedding_basis"], "mean-patch");
     let metric_keys = payload["metrics"]
         .as_array()
@@ -327,7 +332,7 @@ fn similarity_json_supports_planned_stub_models_for_analysis() {
     assert_eq!(payload["note"], "N/A (CLS tokens unavailable)");
     assert_eq!(
         payload["validation"].as_array().unwrap()[0]["status"],
-        "validated"
+        "unverified"
     );
     assert_eq!(
         payload["validation"].as_array().unwrap()[1]["status"],

@@ -67,18 +67,24 @@ pub fn run(args: ValidateArgs) -> Result<(), Error> {
             | Err(err @ ValidationError::MissingFixtures(_)) => return Err(err.into()),
             Err(ValidationError::FailedValidation { reason, .. })
             | Err(ValidationError::ContractMismatch { reason, .. }) => {
-                summaries.push(ModelValidationSummary::failed(
-                    model,
-                    &fixture_set.manifest.evidence_timestamp,
-                    reason,
-                ));
+                summaries.push(
+                    ModelValidationSummary::failed(
+                        model,
+                        &fixture_set.manifest.evidence_timestamp,
+                        reason,
+                    )
+                    .with_backend(session.backend()),
+                );
             }
             Err(other) => {
-                summaries.push(ModelValidationSummary::failed(
-                    model,
-                    &fixture_set.manifest.evidence_timestamp,
-                    other.to_string(),
-                ));
+                summaries.push(
+                    ModelValidationSummary::failed(
+                        model,
+                        &fixture_set.manifest.evidence_timestamp,
+                        other.to_string(),
+                    )
+                    .with_backend(session.backend()),
+                );
             }
         }
     }
