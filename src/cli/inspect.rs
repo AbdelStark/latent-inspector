@@ -60,7 +60,7 @@ pub fn run(args: InspectArgs) -> Result<(), Error> {
     match args.format {
         OutputFormat::Terminal => {
             println!("\nModel: {}", report.model);
-            println!("{}", "═".repeat(60));
+            println!("{}", crate::viz::terminal::heavy_rule(60));
             println!("  Patches:          {}", report.metrics.n_patches);
             println!("  Embed dim:        {}", report.metrics.embed_dim);
             println!(
@@ -76,8 +76,10 @@ pub fn run(args: InspectArgs) -> Result<(), Error> {
                 println!("  CLS L2 norm:      {:.2}", norm);
             }
             println!(
-                "  Patch norm mean:  {:.2} ± {:.2}",
-                report.metrics.patch_norm_mean, report.metrics.patch_norm_std
+                "  Patch norm mean:  {:.2} {} {:.2}",
+                report.metrics.patch_norm_mean,
+                crate::viz::terminal::plus_minus_separator(),
+                report.metrics.patch_norm_std
             );
             println!(
                 "  Top-10 var%:      {:.1}%",
@@ -110,7 +112,7 @@ pub fn run(args: InspectArgs) -> Result<(), Error> {
                 .enumerate()
             {
                 let bar_len = (ratio * 40.0) as usize;
-                let bar = "█".repeat(bar_len);
+                let bar = crate::viz::terminal::bar(bar_len);
                 println!(
                     "    PC{:02}: {:5.2}%  {:5.2}% cum  {}",
                     i + 1,

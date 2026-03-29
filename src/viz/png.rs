@@ -69,7 +69,7 @@ pub fn save_pca_rgb(
     let n = projections.shape()[0];
     if n < grid_size * grid_size {
         return Err(VizError::Png(format!(
-            "Expected {}×{}={} patches, got {}",
+            "Expected {}x{}={} patches, got {}",
             grid_size,
             grid_size,
             grid_size * grid_size,

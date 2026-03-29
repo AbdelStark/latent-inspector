@@ -1,4 +1,4 @@
-//! Terminal rendering using Unicode block characters and ANSI colors.
+//! Terminal rendering with Unicode-first output and ASCII fallbacks.
 
 use crate::analysis::{ComparisonMetrics, ModelMetrics};
 use crate::dataset::DatasetProcessingSummary;
@@ -9,17 +9,166 @@ use crate::viz::report::{
     SimilarityReport,
 };
 use ndarray::Array2;
+use std::io::IsTerminal;
 
-const BLOCK_CHARS: &[char] = &[' ', '░', '▒', '▓', '█'];
+const UNICODE_BLOCK_CHARS: &[char] = &[' ', '░', '▒', '▓', '█'];
+const ASCII_BLOCK_CHARS: &[char] = &[' ', '.', ':', '=', '#'];
+const FORCE_ASCII_ENV: &str = "LATENT_INSPECTOR_FORCE_ASCII";
 
-/// Map a normalized value in `[0, 1]` to a Unicode block character.
-fn value_to_block(v: f32) -> char {
-    let idx = (v.clamp(0.0, 1.0) * (BLOCK_CHARS.len() - 1) as f32).round() as usize;
-    BLOCK_CHARS[idx.min(BLOCK_CHARS.len() - 1)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TerminalGlyphs {
+    Unicode,
+    Ascii,
+}
+
+impl TerminalGlyphs {
+    fn current() -> Self {
+        if env_truthy(FORCE_ASCII_ENV)
+            || term_is_dumb()
+            || !std::io::stdout().is_terminal()
+            || !locale_supports_unicode()
+        {
+            Self::Ascii
+        } else {
+            Self::Unicode
+        }
+    }
+
+    fn heavy_rule(self) -> char {
+        match self {
+            TerminalGlyphs::Unicode => '═',
+            TerminalGlyphs::Ascii => '=',
+        }
+    }
+
+    fn light_rule(self) -> char {
+        match self {
+            TerminalGlyphs::Unicode => '─',
+            TerminalGlyphs::Ascii => '-',
+        }
+    }
+
+    fn pair_separator(self) -> &'static str {
+        match self {
+            TerminalGlyphs::Unicode => " ↔ ",
+            TerminalGlyphs::Ascii => " <-> ",
+        }
+    }
+
+    fn dimension_separator(self) -> &'static str {
+        match self {
+            TerminalGlyphs::Unicode => "×",
+            TerminalGlyphs::Ascii => "x",
+        }
+    }
+
+    fn ellipsis(self) -> &'static str {
+        match self {
+            TerminalGlyphs::Unicode => "…",
+            TerminalGlyphs::Ascii => "...",
+        }
+    }
+
+    fn plus_minus_separator(self) -> &'static str {
+        match self {
+            TerminalGlyphs::Unicode => "±",
+            TerminalGlyphs::Ascii => "+/-",
+        }
+    }
+
+    fn block_chars(self) -> &'static [char] {
+        match self {
+            TerminalGlyphs::Unicode => UNICODE_BLOCK_CHARS,
+            TerminalGlyphs::Ascii => ASCII_BLOCK_CHARS,
+        }
+    }
+
+    fn bar_char(self) -> char {
+        match self {
+            TerminalGlyphs::Unicode => '█',
+            TerminalGlyphs::Ascii => '#',
+        }
+    }
+}
+
+fn env_truthy(name: &str) -> bool {
+    std::env::var_os(name)
+        .map(|value| {
+            matches!(
+                value.to_string_lossy().to_ascii_lowercase().as_str(),
+                "1" | "true" | "yes" | "on"
+            )
+        })
+        .unwrap_or(false)
+}
+
+fn term_is_dumb() -> bool {
+    std::env::var_os("TERM")
+        .map(|value| value.to_string_lossy().eq_ignore_ascii_case("dumb"))
+        .unwrap_or(false)
+}
+
+fn locale_supports_unicode() -> bool {
+    let locale = ["LC_ALL", "LC_CTYPE", "LANG"]
+        .iter()
+        .filter_map(std::env::var_os)
+        .find(|value| !value.is_empty());
+
+    let Some(locale) = locale else {
+        return true;
+    };
+
+    let upper = locale.to_string_lossy().to_ascii_uppercase();
+    upper.contains("UTF-8") || upper.contains("UTF8")
+}
+
+fn repeat_char(ch: char, width: usize) -> String {
+    std::iter::repeat(ch).take(width).collect()
+}
+
+/// Render a heavy horizontal divider appropriate for the current terminal.
+pub fn heavy_rule(width: usize) -> String {
+    repeat_char(TerminalGlyphs::current().heavy_rule(), width)
+}
+
+pub(crate) fn light_rule(width: usize) -> String {
+    repeat_char(TerminalGlyphs::current().light_rule(), width)
+}
+
+pub(crate) fn pair_separator() -> &'static str {
+    TerminalGlyphs::current().pair_separator()
+}
+
+pub(crate) fn dimension_separator() -> &'static str {
+    TerminalGlyphs::current().dimension_separator()
+}
+
+/// Render a plus/minus separator appropriate for the current terminal.
+pub fn plus_minus_separator() -> &'static str {
+    TerminalGlyphs::current().plus_minus_separator()
+}
+
+/// Render a solid progress bar segment appropriate for the current terminal.
+pub fn bar(width: usize) -> String {
+    repeat_char(TerminalGlyphs::current().bar_char(), width)
+}
+
+fn value_to_block_with_glyphs(v: f32, glyphs: TerminalGlyphs) -> char {
+    let block_chars = glyphs.block_chars();
+    let idx = (v.clamp(0.0, 1.0) * (block_chars.len() - 1) as f32).round() as usize;
+    block_chars[idx.min(block_chars.len() - 1)]
 }
 
 /// Render a 2-D attention map `[H_patches, W_patches]` as Unicode blocks.
 pub fn render_attention_map(map: &Array2<f32>, width: usize) -> String {
+    render_attention_map_with_glyphs(map, width, TerminalGlyphs::current())
+}
+
+fn render_attention_map_with_glyphs(
+    map: &Array2<f32>,
+    width: usize,
+    glyphs: TerminalGlyphs,
+) -> String {
     let (h, w) = (map.shape()[0], map.shape()[1]);
     let min = map.iter().cloned().fold(f32::INFINITY, f32::min);
     let max = map.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
@@ -29,7 +178,7 @@ pub fn render_attention_map(map: &Array2<f32>, width: usize) -> String {
     for row in 0..h.min(width) {
         for col in 0..w.min(width) {
             let v = (map[[row, col]] - min) / range;
-            out.push(value_to_block(v));
+            out.push(value_to_block_with_glyphs(v, glyphs));
         }
         out.push('\n');
     }
@@ -40,7 +189,7 @@ pub fn render_attention_map(map: &Array2<f32>, width: usize) -> String {
 pub fn print_metrics_table(metrics: &[ModelMetrics]) {
     println!();
     println!("Model Comparison");
-    println!("{}", "═".repeat(80));
+    println!("{}", heavy_rule(80));
 
     // Header
     print!("{:<22}", "Metric");
@@ -48,7 +197,7 @@ pub fn print_metrics_table(metrics: &[ModelMetrics]) {
         print!("{:<16}", truncate(&m.model_name, 15));
     }
     println!();
-    println!("{}", "─".repeat(80));
+    println!("{}", light_rule(80));
 
     // Rows
     print!("{:<22}", "Repr. rank");
@@ -101,7 +250,7 @@ pub fn print_metrics_table(metrics: &[ModelMetrics]) {
     }
     println!();
 
-    println!("{}", "═".repeat(80));
+    println!("{}", heavy_rule(80));
 }
 
 /// Print a cross-model CLS cosine similarity matrix.
@@ -140,7 +289,7 @@ pub fn print_compare_overview(overview: &CompareOverview) {
     if !overview.model_highlights.is_empty() {
         println!();
         println!("Highlights");
-        println!("{}", "═".repeat(80));
+        println!("{}", heavy_rule(80));
         for highlight in &overview.model_highlights {
             println!(
                 "{:<28} {:<22} {}",
@@ -149,23 +298,24 @@ pub fn print_compare_overview(overview: &CompareOverview) {
                 highlight.value
             );
         }
-        println!("{}", "═".repeat(80));
+        println!("{}", heavy_rule(80));
     }
 
     if !overview.comparison_highlights.is_empty() {
         println!();
         println!("Comparison Highlights");
-        println!("{}", "═".repeat(80));
+        println!("{}", heavy_rule(80));
         for highlight in &overview.comparison_highlights {
             println!(
-                "{:<28} {:<20} ↔ {:<20} {:.3}",
+                "{:<28} {}{}{} {:.3}",
                 truncate(&highlight.label, 27),
                 truncate(&highlight.model_a, 19),
+                pair_separator(),
                 truncate(&highlight.model_b, 19),
                 highlight.value
             );
         }
-        println!("{}", "═".repeat(80));
+        println!("{}", heavy_rule(80));
     }
 
     print_pairwise_matrix(
@@ -201,17 +351,18 @@ pub fn print_comparison_caveats(comparisons: &[ComparisonMetrics]) {
 
     println!();
     println!("Comparison Caveats");
-    println!("{}", "═".repeat(100));
+    println!("{}", heavy_rule(100));
     for comparison in caveated {
         println!(
-            "{} ↔ {}",
+            "{}{}{}",
             truncate(&comparison.model_a, 32),
+            pair_separator(),
             truncate(&comparison.model_b, 32),
         );
         for line in comparison.caveat_lines() {
             println!("  {line}");
         }
-        println!("{}", "─".repeat(100));
+        println!("{}", light_rule(100));
     }
 }
 
@@ -258,7 +409,7 @@ pub fn print_pairwise_matrix(
 pub fn print_model_catalog(report: &ModelCatalogReport, verbose: bool) {
     println!();
     println!("Available models ({})", report.summary.total_models);
-    println!("{}", "═".repeat(148));
+    println!("{}", heavy_rule(148));
     println!(
         "{:<20} {:<10} {:<24} {:<12} {:<12} {:<10} {:<8} {:<12} {:>10}",
         "Name",
@@ -271,7 +422,7 @@ pub fn print_model_catalog(report: &ModelCatalogReport, verbose: bool) {
         "Method",
         "Params (M)"
     );
-    println!("{}", "─".repeat(148));
+    println!("{}", light_rule(148));
 
     for entry in &report.entries {
         println!(
@@ -300,7 +451,12 @@ pub fn print_model_catalog(report: &ModelCatalogReport, verbose: bool) {
             }
             println!("    Runtime: {}", entry.runtime_summary);
             println!("    Arch: {}", entry.architecture);
-            println!("    Input: {}×{}", entry.input_size, entry.input_size);
+            println!(
+                "    Input: {}{}{}",
+                entry.input_size,
+                dimension_separator(),
+                entry.input_size
+            );
             println!("    Embed dim: {}", entry.embed_dim);
             println!(
                 "    Layers: {}, Heads: {}",
@@ -355,7 +511,7 @@ pub fn print_model_catalog(report: &ModelCatalogReport, verbose: bool) {
         }
     }
 
-    println!("{}", "═".repeat(148));
+    println!("{}", heavy_rule(148));
 
     let fixture_summary = if let Some(error) = &report.fixture_error {
         format!("unavailable ({error})")
@@ -400,7 +556,7 @@ pub fn print_model_catalog(report: &ModelCatalogReport, verbose: bool) {
 pub fn print_model_download_report(report: &ModelDownloadReport) {
     println!();
     println!("Model download");
-    println!("{}", "═".repeat(116));
+    println!("{}", heavy_rule(116));
     println!("Model: {}", report.model);
     println!("Action: {}", report.action.label());
     println!("Summary: {}", report.summary);
@@ -439,18 +595,18 @@ pub fn print_model_download_report(report: &ModelDownloadReport) {
         }
     }
 
-    println!("{}", "═".repeat(116));
+    println!("{}", heavy_rule(116));
 }
 
 pub fn print_validation_summaries(summaries: &[ModelValidationSummary]) {
     println!();
     println!("Validation Summary");
-    println!("{}", "═".repeat(116));
+    println!("{}", heavy_rule(116));
     println!(
         "{:<20} {:<12} {:<12} {:<12} {:<18} Recommendation",
         "Model", "Status", "Backend", "Parity", "Evidence"
     );
-    println!("{}", "─".repeat(116));
+    println!("{}", light_rule(116));
 
     for summary in summaries {
         println!(
@@ -482,7 +638,7 @@ pub fn print_validation_summaries(summaries: &[ModelValidationSummary]) {
         }
     }
 
-    println!("{}", "═".repeat(116));
+    println!("{}", heavy_rule(116));
 }
 
 pub fn print_neighbors_report(report: &NeighborsReport) {
@@ -490,7 +646,7 @@ pub fn print_neighbors_report(report: &NeighborsReport) {
     println!("Nearest neighbors for {}", report.query_image);
     println!("Model: {}  k={}", report.model, report.requested_k);
     println!("Embedding basis: {}", report.embedding_basis.label());
-    println!("{}", "─".repeat(50));
+    println!("{}", light_rule(50));
     for neighbor in &report.neighbors {
         println!(
             "  {:2}. {:40} sim={:.4}",
@@ -514,7 +670,7 @@ pub fn print_similarity_report(report: &SimilarityReport) {
         "Dataset embedding basis: {}",
         report.dataset_embedding_basis.label()
     );
-    println!("{}", "═".repeat(55));
+    println!("{}", heavy_rule(55));
 
     for metric in &report.metrics {
         println!("  {:<22} {:.4}", format!("{}:", metric.label), metric.value);
@@ -533,7 +689,7 @@ pub fn print_similarity_report(report: &SimilarityReport) {
 pub fn print_dataset_processing_summary(summary: &DatasetProcessingSummary) {
     println!();
     println!("Dataset Summary");
-    println!("{}", "═".repeat(84));
+    println!("{}", heavy_rule(84));
     println!("Supported files: {}", summary.discovered);
     println!("Loaded images:   {}", summary.loaded);
     println!("Skipped images:  {}", summary.skipped);
@@ -548,12 +704,13 @@ pub fn print_dataset_processing_summary(summary: &DatasetProcessingSummary) {
 
     if summary.skipped > summary.skipped_examples.len() {
         println!(
-            "  skipped: … plus {} more files",
+            "  skipped: {} plus {} more files",
+            TerminalGlyphs::current().ellipsis(),
             summary.skipped - summary.skipped_examples.len()
         );
     }
 
-    println!("{}", "═".repeat(84));
+    println!("{}", heavy_rule(84));
 }
 
 pub fn print_drift_report(report: &DriftReport) {
@@ -589,21 +746,21 @@ pub fn print_drift_summary(
 ) {
     println!();
     println!("Representation Drift");
-    println!("{}", "═".repeat(84));
+    println!("{}", heavy_rule(84));
 
     if checkpoints.is_empty() {
         println!("No .onnx checkpoint files were found.");
-        println!("{}", "═".repeat(84));
+        println!("{}", heavy_rule(84));
         return;
     }
 
     println!("Checkpoints: {}", checkpoints.join(" -> "));
     println!("Dataset embedding basis: {dataset_embedding_basis}");
-    println!("{}", "─".repeat(84));
+    println!("{}", light_rule(84));
 
     if drift_rows.is_empty() {
         println!("Need at least two checkpoints to compute consecutive drift.");
-        println!("{}", "═".repeat(84));
+        println!("{}", heavy_rule(84));
         return;
     }
 
@@ -621,7 +778,7 @@ pub fn print_drift_summary(
         .iter()
         .min_by(|left, right| left.2.total_cmp(&right.2))
     {
-        println!("{}", "─".repeat(84));
+        println!("{}", light_rule(84));
         println!("Mean consecutive CKA: {:.4}", mean_cka);
         println!(
             "Largest shift: {} -> {} ({:.4})",
@@ -631,15 +788,27 @@ pub fn print_drift_summary(
         );
     }
 
-    println!("{}", "═".repeat(84));
+    println!("{}", heavy_rule(84));
 }
 
 fn truncate(s: &str, max: usize) -> String {
-    if s.len() <= max {
-        s.to_string()
-    } else {
-        format!("{}…", &s[..max - 1])
+    truncate_with_glyphs(s, max, TerminalGlyphs::current())
+}
+
+fn truncate_with_glyphs(s: &str, max: usize, glyphs: TerminalGlyphs) -> String {
+    if s.chars().count() <= max {
+        return s.to_string();
     }
+
+    let ellipsis = glyphs.ellipsis();
+    let ellipsis_len = ellipsis.chars().count();
+    if max <= ellipsis_len {
+        return ellipsis.chars().take(max).collect();
+    }
+
+    let mut truncated = s.chars().take(max - ellipsis_len).collect::<String>();
+    truncated.push_str(ellipsis);
+    truncated
 }
 
 #[cfg(test)]
@@ -648,21 +817,36 @@ mod tests {
 
     #[test]
     fn test_value_to_block() {
-        assert_eq!(value_to_block(0.0), ' ');
-        assert_eq!(value_to_block(1.0), '█');
+        assert_eq!(
+            value_to_block_with_glyphs(0.0, TerminalGlyphs::Unicode),
+            ' '
+        );
+        assert_eq!(
+            value_to_block_with_glyphs(1.0, TerminalGlyphs::Unicode),
+            '█'
+        );
+        assert_eq!(value_to_block_with_glyphs(1.0, TerminalGlyphs::Ascii), '#');
     }
 
     #[test]
     fn test_render_attention_map_shape() {
         let map = Array2::from_shape_fn((4, 4), |(i, j)| (i + j) as f32);
-        let rendered = render_attention_map(&map, 8);
+        let rendered = render_attention_map_with_glyphs(&map, 8, TerminalGlyphs::Ascii);
         let lines: Vec<&str> = rendered.lines().collect();
         assert_eq!(lines.len(), 4);
         assert_eq!(lines[0].chars().count(), 4);
+        assert!(rendered.is_ascii());
     }
 
     #[test]
     fn test_truncate_adds_ellipsis() {
-        assert_eq!(truncate("checkpoint-0000001", 8), "checkpo…");
+        assert_eq!(
+            truncate_with_glyphs("checkpoint-0000001", 8, TerminalGlyphs::Unicode),
+            "checkpo…"
+        );
+        assert_eq!(
+            truncate_with_glyphs("checkpoint-0000001", 8, TerminalGlyphs::Ascii),
+            "check..."
+        );
     }
 }

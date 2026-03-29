@@ -41,7 +41,7 @@ latent-inspector makes these differences visible and measurable.
 
 ### Output formats:
 
-- **Terminal** — Rich inline display with colored Unicode blocks (default)
+- **Terminal** — Rich inline display with Unicode blocks when the terminal supports them, with automatic ASCII fallback for non-interactive or non-UTF terminals. Set `LATENT_INSPECTOR_FORCE_ASCII=1` to force plain ASCII output.
 - **PNG** — PCA projections plus comparison heatmaps or inspection variance charts
 - **JSON** — Raw metrics plus pairwise overview matrices and highlights
 - **HTML** — Interactive report with pairwise matrices, highlights, and embedded validation summaries

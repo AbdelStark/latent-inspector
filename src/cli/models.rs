@@ -119,7 +119,7 @@ fn download_model(args: &ModelsArgs, name: &str) -> Result<(), Error> {
         ModelDownloadAction::AlreadyCached
     } else {
         if matches!(args.format, OutputFormat::Terminal) {
-            println!("Downloading {name} ({} M params)…", entry.info.params_m);
+            println!("Downloading {name} ({} M params)...", entry.info.params_m);
         }
         cache::download(name, &entry)?;
         ModelDownloadAction::Downloaded
