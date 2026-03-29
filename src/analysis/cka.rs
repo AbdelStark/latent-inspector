@@ -106,7 +106,7 @@ mod tests {
         let x = Array2::from_shape_fn((20, 8), |(i, j)| (i + j) as f32);
         let y = Array2::from_shape_fn((20, 8), |(i, j)| (i * j) as f32);
         let cka = linear_cka(&x, &y).unwrap();
-        assert!(cka >= 0.0 && cka <= 1.0 + 1e-5);
+        assert!((0.0..=1.0 + 1e-5).contains(&cka));
     }
 
     #[test]

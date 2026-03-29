@@ -157,13 +157,14 @@ pub fn run(args: CompareArgs) -> Result<(), Error> {
             manifest = add_visual_artifacts(manifest, &assets.pca_images);
             manifest = add_visual_artifacts(manifest, &assets.heatmaps);
             crate::viz::json::write_compare_report(&report, &outdir.join("compare.json"))?;
+            let bundle = manifest.finalize_for_bundle_display(&outdir)?;
             crate::viz::html::write_report_with_validation_assets_and_bundle(
                 image_name,
                 &report.metrics,
                 &report.comparisons,
                 &report.validation,
                 &assets,
-                Some(&manifest),
+                Some(&bundle),
                 &outdir.join("report.html"),
             )?;
             manifest.write_to_dir(&outdir)?;

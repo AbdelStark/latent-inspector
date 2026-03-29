@@ -91,7 +91,7 @@ mod tests {
     fn test_gini_range() {
         let v = array![0.1, 0.2, 0.3, 0.4];
         let g = gini(&v);
-        assert!(g >= 0.0 && g <= 1.0);
+        assert!((0.0..=1.0).contains(&g));
     }
 
     #[test]

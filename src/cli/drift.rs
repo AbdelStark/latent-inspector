@@ -173,10 +173,11 @@ fn render_output(
             }
             crate::viz::json::write_drift_report(report, &outdir.join("drift.json"))?;
             let path = outdir.join("report.html");
+            let bundle = manifest.finalize_for_bundle_display(&outdir)?;
             crate::viz::html::write_drift_report_with_assets_and_bundle(
                 report,
                 &assets,
-                Some(&manifest),
+                Some(&bundle),
                 &path,
             )?;
             manifest.write_to_dir(&outdir)?;
@@ -406,7 +407,7 @@ mod tests {
 
     #[test]
     fn numeric_checkpoint_sort_is_natural() {
-        let mut paths = vec![
+        let mut paths = [
             PathBuf::from("step-10.onnx"),
             PathBuf::from("step-2.onnx"),
             PathBuf::from("step-1.onnx"),

@@ -106,7 +106,7 @@ mod tests {
         let a = Array2::from_shape_fn((10, 4), |(i, j)| (i + j) as f32);
         let b = Array2::from_shape_fn((10, 4), |(i, j)| (i * j + 1) as f32);
         let overlap = knn_overlap(&a, &b, 3).unwrap();
-        assert!(overlap >= 0.0 && overlap <= 1.0 + 1e-5);
+        assert!((0.0..=1.0 + 1e-5).contains(&overlap));
     }
 
     #[test]

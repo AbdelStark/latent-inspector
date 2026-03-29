@@ -241,10 +241,11 @@ fn render_output(
             }
             crate::viz::json::write_neighbors_report(report, &outdir.join("neighbors.json"))?;
             let path = outdir.join("report.html");
+            let bundle = manifest.finalize_for_bundle_display(&outdir)?;
             crate::viz::html::write_neighbors_report_with_assets_and_bundle(
                 report,
                 &assets,
-                Some(&manifest),
+                Some(&bundle),
                 &path,
             )?;
             manifest.write_to_dir(&outdir)?;

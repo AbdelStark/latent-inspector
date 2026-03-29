@@ -1737,12 +1737,12 @@ fn render_bundle_artifact_table(bundle: &OutputArtifactManifest) -> String {
         .map(|artifact| render_bundle_artifact_row(artifact, bundle.primary_artifact.as_deref()))
         .collect::<Vec<_>>();
     rows.push(format!(
-        "<tr><td><a href=\"artifacts.json\"><code>artifacts.json</code></a></td><td>{}</td><td>Artifact manifest</td><td>supporting</td></tr>",
+        "<tr><td><a href=\"artifacts.json\"><code>artifacts.json</code></a></td><td>{}</td><td>Artifact manifest</td><td>supporting</td><td>&mdash;</td><td>&mdash;</td></tr>",
         render_artifact_kind_label(ArtifactKind::Json),
     ));
 
     format!(
-        "<table><thead><tr><th>Path</th><th>Kind</th><th>Label</th><th>Role</th></tr></thead><tbody>{}</tbody></table>",
+        "<table><thead><tr><th>Path</th><th>Kind</th><th>Label</th><th>Role</th><th>Size</th><th>SHA-256</th></tr></thead><tbody>{}</tbody></table>",
         rows.join("")
     )
 }
@@ -1757,12 +1757,14 @@ fn render_bundle_artifact_row(
         "supporting"
     };
     format!(
-        "<tr><td><a href=\"{}\"><code>{}</code></a></td><td>{}</td><td>{}</td><td>{}</td></tr>",
+        "<tr><td><a href=\"{}\"><code>{}</code></a></td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>",
         escape_html(&artifact.path),
         escape_html(&artifact.path),
         render_artifact_kind_label(artifact.kind),
         escape_html(&artifact.label),
         role,
+        render_bundle_artifact_size(artifact.byte_size),
+        render_bundle_artifact_digest(artifact.sha256.as_deref()),
     )
 }
 
@@ -1772,6 +1774,41 @@ fn render_artifact_kind_label(kind: ArtifactKind) -> &'static str {
         ArtifactKind::Html => "html",
         ArtifactKind::Png => "png",
     }
+}
+
+fn render_bundle_artifact_size(byte_size: Option<u64>) -> String {
+    let Some(byte_size) = byte_size else {
+        return "&mdash;".to_string();
+    };
+
+    const KIB: f64 = 1024.0;
+    const MIB: f64 = 1024.0 * 1024.0;
+
+    if byte_size < 1024 {
+        format!("{byte_size} B")
+    } else if (byte_size as f64) < MIB {
+        format!("{:.1} KiB", byte_size as f64 / KIB)
+    } else {
+        format!("{:.1} MiB", byte_size as f64 / MIB)
+    }
+}
+
+fn render_bundle_artifact_digest(sha256: Option<&str>) -> String {
+    let Some(sha256) = sha256 else {
+        return "&mdash;".to_string();
+    };
+
+    let preview = if sha256.len() > 16 {
+        format!("{}…", &sha256[..16])
+    } else {
+        sha256.to_string()
+    };
+
+    format!(
+        "<code title=\"{}\">{}</code>",
+        escape_html(sha256),
+        escape_html(&preview),
+    )
 }
 
 fn render_bundle_validation_overview(

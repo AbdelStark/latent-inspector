@@ -1,4 +1,5 @@
 use serde_json::Value;
+use sha2::{Digest, Sha256};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -35,6 +36,30 @@ fn read_json(path: &Path) -> Value {
 
 fn read_artifact_manifest(dir: &Path) -> Value {
     read_json(&dir.join("artifacts.json"))
+}
+
+fn artifact_entry<'a>(manifest: &'a Value, path: &str) -> &'a Value {
+    manifest["artifacts"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|artifact| artifact["path"] == path)
+        .unwrap_or_else(|| panic!("missing artifact entry for {path}"))
+}
+
+fn assert_artifact_metadata(manifest: &Value, path: &str) {
+    let artifact = artifact_entry(manifest, path);
+    assert!(artifact["byte_size"].as_u64().unwrap() > 0);
+    assert_eq!(artifact["sha256"].as_str().unwrap().len(), 64);
+}
+
+fn digest_preview_for(path: &Path) -> String {
+    let digest = hex::encode(Sha256::digest(fs::read(path).unwrap()));
+    if digest.len() > 16 {
+        format!("{}…", &digest[..16])
+    } else {
+        digest
+    }
 }
 
 #[test]
@@ -175,6 +200,7 @@ fn drift_json_and_png_outputs_are_written() {
         "unverified"
     );
     assert_eq!(json_manifest["validation"].as_array().unwrap().len(), 3);
+    assert_artifact_metadata(&json_manifest, "drift.json");
 
     let png_output_dir = dir.path().join("drift-png");
     let png_output = Command::new(bin())
@@ -206,6 +232,7 @@ fn drift_json_and_png_outputs_are_written() {
         .unwrap()
         .iter()
         .any(|artifact| artifact["path"] == "consecutive_cka.png"));
+    assert_artifact_metadata(&png_manifest, "consecutive_cka.png");
 }
 
 #[test]
@@ -251,6 +278,7 @@ fn drift_html_output_embeds_chart_and_validation_summary() {
     assert!(html.contains("Validation Summary"));
     assert!(html.contains("step-1"));
     assert!(html.contains("step-2"));
+    assert!(html.contains("SHA-256"));
     let payload = read_json(&output_dir.join("drift.json"));
     assert_eq!(payload["model"], "dinov2-vit-l14");
     assert_eq!(payload["validation"].as_array().unwrap().len(), 2);
@@ -277,4 +305,8 @@ fn drift_html_output_embeds_chart_and_validation_summary() {
         .unwrap()
         .iter()
         .any(|artifact| artifact["path"] == "consecutive_cka.png"));
+    assert_artifact_metadata(&manifest, "report.html");
+    assert_artifact_metadata(&manifest, "drift.json");
+    assert_artifact_metadata(&manifest, "consecutive_cka.png");
+    assert!(html.contains(&digest_preview_for(&output_dir.join("drift.json"))));
 }

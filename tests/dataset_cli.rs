@@ -1,4 +1,5 @@
 use serde_json::Value;
+use sha2::{Digest, Sha256};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -31,6 +32,30 @@ fn read_json(path: &Path) -> Value {
 
 fn read_artifact_manifest(dir: &Path) -> Value {
     read_json(&dir.join("artifacts.json"))
+}
+
+fn artifact_entry<'a>(manifest: &'a Value, path: &str) -> &'a Value {
+    manifest["artifacts"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|artifact| artifact["path"] == path)
+        .unwrap_or_else(|| panic!("missing artifact entry for {path}"))
+}
+
+fn assert_artifact_metadata(manifest: &Value, path: &str) {
+    let artifact = artifact_entry(manifest, path);
+    assert!(artifact["byte_size"].as_u64().unwrap() > 0);
+    assert_eq!(artifact["sha256"].as_str().unwrap().len(), 64);
+}
+
+fn digest_preview_for(path: &Path) -> String {
+    let digest = hex::encode(Sha256::digest(fs::read(path).unwrap()));
+    if digest.len() > 16 {
+        format!("{}…", &digest[..16])
+    } else {
+        digest
+    }
 }
 
 #[test]
@@ -180,6 +205,7 @@ fn neighbors_json_output_writes_structured_report() {
         "unverified"
     );
     assert_eq!(manifest["validation"][0]["status"], "unverified");
+    assert_artifact_metadata(&manifest, "neighbors.json");
 }
 
 #[test]
@@ -259,6 +285,7 @@ fn neighbors_html_output_embeds_chart_and_validation_summary() {
     assert!(html.contains("neighbors.png"));
     assert!(html.contains("Validation Summary"));
     assert!(html.contains("dinov2-vit-l14"));
+    assert!(html.contains("SHA-256"));
     let payload = read_json(&output_dir.join("neighbors.json"));
     assert_eq!(payload["model"], "dinov2-vit-l14");
     assert_eq!(payload["validation"]["status"], "unverified");
@@ -283,6 +310,10 @@ fn neighbors_html_output_embeds_chart_and_validation_summary() {
         .unwrap()
         .iter()
         .any(|artifact| artifact["path"] == "neighbors.png"));
+    assert_artifact_metadata(&manifest, "report.html");
+    assert_artifact_metadata(&manifest, "neighbors.json");
+    assert_artifact_metadata(&manifest, "neighbors.png");
+    assert!(html.contains(&digest_preview_for(&output_dir.join("neighbors.json"))));
 }
 
 #[test]
@@ -356,6 +387,7 @@ fn similarity_json_output_writes_structured_report() {
     );
     assert_eq!(manifest["validation"].as_array().unwrap().len(), 2);
     assert_eq!(manifest["validation"][0]["status"], "unverified");
+    assert_artifact_metadata(&manifest, "similarity.json");
 }
 
 #[test]
@@ -400,6 +432,7 @@ fn similarity_html_output_embeds_chart_and_validation_summary() {
     assert!(html.contains("Validation Summary"));
     assert!(html.contains("dinov2-vit-l14#1"));
     assert!(html.contains("dinov2-vit-l14#2"));
+    assert!(html.contains("SHA-256"));
     let payload = read_json(&output_dir.join("similarity.json"));
     assert_eq!(payload["model_a"], "dinov2-vit-l14");
     assert_eq!(payload["model_b"], "dinov2-vit-l14");
@@ -426,6 +459,10 @@ fn similarity_html_output_embeds_chart_and_validation_summary() {
         .unwrap()
         .iter()
         .any(|artifact| artifact["path"] == "similarity.png"));
+    assert_artifact_metadata(&manifest, "report.html");
+    assert_artifact_metadata(&manifest, "similarity.json");
+    assert_artifact_metadata(&manifest, "similarity.png");
+    assert!(html.contains(&digest_preview_for(&output_dir.join("similarity.json"))));
 }
 
 #[test]

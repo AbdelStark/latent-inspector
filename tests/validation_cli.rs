@@ -1,4 +1,5 @@
 use serde_json::Value;
+use sha2::{Digest, Sha256};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -42,6 +43,36 @@ fn read_json(path: &Path) -> Value {
 
 fn read_artifact_manifest(dir: &Path) -> Value {
     read_json(&dir.join("artifacts.json"))
+}
+
+fn artifact_entry<'a>(manifest: &'a Value, path: &str) -> &'a Value {
+    manifest["artifacts"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|artifact| artifact["path"] == path)
+        .unwrap_or_else(|| panic!("missing artifact entry for {path}"))
+}
+
+fn assert_artifact_metadata(manifest: &Value, path: &str) -> String {
+    let artifact = artifact_entry(manifest, path);
+    assert!(artifact["byte_size"].as_u64().unwrap() > 0);
+    let digest = artifact["sha256"].as_str().unwrap();
+    assert_eq!(digest.len(), 64);
+    digest.to_string()
+}
+
+fn sha256_preview(digest: &str) -> String {
+    if digest.len() > 16 {
+        format!("{}…", &digest[..16])
+    } else {
+        digest.to_string()
+    }
+}
+
+fn digest_preview_for(path: &Path) -> String {
+    let digest = hex::encode(Sha256::digest(fs::read(path).unwrap()));
+    sha256_preview(&digest)
 }
 
 fn write_test_image(dir: &Path) -> PathBuf {
@@ -117,6 +148,7 @@ fn validate_json_output_matches_contract_shape() {
         "unverified"
     );
     assert_eq!(manifest["validation"][0]["status"], "unverified");
+    assert_artifact_metadata(&manifest, "validation.json");
 }
 
 #[test]
@@ -139,6 +171,7 @@ fn validate_html_output_writes_companion_json_bundle() {
     assert!(html.contains("artifacts.json"));
     assert!(html.contains("dinov2-vit-l14"));
     assert!(html.contains("Stub backend"));
+    assert!(html.contains("SHA-256"));
 
     let payload = read_json(&outdir.path().join("validation.json"));
     let summary = &payload[0];
@@ -164,6 +197,9 @@ fn validate_html_output_writes_companion_json_bundle() {
         .unwrap()
         .iter()
         .any(|artifact| artifact["path"] == "validation.json"));
+    assert_artifact_metadata(&manifest, "validation.html");
+    assert_artifact_metadata(&manifest, "validation.json");
+    assert!(html.contains(&digest_preview_for(&outdir.path().join("validation.json"))));
 }
 
 #[test]
@@ -349,6 +385,7 @@ fn inspect_html_includes_variance_spectrum_and_validation_summary() {
     assert!(html.contains("Validation Summary"));
     assert!(html.contains("dinov2-vit-l14"));
     assert!(html.contains("Stub backend"));
+    assert!(html.contains("SHA-256"));
     let payload = read_json(&output_dir.join("inspect.json"));
     assert_eq!(payload["model"], "dinov2-vit-l14");
     assert_eq!(payload["validation"]["status"], "unverified");
@@ -400,6 +437,10 @@ fn inspect_html_includes_variance_spectrum_and_validation_summary() {
         .iter()
         .any(|artifact| artifact["path"] == "dinov2-vit-l14_variance.png"));
     assert_eq!(manifest["validation"][0]["status"], "unverified");
+    assert_artifact_metadata(&manifest, "report.html");
+    assert_artifact_metadata(&manifest, "inspect.json");
+    assert_artifact_metadata(&manifest, "input_image.png");
+    assert!(html.contains(&digest_preview_for(&output_dir.join("inspect.json"))));
 }
 
 #[test]
@@ -433,6 +474,7 @@ fn compare_html_embeds_visual_assets_and_validation_summary() {
     assert!(html.contains("dinov2-vit-l14_1_pca.png"));
     assert!(html.contains("dinov2-vit-l14_2_pca.png"));
     assert!(html.contains("linear_cka.png"));
+    assert!(html.contains("SHA-256"));
     let payload = read_json(&output_dir.join("compare.json"));
     assert_eq!(
         payload["requested_models"],
@@ -476,6 +518,10 @@ fn compare_html_embeds_visual_assets_and_validation_summary() {
         .unwrap()
         .iter()
         .any(|artifact| artifact["path"] == "linear_cka.png"));
+    assert_artifact_metadata(&manifest, "report.html");
+    assert_artifact_metadata(&manifest, "compare.json");
+    assert_artifact_metadata(&manifest, "linear_cka.png");
+    assert!(html.contains(&digest_preview_for(&output_dir.join("compare.json"))));
 }
 
 #[test]
@@ -555,6 +601,7 @@ fn compare_json_output_writes_structured_report() {
         "unverified"
     );
     assert_eq!(manifest["validation"].as_array().unwrap().len(), 2);
+    assert_artifact_metadata(&manifest, "compare.json");
 }
 
 #[test]

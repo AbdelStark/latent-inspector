@@ -175,10 +175,11 @@ pub fn run(args: InspectArgs) -> Result<(), Error> {
             .add_artifact("report.html", ArtifactKind::Html, "Inspect report")
             .with_primary_artifact("report.html");
             crate::viz::json::write_inspect_report(&report, &outdir.join("inspect.json"))?;
+            let bundle = manifest.finalize_for_bundle_display(&outdir)?;
             crate::viz::html::write_inspect_report_with_assets_and_bundle(
                 &report,
                 &assets,
-                Some(&manifest),
+                Some(&bundle),
                 &outdir.join("report.html"),
             )?;
             manifest.write_to_dir(&outdir)?;

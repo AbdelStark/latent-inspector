@@ -1,4 +1,5 @@
 use serde_json::Value;
+use sha2::{Digest, Sha256};
 use std::fs;
 use std::process::Command;
 use tempfile::tempdir;
@@ -13,6 +14,30 @@ fn read_json(path: &std::path::Path) -> Value {
 
 fn read_artifact_manifest(dir: &std::path::Path) -> Value {
     read_json(&dir.join("artifacts.json"))
+}
+
+fn artifact_entry<'a>(manifest: &'a Value, path: &str) -> &'a Value {
+    manifest["artifacts"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|artifact| artifact["path"] == path)
+        .unwrap_or_else(|| panic!("missing artifact entry for {path}"))
+}
+
+fn assert_artifact_metadata(manifest: &Value, path: &str) {
+    let artifact = artifact_entry(manifest, path);
+    assert!(artifact["byte_size"].as_u64().unwrap() > 0);
+    assert_eq!(artifact["sha256"].as_str().unwrap().len(), 64);
+}
+
+fn digest_preview_for(path: &std::path::Path) -> String {
+    let digest = hex::encode(Sha256::digest(fs::read(path).unwrap()));
+    if digest.len() > 16 {
+        format!("{}…", &digest[..16])
+    } else {
+        digest
+    }
 }
 
 fn models_command(cache_dir: &tempfile::TempDir) -> Command {
@@ -146,6 +171,7 @@ fn models_json_output_writes_structured_catalog() {
     assert_eq!(manifest["summary"]["summary"]["total_models"], 6);
     assert_eq!(manifest["summary"]["summary"]["ready_models"], 1);
     assert!(manifest["validation_summary"].is_null());
+    assert_artifact_metadata(&manifest, "models.json");
 }
 
 #[test]
@@ -177,6 +203,7 @@ fn models_html_output_writes_shareable_catalog() {
     assert!(html.contains("Registry availability, cache state, and validation evidence"));
     assert!(html.contains("Ready to run"));
     assert!(html.contains("Artifact details"));
+    assert!(html.contains("SHA-256"));
     let payload = read_json(&outdir.path().join("models.json"));
     assert_eq!(payload["summary"]["total_models"], 6);
     assert_eq!(payload["summary"]["ready_models"], 1);
@@ -196,6 +223,9 @@ fn models_html_output_writes_shareable_catalog() {
         .unwrap()
         .iter()
         .any(|artifact| artifact["path"] == "models.json"));
+    assert_artifact_metadata(&manifest, "models.html");
+    assert_artifact_metadata(&manifest, "models.json");
+    assert!(html.contains(&digest_preview_for(&outdir.path().join("models.json"))));
 }
 
 #[test]
@@ -253,6 +283,7 @@ fn models_download_json_output_writes_structured_report_when_cached() {
     assert_eq!(manifest["primary_artifact"], "download.json");
     assert_eq!(manifest["context"]["mode"], "download");
     assert_eq!(manifest["context"]["model"], "dinov2-vit-l14");
+    assert_artifact_metadata(&manifest, "download.json");
 }
 
 #[test]
@@ -281,9 +312,13 @@ fn models_download_html_output_writes_shareable_report_when_cached() {
     assert!(html.contains("Artifact Changes"));
     assert!(html.contains("already-cached"));
     assert!(html.contains("Ready to run"));
+    assert!(html.contains("SHA-256"));
     let manifest = read_artifact_manifest(outdir.path());
     assert_eq!(manifest["primary_artifact"], "download.html");
     assert_eq!(manifest["context"]["mode"], "download");
     assert_eq!(manifest["artifacts"][0]["path"], "download.html");
     assert_eq!(manifest["artifacts"][1]["path"], "download.json");
+    assert_artifact_metadata(&manifest, "download.html");
+    assert_artifact_metadata(&manifest, "download.json");
+    assert!(html.contains(&digest_preview_for(&outdir.path().join("download.json"))));
 }

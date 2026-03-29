@@ -151,9 +151,10 @@ fn render_validate_output(
                 )
                 .with_validation(summaries);
             crate::viz::json::write_validation_report(summaries, &outdir.join("validation.json"))?;
+            let bundle = manifest.finalize_for_bundle_display(&outdir)?;
             crate::viz::html::write_validation_report_with_bundle(
                 summaries,
-                Some(&manifest),
+                Some(&bundle),
                 &outdir.join("validation.html"),
             )?;
             manifest.write_to_dir(&outdir)?;

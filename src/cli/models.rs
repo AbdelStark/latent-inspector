@@ -88,9 +88,10 @@ fn list_models(args: &ModelsArgs) -> Result<(), Error> {
                 .add_artifact("models.html", ArtifactKind::Html, "Model catalog")
                 .add_artifact("models.json", ArtifactKind::Json, "Model catalog data");
             crate::viz::json::write_model_catalog(&report, &outdir.join("models.json"))?;
+            let bundle = manifest.finalize_for_bundle_display(&outdir)?;
             crate::viz::html::write_model_catalog_report_with_bundle(
                 &report,
-                Some(&manifest),
+                Some(&bundle),
                 &path,
             )?;
             manifest.write_to_dir(&outdir)?;
@@ -168,9 +169,10 @@ fn render_download_output(args: &ModelsArgs, report: &ModelDownloadReport) -> Re
                 .add_artifact("download.html", ArtifactKind::Html, "Model download report")
                 .add_artifact("download.json", ArtifactKind::Json, "Model download data");
             crate::viz::json::write_model_download_report(report, &outdir.join("download.json"))?;
+            let bundle = manifest.finalize_for_bundle_display(&outdir)?;
             crate::viz::html::write_model_download_report_with_bundle(
                 report,
-                Some(&manifest),
+                Some(&bundle),
                 &path,
             )?;
             manifest.write_to_dir(&outdir)?;
