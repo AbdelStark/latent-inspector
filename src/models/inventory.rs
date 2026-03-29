@@ -59,6 +59,53 @@ impl RuntimeSupport {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ModelReadinessStatus {
+    Ready,
+    NeedsDownload,
+    NeedsEvidenceRefresh,
+    NeedsValidation,
+    Planned,
+    Blocked,
+}
+
+impl ModelReadinessStatus {
+    pub fn label(self) -> &'static str {
+        match self {
+            ModelReadinessStatus::Ready => "ready",
+            ModelReadinessStatus::NeedsDownload => "needs-download",
+            ModelReadinessStatus::NeedsEvidenceRefresh => "needs-evidence-refresh",
+            ModelReadinessStatus::NeedsValidation => "needs-validation",
+            ModelReadinessStatus::Planned => "planned",
+            ModelReadinessStatus::Blocked => "blocked",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModelReadinessCounts {
+    pub ready: usize,
+    pub needs_download: usize,
+    pub needs_evidence_refresh: usize,
+    pub needs_validation: usize,
+    pub planned: usize,
+    pub blocked: usize,
+}
+
+impl ModelReadinessCounts {
+    fn record(&mut self, status: ModelReadinessStatus) {
+        match status {
+            ModelReadinessStatus::Ready => self.ready += 1,
+            ModelReadinessStatus::NeedsDownload => self.needs_download += 1,
+            ModelReadinessStatus::NeedsEvidenceRefresh => self.needs_evidence_refresh += 1,
+            ModelReadinessStatus::NeedsValidation => self.needs_validation += 1,
+            ModelReadinessStatus::Planned => self.planned += 1,
+            ModelReadinessStatus::Blocked => self.blocked += 1,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ModelArtifactInventory {
     pub relative_path: String,
@@ -69,6 +116,33 @@ pub struct ModelArtifactInventory {
     pub byte_size: Option<u64>,
     pub verification_label: String,
     pub verification_note: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ModelDownloadAction {
+    Downloaded,
+    AlreadyCached,
+}
+
+impl ModelDownloadAction {
+    pub fn label(self) -> &'static str {
+        match self {
+            ModelDownloadAction::Downloaded => "downloaded",
+            ModelDownloadAction::AlreadyCached => "already-cached",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModelArtifactTransition {
+    pub relative_path: String,
+    pub previous_status: ArtifactCacheStatus,
+    pub current_status: ArtifactCacheStatus,
+    pub downloaded: bool,
+    pub repaired: bool,
+    pub byte_size: Option<u64>,
+    pub cache_summary: String,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -131,6 +205,9 @@ pub struct ModelInventoryEntry {
     pub availability_status: AvailabilityStatus,
     pub phase: String,
     pub availability_note: String,
+    pub readiness_status: ModelReadinessStatus,
+    pub readiness_summary: String,
+    pub next_steps: Vec<String>,
     pub runtime_support: RuntimeSupport,
     pub runtime_summary: String,
     pub method: SSLMethod,
@@ -167,6 +244,7 @@ pub struct ModelCatalogSummary {
     pub ready_models: usize,
     pub planned_models: usize,
     pub cached_models: usize,
+    pub readiness: ModelReadinessCounts,
     pub artifacts: ArtifactInventorySummary,
     pub evidence: EvidenceStatusCounts,
 }
@@ -178,6 +256,31 @@ pub struct ModelCatalogReport {
     pub fixture_error: Option<String>,
     pub summary: ModelCatalogSummary,
     pub entries: Vec<ModelInventoryEntry>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ModelDownloadReport {
+    pub model: String,
+    pub action: ModelDownloadAction,
+    pub summary: String,
+    pub entry: ModelInventoryEntry,
+    pub artifact_changes: Vec<ModelArtifactTransition>,
+}
+
+impl ModelDownloadReport {
+    pub fn downloaded_artifact_count(&self) -> usize {
+        self.artifact_changes
+            .iter()
+            .filter(|artifact| artifact.downloaded)
+            .count()
+    }
+
+    pub fn repaired_artifact_count(&self) -> usize {
+        self.artifact_changes
+            .iter()
+            .filter(|artifact| artifact.repaired)
+            .count()
+    }
 }
 
 impl ModelCatalogReport {
@@ -209,10 +312,23 @@ impl ModelCatalogReport {
             .count()
     }
 
+    pub fn filter_to_names(mut self, names: &[String]) -> Self {
+        if names.is_empty() {
+            return self;
+        }
+
+        self.entries
+            .retain(|entry| names.iter().any(|name| name == &entry.name));
+        self.summary = self.build_summary();
+        self
+    }
+
     fn build_summary(&self) -> ModelCatalogSummary {
         let mut artifacts = ArtifactInventorySummary::default();
+        let mut readiness = ModelReadinessCounts::default();
         for entry in &self.entries {
             artifacts.merge(&entry.artifact_summary);
+            readiness.record(entry.readiness_status);
         }
 
         ModelCatalogSummary {
@@ -220,6 +336,7 @@ impl ModelCatalogReport {
             ready_models: self.ready_count(),
             planned_models: self.planned_count(),
             cached_models: self.cache_count(CacheStatus::Complete),
+            readiness,
             artifacts,
             evidence: EvidenceStatusCounts {
                 approved: self.evidence_count(EvidenceStatus::Approved),
@@ -256,6 +373,7 @@ pub fn build_model_catalog(fixture_selection: Option<&str>) -> ModelCatalogRepor
             ready_models: 0,
             planned_models: 0,
             cached_models: 0,
+            readiness: ModelReadinessCounts::default(),
             artifacts: ArtifactInventorySummary::default(),
             evidence: EvidenceStatusCounts {
                 approved: 0,
@@ -287,12 +405,22 @@ fn build_inventory_entry(
 
     let (evidence_status, evidence_summary, evidence_details) =
         assess_evidence(entry, fixture_set, fixture_error);
+    let (readiness_status, readiness_summary, next_steps) = assess_readiness(
+        entry,
+        cache_status,
+        &artifact_summary,
+        evidence_status,
+        verification_note.as_deref(),
+    );
 
     ModelInventoryEntry {
         name: entry.info.name.clone(),
         availability_status: entry.availability.status.clone(),
         phase: entry.availability.phase.clone(),
         availability_note: entry.availability.note.clone(),
+        readiness_status,
+        readiness_summary,
+        next_steps,
         runtime_support,
         runtime_summary,
         method: entry.info.method.clone(),
@@ -532,6 +660,277 @@ fn assess_evidence(
     }
 }
 
+pub fn build_model_download_report(
+    action: ModelDownloadAction,
+    previous_artifacts: &[cache::CachedArtifactInfo],
+    entry: ModelInventoryEntry,
+) -> ModelDownloadReport {
+    let artifact_changes = entry
+        .artifacts
+        .iter()
+        .map(|artifact| {
+            let previous_status = previous_artifacts
+                .iter()
+                .find(|candidate| candidate.relative_path == artifact.relative_path)
+                .map(|candidate| candidate.cache_status)
+                .unwrap_or(ArtifactCacheStatus::Missing);
+            let current_status = artifact.cache_status;
+            let downloaded = !previous_status.is_usable() && current_status.is_usable();
+            let repaired = matches!(previous_status, ArtifactCacheStatus::Invalid)
+                && current_status.is_usable();
+
+            ModelArtifactTransition {
+                relative_path: artifact.relative_path.clone(),
+                previous_status,
+                current_status,
+                downloaded,
+                repaired,
+                byte_size: artifact.byte_size,
+                cache_summary: artifact.cache_summary.clone(),
+            }
+        })
+        .collect::<Vec<_>>();
+
+    let downloaded_count = artifact_changes
+        .iter()
+        .filter(|artifact| artifact.downloaded)
+        .count();
+    let repaired_count = artifact_changes
+        .iter()
+        .filter(|artifact| artifact.repaired)
+        .count();
+    let summary = match action {
+        ModelDownloadAction::AlreadyCached => format!(
+            "Cache already contained the full artifact bundle for {}. {}",
+            entry.name, entry.readiness_summary
+        ),
+        ModelDownloadAction::Downloaded => {
+            let mut summary = format!(
+                "Downloaded {} {} for {}.",
+                downloaded_count.max(1),
+                item_label(downloaded_count.max(1), "artifact", "artifacts"),
+                entry.name,
+            );
+            if repaired_count > 0 {
+                summary.push_str(&format!(
+                    " Repaired {} invalid {} in the process.",
+                    repaired_count,
+                    item_label(repaired_count, "artifact", "artifacts"),
+                ));
+            }
+            summary.push(' ');
+            summary.push_str(&entry.readiness_summary);
+            summary
+        }
+    };
+
+    ModelDownloadReport {
+        model: entry.name.clone(),
+        action,
+        summary,
+        entry,
+        artifact_changes,
+    }
+}
+
+fn assess_readiness(
+    entry: &RegistryEntry,
+    cache_status: CacheStatus,
+    artifact_summary: &ArtifactInventorySummary,
+    evidence_status: EvidenceStatus,
+    verification_note: Option<&str>,
+) -> (ModelReadinessStatus, String, Vec<String>) {
+    let model = entry.info.name.as_str();
+    let mut next_steps = Vec::new();
+
+    if !entry.is_ready() {
+        next_steps.push(format!(
+            "Promote {model} from {} to a ready ONNX integration before normal runs.",
+            entry.availability.phase
+        ));
+        next_steps.push(
+            "Until then, only the explicit stub backend is appropriate for development-only report scaffolding."
+                .to_string(),
+        );
+        return (
+            ModelReadinessStatus::Planned,
+            "This integration is still planned, so normal ONNX runs remain intentionally disabled."
+                .to_string(),
+            next_steps,
+        );
+    }
+
+    if matches!(cache_status, CacheStatus::Unknown) || artifact_summary.unusable > 0 {
+        next_steps.push(format!(
+            "Inspect the local cache bundle for {model} and remove or repair unusable artifacts."
+        ));
+        next_steps.push(format!(
+            "After the cache is healthy, rerun `latent-inspector models --download {model}` to restore the expected bundle."
+        ));
+        if matches!(evidence_status, EvidenceStatus::Stale) {
+            next_steps.push(format!(
+                "Once the cache is healthy, refresh the approved validation evidence for {model}."
+            ));
+        }
+        if let Some(note) = verification_note {
+            next_steps.push(format!("Verification metadata note: {note}"));
+        }
+        let summary = if artifact_summary.unusable > 0 {
+            format!(
+                "{} unusable {} are blocking normal runs and require manual cache repair.",
+                artifact_summary.unusable,
+                item_label(artifact_summary.unusable, "artifact", "artifacts"),
+            )
+        } else {
+            "Cache inspection could not determine whether the artifact bundle is usable."
+                .to_string()
+        };
+        return (ModelReadinessStatus::Blocked, summary, next_steps);
+    }
+
+    let actionable_downloads = artifact_summary.missing + artifact_summary.invalid;
+    if cache_status != CacheStatus::Complete || actionable_downloads > 0 {
+        next_steps.push(format!(
+            "Run `latent-inspector models --download {model}` to download or refresh the required artifact bundle."
+        ));
+        match evidence_status {
+            EvidenceStatus::Stale => next_steps.push(format!(
+                "After the cache bundle is complete, refresh the approved validation evidence for {model}."
+            )),
+            EvidenceStatus::Missing => next_steps.push(format!(
+                "After the cache bundle is complete, run `latent-inspector validate --model {model}` to record approved evidence."
+            )),
+            EvidenceStatus::Approved | EvidenceStatus::Unverified => {}
+        }
+        if artifact_summary.pending_verification > 0 {
+            next_steps.push(format!(
+                "Checksum metadata is still pending for {} {}; keep the cache provenance documented until hashes are pinned.",
+                artifact_summary.pending_verification,
+                item_label(
+                    artifact_summary.pending_verification,
+                    "artifact",
+                    "artifacts",
+                ),
+            ));
+        }
+
+        let summary = match (artifact_summary.missing, artifact_summary.invalid) {
+            (missing, 0) => format!(
+                "{} required {} are missing from the local cache bundle.",
+                missing,
+                item_label(missing, "artifact", "artifacts"),
+            ),
+            (0, invalid) => format!(
+                "{} cached {} must be refreshed before normal runs are safe.",
+                invalid,
+                item_label(invalid, "artifact", "artifacts"),
+            ),
+            (missing, invalid) => format!(
+                "{} {} are missing and {} {} must be refreshed before normal runs are safe.",
+                missing,
+                item_label(missing, "artifact", "artifacts"),
+                invalid,
+                item_label(invalid, "artifact", "artifacts"),
+            ),
+        };
+        return (ModelReadinessStatus::NeedsDownload, summary, next_steps);
+    }
+
+    match evidence_status {
+        EvidenceStatus::Approved => {
+            if artifact_summary.pending_verification > 0 {
+                next_steps.push(format!(
+                    "Pin checksum metadata for {} {} so future downloads can be fully verified.",
+                    artifact_summary.pending_verification,
+                    item_label(
+                        artifact_summary.pending_verification,
+                        "artifact",
+                        "artifacts",
+                    ),
+                ));
+                return (
+                    ModelReadinessStatus::Ready,
+                    format!(
+                        "Ready to run: the cache bundle is complete and approved validation evidence is current. Checksum metadata is still pending for {} {}.",
+                        artifact_summary.pending_verification,
+                        item_label(
+                            artifact_summary.pending_verification,
+                            "artifact",
+                            "artifacts",
+                        ),
+                    ),
+                    next_steps,
+                );
+            }
+
+            (
+                ModelReadinessStatus::Ready,
+                "Ready to run: the cache bundle is complete and approved validation evidence is current."
+                    .to_string(),
+                next_steps,
+            )
+        }
+        EvidenceStatus::Stale => {
+            next_steps.push(format!(
+                "Refresh the checked-in contract or reference evidence for {model} so reports can be treated as source-aligned again."
+            ));
+            if artifact_summary.pending_verification > 0 {
+                next_steps.push(format!(
+                    "Pin checksum metadata for {} {} once the evidence refresh is complete.",
+                    artifact_summary.pending_verification,
+                    item_label(
+                        artifact_summary.pending_verification,
+                        "artifact",
+                        "artifacts",
+                    ),
+                ));
+            }
+            (
+                ModelReadinessStatus::NeedsEvidenceRefresh,
+                "The model can run, but the approved validation evidence is stale against the active registry profile."
+                    .to_string(),
+                next_steps,
+            )
+        }
+        EvidenceStatus::Missing => {
+            next_steps.push(format!(
+                "Run `latent-inspector validate --model {model}` against the approved fixture set and commit the resulting evidence."
+            ));
+            if artifact_summary.pending_verification > 0 {
+                next_steps.push(format!(
+                    "Pin checksum metadata for {} {} alongside the validation refresh.",
+                    artifact_summary.pending_verification,
+                    item_label(
+                        artifact_summary.pending_verification,
+                        "artifact",
+                        "artifacts",
+                    ),
+                ));
+            }
+            (
+                ModelReadinessStatus::NeedsValidation,
+                "The artifact bundle is runnable, but approved validation evidence is missing or could not be loaded."
+                    .to_string(),
+                next_steps,
+            )
+        }
+        EvidenceStatus::Unverified => (
+            ModelReadinessStatus::Planned,
+            "This integration is still planned, so release-grade validation remains intentionally withheld."
+                .to_string(),
+            next_steps,
+        ),
+    }
+}
+
+fn item_label(count: usize, singular: &'static str, plural: &'static str) -> &'static str {
+    if count == 1 {
+        singular
+    } else {
+        plural
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -655,5 +1054,54 @@ mod tests {
         assert!(dinov2
             .evidence_summary
             .contains("fixture manifest was unavailable"));
+    }
+
+    #[test]
+    fn readiness_needs_download_when_ready_model_is_uncached() {
+        let entry = crate::models::registry::find("dinov2-vit-l14").unwrap();
+        let artifact_summary = ArtifactInventorySummary {
+            total: 1,
+            missing: 1,
+            ..ArtifactInventorySummary::default()
+        };
+
+        let (status, summary, next_steps) = assess_readiness(
+            &entry,
+            CacheStatus::Missing,
+            &artifact_summary,
+            EvidenceStatus::Approved,
+            None,
+        );
+
+        assert_eq!(status, ModelReadinessStatus::NeedsDownload);
+        assert!(summary.contains("missing"));
+        assert!(next_steps
+            .iter()
+            .any(|step| step.contains("models --download dinov2-vit-l14")));
+    }
+
+    #[test]
+    fn readiness_marks_complete_model_ready_even_with_pending_checksum_metadata() {
+        let entry = crate::models::registry::find("dinov2-vit-l14").unwrap();
+        let artifact_summary = ArtifactInventorySummary {
+            total: 1,
+            usable: 1,
+            pending_verification: 1,
+            ..ArtifactInventorySummary::default()
+        };
+
+        let (status, summary, next_steps) = assess_readiness(
+            &entry,
+            CacheStatus::Complete,
+            &artifact_summary,
+            EvidenceStatus::Approved,
+            Some("SHA-256 pin pending"),
+        );
+
+        assert_eq!(status, ModelReadinessStatus::Ready);
+        assert!(summary.contains("Ready to run"));
+        assert!(next_steps
+            .iter()
+            .any(|step| step.contains("checksum metadata")));
     }
 }

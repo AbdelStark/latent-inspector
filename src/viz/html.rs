@@ -3,7 +3,7 @@
 use crate::analysis::{ComparisonMetrics, ModelMetrics};
 use crate::dataset::DatasetProcessingSummary;
 use crate::errors::VizError;
-use crate::models::ModelCatalogReport;
+use crate::models::{ModelCatalogReport, ModelDownloadReport};
 use crate::validation::report::ModelValidationSummary;
 use crate::viz::manifest::{ArtifactKind, OutputArtifactManifest};
 use crate::viz::report::{
@@ -232,6 +232,24 @@ pub fn write_model_catalog_report_with_bundle(
     output_path: &Path,
 ) -> Result<(), VizError> {
     let html = render_model_catalog_html_with_bundle(report, bundle);
+    std::fs::write(output_path, &html)
+        .map_err(|e| VizError::Html(format!("Failed to write {}: {e}", output_path.display())))?;
+    Ok(())
+}
+
+pub fn write_model_download_report(
+    report: &ModelDownloadReport,
+    output_path: &Path,
+) -> Result<(), VizError> {
+    write_model_download_report_with_bundle(report, None, output_path)
+}
+
+pub fn write_model_download_report_with_bundle(
+    report: &ModelDownloadReport,
+    bundle: Option<&OutputArtifactManifest>,
+    output_path: &Path,
+) -> Result<(), VizError> {
+    let html = render_model_download_html_with_bundle(report, bundle);
     std::fs::write(output_path, &html)
         .map_err(|e| VizError::Html(format!("Failed to write {}: {e}", output_path.display())))?;
     Ok(())
@@ -759,12 +777,18 @@ fn render_model_catalog_html_with_bundle(
         (
             "Fixture Provenance",
             format!(
-                "<p><strong>Validation fixtures:</strong> {}</p><p><strong>Evidence summary:</strong> {} approved, {} stale, {} missing, {} unverified</p>",
+                "<p><strong>Validation fixtures:</strong> {}</p><p><strong>Evidence summary:</strong> {} approved, {} stale, {} missing, {} unverified</p><p><strong>Readiness summary:</strong> {} ready, {} need download, {} need evidence refresh, {} need validation, {} planned, {} blocked</p>",
                 fixture_status,
                 report.summary.evidence.approved,
                 report.summary.evidence.stale,
                 report.summary.evidence.missing,
                 report.summary.evidence.unverified,
+                report.summary.readiness.ready,
+                report.summary.readiness.needs_download,
+                report.summary.readiness.needs_evidence_refresh,
+                report.summary.readiness.needs_validation,
+                report.summary.readiness.planned,
+                report.summary.readiness.blocked,
             ),
         ),
         ("Model Inventory", render_model_catalog_table(report)),
@@ -775,23 +799,21 @@ fn render_model_catalog_html_with_bundle(
         "Registry availability, cache state, and validation evidence for each known integration.",
         &[
             ("Registered models", report.summary.total_models.to_string()),
-            ("Ready now", report.summary.ready_models.to_string()),
+            ("Ready in registry", report.summary.ready_models.to_string()),
+            ("Ready to run", report.summary.readiness.ready.to_string()),
             (
-                "Registered artifacts",
-                report.summary.artifacts.total.to_string(),
+                "Need download",
+                report.summary.readiness.needs_download.to_string(),
             ),
             (
-                "Usable artifacts",
-                report.summary.artifacts.usable.to_string(),
+                "Need evidence refresh",
+                report.summary.readiness.needs_evidence_refresh.to_string(),
             ),
             (
-                "Verified artifacts",
-                report.summary.artifacts.verified.to_string(),
+                "Need validation",
+                report.summary.readiness.needs_validation.to_string(),
             ),
-            (
-                "Approved evidence",
-                report.summary.evidence.approved.to_string(),
-            ),
+            ("Planned", report.summary.readiness.planned.to_string()),
         ],
         &sections,
         bundle,
@@ -1239,10 +1261,11 @@ fn render_model_catalog_table(report: &ModelCatalogReport) -> String {
         .iter()
         .map(|entry| {
             format!(
-                "<tr><td><code>{}</code></td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>",
+                "<tr><td><code>{}</code></td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>",
                 escape_html(&entry.name),
                 escape_html(&entry.phase),
                 escape_html(&entry.availability_status.to_string()),
+                escape_html(entry.readiness_status.label()),
                 escape_html(entry.runtime_support.label()),
                 escape_html(entry.evidence_status.label()),
                 escape_html(entry.cache_status.label()),
@@ -1256,7 +1279,7 @@ fn render_model_catalog_table(report: &ModelCatalogReport) -> String {
         .join("\n");
 
     format!(
-        "<table><thead><tr><th>Name</th><th>Phase</th><th>Status</th><th>Runtime</th><th>Evidence</th><th>Cache</th><th>Verify</th><th>Method</th><th>Params (M)</th><th>Details</th></tr></thead><tbody>{rows}</tbody></table>"
+        "<table><thead><tr><th>Name</th><th>Phase</th><th>Status</th><th>Readiness</th><th>Runtime</th><th>Evidence</th><th>Cache</th><th>Verify</th><th>Method</th><th>Params (M)</th><th>Details</th></tr></thead><tbody>{rows}</tbody></table>"
     )
 }
 
@@ -1274,6 +1297,11 @@ fn render_model_catalog_details(entry: &crate::models::ModelInventoryEntry) -> S
             entry.embed_dim,
             entry.num_layers,
             entry.num_heads,
+        ),
+        format!(
+            "<p><strong>Readiness:</strong> {} ({})</p>",
+            escape_html(&entry.readiness_summary),
+            escape_html(entry.readiness_status.label()),
         ),
         format!(
             "<p><strong>Runtime:</strong> {} ({})</p>",
@@ -1322,6 +1350,18 @@ fn render_model_catalog_details(entry: &crate::models::ModelInventoryEntry) -> S
         ));
     }
 
+    if !entry.next_steps.is_empty() {
+        let items = entry
+            .next_steps
+            .iter()
+            .map(|step| format!("<li>{}</li>", escape_html(step)))
+            .collect::<Vec<_>>()
+            .join("");
+        parts.push(format!(
+            "<p><strong>Next steps:</strong></p><ul>{items}</ul>"
+        ));
+    }
+
     if !entry.artifacts.is_empty() {
         let rows = entry
             .artifacts
@@ -1362,6 +1402,100 @@ fn render_model_catalog_details(entry: &crate::models::ModelInventoryEntry) -> S
     }
 
     parts.join("")
+}
+
+fn render_model_download_html_with_bundle(
+    report: &ModelDownloadReport,
+    bundle: Option<&OutputArtifactManifest>,
+) -> String {
+    let outcome = format!(
+        "<p><strong>Action:</strong> {}</p><p>{}</p>",
+        escape_html(report.action.label()),
+        escape_html(&report.summary),
+    );
+    let readiness = format!(
+        "<p><strong>Readiness:</strong> {} ({})</p>{}",
+        escape_html(&report.entry.readiness_summary),
+        escape_html(report.entry.readiness_status.label()),
+        render_string_list(
+            &report.entry.next_steps,
+            "No follow-up steps are required for this model.",
+        ),
+    );
+
+    let sections = vec![
+        ("Outcome", outcome),
+        ("Readiness", readiness),
+        ("Artifact Changes", render_model_download_changes(report)),
+        ("Model Details", render_model_catalog_details(&report.entry)),
+    ];
+
+    render_secondary_html(
+        "Model download",
+        "Download outcome and readiness for one model integration.",
+        &[
+            ("Model", report.model.clone()),
+            ("Action", report.action.label().to_string()),
+            (
+                "Downloaded artifacts",
+                report.downloaded_artifact_count().to_string(),
+            ),
+            (
+                "Repaired artifacts",
+                report.repaired_artifact_count().to_string(),
+            ),
+            (
+                "Readiness",
+                report.entry.readiness_status.label().to_string(),
+            ),
+        ],
+        &sections,
+        bundle,
+    )
+}
+
+fn render_model_download_changes(report: &ModelDownloadReport) -> String {
+    if report.artifact_changes.is_empty() {
+        return "<p class=\"empty-state\">No artifact transitions were recorded.</p>".to_string();
+    }
+
+    let rows = report
+        .artifact_changes
+        .iter()
+        .map(|artifact| {
+            let byte_size = artifact
+                .byte_size
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "N/A".to_string());
+            format!(
+                "<tr><td><code>{}</code></td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>",
+                escape_html(&artifact.relative_path),
+                escape_html(artifact.previous_status.label()),
+                escape_html(artifact.current_status.label()),
+                if artifact.downloaded { "yes" } else { "no" },
+                byte_size,
+                escape_html(&artifact.cache_summary),
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("");
+
+    format!(
+        "<table><thead><tr><th>Artifact</th><th>Before</th><th>After</th><th>Downloaded</th><th>Bytes</th><th>Detail</th></tr></thead><tbody>{rows}</tbody></table>"
+    )
+}
+
+fn render_string_list(items: &[String], empty: &str) -> String {
+    if items.is_empty() {
+        return format!("<p class=\"empty-state\">{}</p>", escape_html(empty));
+    }
+
+    let rows = items
+        .iter()
+        .map(|item| format!("<li>{}</li>", escape_html(item)))
+        .collect::<Vec<_>>()
+        .join("");
+    format!("<ul>{rows}</ul>")
 }
 
 fn render_metric_caveats(comparison: &ComparisonMetrics) -> String {
@@ -2243,7 +2377,8 @@ mod tests {
         assert_eq!(report.summary.evidence.approved, 1);
         assert_eq!(report.summary.evidence.unverified, 5);
         assert!(html.contains("Registered models"));
-        assert!(html.contains("Approved evidence"));
+        assert!(html.contains("Ready to run"));
+        assert!(html.contains("Readiness summary:"));
         assert!(html.contains(EvidenceStatus::Approved.label()));
     }
 }

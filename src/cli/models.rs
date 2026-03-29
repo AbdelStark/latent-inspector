@@ -1,5 +1,8 @@
 use crate::errors::{Error, ValidationError};
-use crate::models::{build_model_catalog, cache, registry};
+use crate::models::{
+    build_model_catalog, build_model_download_report, cache, registry, ModelCatalogReport,
+    ModelDownloadAction, ModelDownloadReport,
+};
 use crate::viz::manifest::{ArtifactKind, OutputArtifactManifest};
 use crate::viz::OutputFormat;
 use clap::Args;
@@ -33,8 +36,8 @@ pub fn run(args: ModelsArgs) -> Result<(), Error> {
         .into());
     }
 
-    if let Some(name) = args.download {
-        return download_model(&name);
+    if let Some(name) = args.download.as_deref() {
+        return download_model(&args, name);
     }
 
     list_models(&args)?;
@@ -99,7 +102,7 @@ fn list_models(args: &ModelsArgs) -> Result<(), Error> {
     Ok(())
 }
 
-fn download_model(name: &str) -> Result<(), Error> {
+fn download_model(args: &ModelsArgs, name: &str) -> Result<(), Error> {
     let entry = registry::find(name).ok_or_else(|| {
         crate::errors::ModelError::NotFound(format!(
             "Unknown model '{name}'. Run `latent-inspector models` to see available models."
@@ -107,17 +110,88 @@ fn download_model(name: &str) -> Result<(), Error> {
     })?;
     entry.ensure_ready()?;
 
-    let dest = cache::model_path(name)?;
+    let previous_artifacts = cache::inspect_registry_artifacts(&entry)?;
+    let action = if previous_artifacts
+        .iter()
+        .all(|artifact| artifact.cache_status.is_usable())
+        && !previous_artifacts.is_empty()
+    {
+        ModelDownloadAction::AlreadyCached
+    } else {
+        if matches!(args.format, OutputFormat::Terminal) {
+            println!("Downloading {name} ({} M params)…", entry.info.params_m);
+        }
+        cache::download(name, &entry)?;
+        ModelDownloadAction::Downloaded
+    };
 
-    if cache::is_cached(name)? {
-        println!("Model '{name}' is already cached at {}.", dest.display());
-        return Ok(());
+    let report = build_model_catalog(None).filter_to_names(&[name.to_string()]);
+    let download_report = build_model_download_report(
+        action,
+        &previous_artifacts,
+        take_single_entry(report, name)?,
+    );
+    render_download_output(args, &download_report)?;
+    Ok(())
+}
+
+fn render_download_output(args: &ModelsArgs, report: &ModelDownloadReport) -> Result<(), Error> {
+    match args.format {
+        OutputFormat::Terminal => crate::viz::terminal::print_model_download_report(report),
+        OutputFormat::Json => {
+            if let Some(outdir) = &args.output {
+                std::fs::create_dir_all(outdir)?;
+                let path = outdir.join("download.json");
+                crate::viz::json::write_model_download_report(report, &path)?;
+                OutputArtifactManifest::new("models", OutputFormat::Json)
+                    .with_primary_artifact("download.json")
+                    .with_context(download_manifest_context(args, report))
+                    .with_summary(download_manifest_summary(report))
+                    .add_artifact("download.json", ArtifactKind::Json, "Model download report")
+                    .write_to_dir(outdir)?;
+                println!("Model download report written to {}", path.display());
+            } else {
+                crate::viz::json::print_model_download_report(report)?;
+            }
+        }
+        OutputFormat::Html => {
+            let outdir = args
+                .output
+                .clone()
+                .unwrap_or_else(|| PathBuf::from("models_download_output"));
+            std::fs::create_dir_all(&outdir)?;
+            let path = outdir.join("download.html");
+            let manifest = OutputArtifactManifest::new("models", OutputFormat::Html)
+                .with_primary_artifact("download.html")
+                .with_context(download_manifest_context(args, report))
+                .with_summary(download_manifest_summary(report))
+                .add_artifact("download.html", ArtifactKind::Html, "Model download report")
+                .add_artifact("download.json", ArtifactKind::Json, "Model download data");
+            crate::viz::json::write_model_download_report(report, &outdir.join("download.json"))?;
+            crate::viz::html::write_model_download_report_with_bundle(
+                report,
+                Some(&manifest),
+                &path,
+            )?;
+            manifest.write_to_dir(&outdir)?;
+            println!("Model download report written to {}", path.display());
+        }
+        OutputFormat::Png => unreachable!("validated earlier"),
     }
 
-    println!("Downloading {name} ({} M params)…", entry.info.params_m);
-    cache::download(name, &entry)?;
-    println!("✓ {name} saved to {}.", dest.display());
     Ok(())
+}
+
+fn take_single_entry(
+    report: ModelCatalogReport,
+    name: &str,
+) -> Result<crate::models::ModelInventoryEntry, Error> {
+    report.entries.into_iter().next().ok_or_else(|| {
+        ValidationError::Usage(format!(
+            "Model catalog did not contain an entry for '{name}' after download."
+        ))
+        .into()
+    })
 }
 
 fn models_manifest_context(args: &ModelsArgs) -> serde_json::Value {
@@ -135,5 +209,24 @@ fn models_manifest_summary(
         "evidence_timestamp": report.evidence_timestamp,
         "fixture_error": report.fixture_error,
         "summary": report.summary,
+    })
+}
+
+fn download_manifest_context(args: &ModelsArgs, report: &ModelDownloadReport) -> serde_json::Value {
+    json!({
+        "verbose": args.verbose,
+        "mode": "download",
+        "model": report.model,
+        "action": report.action,
+    })
+}
+
+fn download_manifest_summary(report: &ModelDownloadReport) -> serde_json::Value {
+    json!({
+        "summary": report.summary,
+        "readiness_status": report.entry.readiness_status,
+        "readiness_summary": report.entry.readiness_summary,
+        "downloaded_artifacts": report.downloaded_artifact_count(),
+        "repaired_artifacts": report.repaired_artifact_count(),
     })
 }

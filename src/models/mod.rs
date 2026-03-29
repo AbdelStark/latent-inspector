@@ -6,9 +6,10 @@ pub mod registry;
 
 pub use cache::{ArtifactCacheStatus, CachedArtifactInfo};
 pub use inventory::{
-    build_model_catalog, ArtifactInventorySummary, CacheStatus, EvidenceStatus,
-    EvidenceStatusCounts, ModelArtifactInventory, ModelCatalogReport, ModelCatalogSummary,
-    ModelInventoryEntry, RuntimeSupport,
+    build_model_catalog, build_model_download_report, ArtifactInventorySummary, CacheStatus,
+    EvidenceStatus, EvidenceStatusCounts, ModelArtifactInventory, ModelArtifactTransition,
+    ModelCatalogReport, ModelCatalogSummary, ModelDownloadAction, ModelDownloadReport,
+    ModelInventoryEntry, ModelReadinessCounts, ModelReadinessStatus, RuntimeSupport,
 };
 pub use loader::{InferenceBackend, ModelOutput, ModelSession, OutputTensorMetadata};
 pub use registry::{

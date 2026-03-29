@@ -257,6 +257,10 @@ catalog now reports each model's phase status, runtime support
 (`onnx-ready` vs `stub-only`), whether the local cache contains the full
 artifact bundle, and whether the approved validation evidence is current,
 stale, missing, or intentionally withheld for planned integrations.
+Each entry also derives a readiness state (`ready`, `needs-download`,
+`needs-evidence-refresh`, `needs-validation`, `planned`, or `blocked`) plus
+plain-language next steps so maintainers can see what is actually preventing a
+model from being runnable or release-aligned on the current machine.
 Verbose terminal output plus the JSON and HTML catalog exports now break that
 down to the individual artifact level as well, including the expected cache
 path, per-artifact cache state, byte size when present, and whether checksum
@@ -266,6 +270,15 @@ structured JSON to stdout or `latent-inspector models --format json --output
 tmp/models` to write `models.json` for automation. For a shareable report, run
 `latent-inspector models --format html --output tmp/models` to generate
 `models.html` alongside `models.json`.
+
+When you actively cache a model, the same command surface can now emit a
+machine-readable or shareable download outcome report instead of only printing
+terminal progress. For example,
+`latent-inspector models --download dinov2-vit-l14 --format json --output tmp/download`
+writes `download.json`, while `--format html` writes `download.html` plus the
+same structured payload and `artifacts.json`. Those reports record whether the
+artifact bundle was newly downloaded or already cached, the before/after cache
+state of each artifact, and the model's post-download readiness summary.
 
 ## License
 

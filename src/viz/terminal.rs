@@ -2,7 +2,7 @@
 
 use crate::analysis::{ComparisonMetrics, ModelMetrics};
 use crate::dataset::DatasetProcessingSummary;
-use crate::models::{EvidenceStatus, ModelCatalogReport};
+use crate::models::{ModelCatalogReport, ModelDownloadReport, ModelReadinessStatus};
 use crate::validation::report::ModelValidationSummary;
 use crate::viz::report::{
     CompareOverview, DriftReport, NeighborsReport, PairwiseMatrix, PairwiseMetricSupport,
@@ -258,18 +258,27 @@ pub fn print_pairwise_matrix(
 pub fn print_model_catalog(report: &ModelCatalogReport, verbose: bool) {
     println!();
     println!("Available models ({})", report.summary.total_models);
-    println!("{}", "═".repeat(126));
+    println!("{}", "═".repeat(148));
     println!(
-        "{:<20} {:<10} {:<12} {:<12} {:<10} {:<8} {:<12} {:>10}",
-        "Name", "Status", "Runtime", "Evidence", "Cache", "Verify", "Method", "Params (M)"
+        "{:<20} {:<10} {:<24} {:<12} {:<12} {:<10} {:<8} {:<12} {:>10}",
+        "Name",
+        "Status",
+        "Readiness",
+        "Runtime",
+        "Evidence",
+        "Cache",
+        "Verify",
+        "Method",
+        "Params (M)"
     );
-    println!("{}", "─".repeat(126));
+    println!("{}", "─".repeat(148));
 
     for entry in &report.entries {
         println!(
-            "{:<20} {:<10} {:<12} {:<12} {:<10} {:<8} {:<12} {:>10}",
+            "{:<20} {:<10} {:<24} {:<12} {:<12} {:<10} {:<8} {:<12} {:>10}",
             truncate(&entry.name, 19),
             entry.availability_status.to_string(),
+            truncate(entry.readiness_status.label(), 23),
             truncate(entry.runtime_support.label(), 11),
             entry.evidence_status.label(),
             entry.cache_status.label(),
@@ -281,6 +290,14 @@ pub fn print_model_catalog(report: &ModelCatalogReport, verbose: bool) {
         if verbose {
             println!("    Phase: {}", entry.phase);
             println!("    Note: {}", entry.availability_note);
+            println!(
+                "    Readiness: {} ({})",
+                entry.readiness_summary,
+                entry.readiness_status.label(),
+            );
+            for step in &entry.next_steps {
+                println!("      next: {}", step);
+            }
             println!("    Runtime: {}", entry.runtime_summary);
             println!("    Arch: {}", entry.architecture);
             println!("    Input: {}×{}", entry.input_size, entry.input_size);
@@ -330,15 +347,15 @@ pub fn print_model_catalog(report: &ModelCatalogReport, verbose: bool) {
                 }
                 println!("      URL: {}", artifact.url);
             }
-        } else if matches!(
-            entry.evidence_status,
-            EvidenceStatus::Stale | EvidenceStatus::Missing
+        } else if !matches!(
+            entry.readiness_status,
+            ModelReadinessStatus::Ready | ModelReadinessStatus::Planned
         ) {
-            println!("  evidence: {}", entry.evidence_summary);
+            println!("  readiness: {}", entry.readiness_summary);
         }
     }
 
-    println!("{}", "═".repeat(126));
+    println!("{}", "═".repeat(148));
 
     let fixture_summary = if let Some(error) = &report.fixture_error {
         format!("unavailable ({error})")
@@ -359,6 +376,15 @@ pub fn print_model_catalog(report: &ModelCatalogReport, verbose: bool) {
         report.summary.evidence.unverified,
     );
     println!(
+        "Readiness summary: {} ready, {} need download, {} need evidence refresh, {} need validation, {} planned, {} blocked",
+        report.summary.readiness.ready,
+        report.summary.readiness.needs_download,
+        report.summary.readiness.needs_evidence_refresh,
+        report.summary.readiness.needs_validation,
+        report.summary.readiness.planned,
+        report.summary.readiness.blocked,
+    );
+    println!(
         "Artifact summary: {} total, {} usable, {} verified, {} pending verification, {} missing, {} invalid, {} unusable, {} unknown",
         report.summary.artifacts.total,
         report.summary.artifacts.usable,
@@ -369,6 +395,51 @@ pub fn print_model_catalog(report: &ModelCatalogReport, verbose: bool) {
         report.summary.artifacts.unusable,
         report.summary.artifacts.unknown,
     );
+}
+
+pub fn print_model_download_report(report: &ModelDownloadReport) {
+    println!();
+    println!("Model download");
+    println!("{}", "═".repeat(116));
+    println!("Model: {}", report.model);
+    println!("Action: {}", report.action.label());
+    println!("Summary: {}", report.summary);
+    println!(
+        "Readiness: {} ({})",
+        report.entry.readiness_summary,
+        report.entry.readiness_status.label(),
+    );
+    if !report.entry.next_steps.is_empty() {
+        println!("Next steps:");
+        for step in &report.entry.next_steps {
+            println!("  - {}", step);
+        }
+    }
+
+    if !report.artifact_changes.is_empty() {
+        println!("Artifact changes:");
+        for artifact in &report.artifact_changes {
+            println!(
+                "  - {}: {} -> {}{}",
+                artifact.relative_path,
+                artifact.previous_status.label(),
+                artifact.current_status.label(),
+                if artifact.downloaded {
+                    " (downloaded)"
+                } else if artifact.repaired {
+                    " (repaired)"
+                } else {
+                    ""
+                },
+            );
+            if let Some(byte_size) = artifact.byte_size {
+                println!("      bytes: {}", byte_size);
+            }
+            println!("      detail: {}", artifact.cache_summary);
+        }
+    }
+
+    println!("{}", "═".repeat(116));
 }
 
 pub fn print_validation_summaries(summaries: &[ModelValidationSummary]) {
