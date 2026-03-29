@@ -4,6 +4,7 @@
   "evidence_timestamp": "2026-03-27T12:00:00Z",
   "artifact_id": "ijepa-vit-h14:standard:2026-03-27T12:00:00Z",
   "source": "facebookresearch/ijepa",
+  "backend": "stub",
   "tolerances": {
     "patch_count_abs": 0,
     "embedding_dim_abs": 0,

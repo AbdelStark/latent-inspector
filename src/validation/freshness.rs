@@ -1,4 +1,5 @@
 use crate::models::registry::RegistryEntry;
+use crate::models::InferenceBackend;
 use crate::validation::fixtures::{
     build_reference_artifact_id, ContractArtifact, LoadedFixtureSet, ReferenceArtifact,
 };
@@ -100,6 +101,18 @@ pub fn parity_evidence_freshness(
         reasons.push(
             "approved parity tolerances no longer match the current registry contract".to_string(),
         );
+    }
+
+    let expected_backend = if entry.is_ready() {
+        InferenceBackend::OnnxRuntime
+    } else {
+        InferenceBackend::Stub
+    };
+    if reference.backend != expected_backend {
+        reasons.push(format!(
+            "reference backend '{}' does not match the expected '{}' execution path for this model",
+            reference.backend, expected_backend
+        ));
     }
 
     FreshnessReport::new(reasons)
@@ -210,5 +223,20 @@ mod tests {
             .reasons()
             .iter()
             .any(|reason| reason.contains("reference artifact id")));
+    }
+
+    #[test]
+    fn parity_freshness_flags_reference_backend_drift() {
+        let fixture_set = load_fixture_set(None).unwrap();
+        let entry = registry::find("dinov2-vit-l14").unwrap();
+        let mut reference = fixture_set.load_reference("dinov2-vit-l14").unwrap();
+        reference.backend = InferenceBackend::Stub;
+
+        let freshness = parity_evidence_freshness(&entry, &reference, &fixture_set);
+        assert!(freshness.is_stale());
+        assert!(freshness
+            .reasons()
+            .iter()
+            .any(|reason| reason.contains("reference backend")));
     }
 }

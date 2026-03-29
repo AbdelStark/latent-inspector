@@ -194,13 +194,13 @@ fn validate_detects_reference_drift() {
     assert_eq!(output.status.code(), Some(1));
     let payload = read_json(&outdir.path().join("validation.json"));
     let summary = &payload[0];
-    assert_eq!(summary["status"], "failed");
-    assert_eq!(summary["parity"]["status"], "failed");
-    assert!(summary["parity"]["deltas"]
-        .as_array()
+    assert_eq!(summary["status"], "unverified");
+    assert_eq!(summary["parity"]["status"], "unverified");
+    assert!(summary["parity"]["deltas"].is_null());
+    assert!(summary["parity"]["summary"]
+        .as_str()
         .unwrap()
-        .iter()
-        .any(|delta| delta["name"] == "fixtures.gradient-224.patch_signature[0]"));
+        .contains("approved artifact was captured from 'onnx-runtime'"));
 }
 
 #[test]
@@ -242,6 +242,7 @@ fn validate_marks_stale_reference_identity_without_reporting_parity_drift() {
     let fixtures = copy_fixture_dir();
     let reference_path = fixtures.path().join("dinov2-vit-l14.reference.json");
     let mut reference = read_json(&reference_path);
+    reference["backend"] = Value::from("stub");
     reference["artifact_id"] = Value::from("dinov2-vit-l14:standard:outdated");
     reference["observed"]["fixtures"][0]["patch_signature"][0] = Value::from(42.0);
     fs::write(
@@ -276,13 +277,6 @@ fn validate_refresh_goldens_rewrites_reference_artifact() {
     let fixtures = copy_fixture_dir();
     let reference_path = fixtures.path().join("dinov2-vit-l14.reference.json");
     let original = read_json(&reference_path);
-    let mut reference = read_json(&reference_path);
-    reference["observed"]["fixtures"][0]["patch_signature"][0] = Value::from(9.9);
-    fs::write(
-        &reference_path,
-        serde_json::to_string_pretty(&reference).unwrap(),
-    )
-    .unwrap();
 
     let output = run(&[
         "validate",
@@ -295,7 +289,10 @@ fn validate_refresh_goldens_rewrites_reference_artifact() {
 
     assert_eq!(output.status.code(), Some(1));
     let refreshed = read_json(&reference_path);
-    assert_eq!(refreshed, original);
+    assert_ne!(refreshed, original);
+    assert_eq!(refreshed["backend"], "stub");
+    assert_ne!(refreshed["observed"], original["observed"]);
+    assert_eq!(refreshed["artifact_id"], original["artifact_id"]);
 }
 
 #[test]

@@ -1,5 +1,6 @@
 use crate::errors::ValidationError;
 use crate::models::registry::{ModelValidationProfile, ParityTolerances};
+use crate::models::InferenceBackend;
 use image::{DynamicImage, ImageBuffer, Rgb, RgbImage};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -86,6 +87,8 @@ pub struct ReferenceArtifact {
     pub evidence_timestamp: String,
     pub artifact_id: String,
     pub source: String,
+    #[serde(default = "default_reference_backend")]
+    pub backend: InferenceBackend,
     pub tolerances: ParityTolerances,
     pub observed: ReferenceSignals,
 }
@@ -212,6 +215,10 @@ pub fn build_reference_artifact_id(
     evidence_timestamp: &str,
 ) -> String {
     format!("{model}:{fixture_set}:{evidence_timestamp}")
+}
+
+fn default_reference_backend() -> InferenceBackend {
+    InferenceBackend::Stub
 }
 
 fn materialize_pattern(spec: &ValidationFixtureSpec) -> DynamicImage {

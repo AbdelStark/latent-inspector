@@ -12,8 +12,9 @@ tests stay offline-safe and deterministic. The standard fixture set currently
 uses gradient, checkerboard, and centered-square images so parity evidence can
 catch fixture-specific regressions instead of only aggregate drift.
 
-The checked-in reference artifacts are generated from the development stub
-backend so regression tests can stay offline-safe. The product now treats any
-stub-backed validation run as `unverified` even when those fixture comparisons
-match, because synthetic outputs are useful for plumbing checks but not for
-release-grade source-alignment claims.
+The checked-in reference artifacts now record which execution backend produced
+them. The ready `dinov2-vit-l14` artifact is captured from live ONNX Runtime
+execution, while planned integrations still use the development stub backend so
+fixture plumbing stays offline-safe. The product treats any stub-backed
+validation evidence as development-only and will mark it stale or unverified
+instead of presenting it as release-grade source-alignment proof.

@@ -1,5 +1,6 @@
 use crate::models::loader::ModelOutput;
 use crate::models::registry::{ModelValidationProfile, ParityTolerances, RegistryEntry};
+use crate::models::InferenceBackend;
 use crate::validation::fixtures::{
     build_reference_artifact_id, FixtureSignalSummary, LoadedFixtureSet, MaterializedFixture,
     ReferenceArtifact, ReferenceSignals,
@@ -190,9 +191,25 @@ pub fn compare_against_reference(
 pub fn evaluate_reference_parity(
     entry: &RegistryEntry,
     fixture_set: &LoadedFixtureSet,
+    observed_backend: InferenceBackend,
     observed: &ReferenceSignals,
     reference: &ReferenceArtifact,
 ) -> ParityValidationSummary {
+    if matches!(observed_backend, InferenceBackend::Stub)
+        && reference.backend != InferenceBackend::Stub
+    {
+        return ParityValidationSummary {
+            status: ValidationStatus::Unverified,
+            summary: format!(
+                "Reference parity is unavailable while '{}' is active because the approved artifact was captured from '{}'.",
+                observed_backend, reference.backend
+            ),
+            artifact_id: Some(reference.artifact_id.clone()),
+            fixture_set: Some(reference.fixture_set.clone()),
+            deltas: Vec::new(),
+        };
+    }
+
     let freshness = parity_evidence_freshness(entry, reference, fixture_set);
     if freshness.is_stale() {
         return ParityValidationSummary {
@@ -213,6 +230,7 @@ pub fn evaluate_reference_parity(
 pub fn build_reference_artifact(
     model: &str,
     profile: &ModelValidationProfile,
+    backend: InferenceBackend,
     observed: ReferenceSignals,
 ) -> ReferenceArtifact {
     ReferenceArtifact {
@@ -225,6 +243,7 @@ pub fn build_reference_artifact(
             &profile.evidence_timestamp,
         ),
         source: profile.source.clone(),
+        backend,
         tolerances: profile.tolerances.clone(),
         observed,
     }
@@ -555,6 +574,7 @@ mod tests {
                 },
                 tolerances: tolerances.clone(),
             },
+            InferenceBackend::OnnxRuntime,
             observed.clone(),
         );
         reference.observed.fixtures[0].patch_signature[0] += 1.0;
@@ -579,10 +599,36 @@ mod tests {
         stale.artifact_id = "outdated".to_string();
         stale.observed.fixtures[0].patch_signature[0] += 10.0;
 
-        let parity = evaluate_reference_parity(&entry, &fixture_set, &observed, &stale);
+        let parity = evaluate_reference_parity(
+            &entry,
+            &fixture_set,
+            InferenceBackend::OnnxRuntime,
+            &observed,
+            &stale,
+        );
 
         assert_eq!(parity.status, ValidationStatus::Stale);
         assert!(parity.deltas.is_empty());
         assert!(parity.summary.contains("stale"));
+    }
+
+    #[test]
+    fn stub_backend_mismatch_short_circuits_numeric_parity() {
+        let fixture_set = load_fixture_set(None).unwrap();
+        let entry = registry::find("dinov2-vit-l14").unwrap();
+        let reference = fixture_set.load_reference("dinov2-vit-l14").unwrap();
+        let observed = reference.observed.clone();
+
+        let parity = evaluate_reference_parity(
+            &entry,
+            &fixture_set,
+            InferenceBackend::Stub,
+            &observed,
+            &reference,
+        );
+
+        assert_eq!(parity.status, ValidationStatus::Unverified);
+        assert!(parity.deltas.is_empty());
+        assert!(parity.summary.contains("unavailable"));
     }
 }

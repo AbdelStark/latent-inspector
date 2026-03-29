@@ -119,15 +119,25 @@ pub fn validate_session_with_fixture_set(
     let observed = summarize_outputs(fixtures.as_slice(), outputs.as_slice());
 
     let reference = if refresh_goldens {
-        let artifact =
-            build_reference_artifact(&model, &session.entry().validation, observed.clone());
+        let artifact = build_reference_artifact(
+            &model,
+            &session.entry().validation,
+            session.backend(),
+            observed.clone(),
+        );
         fixture_set.write_reference(&model, &artifact)?;
         artifact
     } else {
         fixture_set.load_reference(&model)?
     };
 
-    let parity = evaluate_reference_parity(session.entry(), fixture_set, &observed, &reference);
+    let parity = evaluate_reference_parity(
+        session.entry(),
+        fixture_set,
+        session.backend(),
+        &observed,
+        &reference,
+    );
     let evidence_timestamp = reference.evidence_timestamp.clone();
     let artifact_id = reference.artifact_id.clone();
     let fixture_set_id = reference.fixture_set.clone();

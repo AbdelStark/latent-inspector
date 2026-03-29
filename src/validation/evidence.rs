@@ -181,4 +181,32 @@ mod tests {
             .iter()
             .any(|caveat| caveat.contains("artifact evidence timestamp")));
     }
+
+    #[test]
+    fn registered_evidence_summary_flags_stub_reference_backend_for_ready_model() {
+        let fixtures = copy_fixture_dir();
+        let reference_path = fixtures.path().join("dinov2-vit-l14.reference.json");
+        let mut reference = read_json(&reference_path);
+        reference["backend"] = Value::from("stub");
+        fs::write(
+            &reference_path,
+            serde_json::to_string_pretty(&reference).unwrap(),
+        )
+        .unwrap();
+
+        let manifest_path = fixtures.path().join("manifest.json");
+        let fixture_set = load_fixture_set(Some(manifest_path.to_str().unwrap())).unwrap();
+        let entry = crate::models::registry::find("dinov2-vit-l14").unwrap();
+
+        let summary = summarize_registered_evidence_with_fixture_set(&entry, &fixture_set).unwrap();
+
+        assert_eq!(summary.status, ValidationStatus::Stale);
+        assert_eq!(summary.preprocess.status, ValidationStatus::Validated);
+        assert_eq!(summary.tensors[0].status, ValidationStatus::Validated);
+        assert_eq!(summary.parity.status, ValidationStatus::Stale);
+        assert!(summary
+            .caveats
+            .iter()
+            .any(|caveat| caveat.contains("reference backend")));
+    }
 }
