@@ -100,6 +100,14 @@ pub struct ParitySignalDelta {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FixtureParityDrift {
+    pub fixture_id: String,
+    pub signal_count: usize,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub signals: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ParityValidationSummary {
     pub status: ValidationStatus,
     pub summary: String,
@@ -107,8 +115,12 @@ pub struct ParityValidationSummary {
     pub artifact_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub fixture_set: Option<String>,
+    pub checked_signals: usize,
+    pub drifted_signals: usize,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub deltas: Vec<ParitySignalDelta>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub drifted_fixtures: Vec<FixtureParityDrift>,
 }
 
 impl ParityValidationSummary {
@@ -118,7 +130,10 @@ impl ParityValidationSummary {
             summary: summary.into(),
             artifact_id: None,
             fixture_set: None,
+            checked_signals: 0,
+            drifted_signals: 0,
             deltas: Vec::new(),
+            drifted_fixtures: Vec::new(),
         }
     }
 
@@ -129,6 +144,13 @@ impl ParityValidationSummary {
     ) -> Self {
         self.artifact_id = artifact_id;
         self.fixture_set = fixture_set;
+        self
+    }
+
+    pub fn with_diagnostics(mut self, checked_signals: usize) -> Self {
+        self.checked_signals = checked_signals;
+        self.drifted_signals = self.deltas.len();
+        self.drifted_fixtures = summarize_fixture_drifts(&self.deltas);
         self
     }
 }
@@ -299,6 +321,44 @@ impl ModelValidationSummary {
     }
 }
 
+fn summarize_fixture_drifts(deltas: &[ParitySignalDelta]) -> Vec<FixtureParityDrift> {
+    let mut drifts = Vec::new();
+
+    for delta in deltas {
+        let Some((fixture_id, signal)) = split_fixture_signal(&delta.name) else {
+            continue;
+        };
+
+        if let Some(existing) = drifts
+            .iter_mut()
+            .find(|drift: &&mut FixtureParityDrift| drift.fixture_id == fixture_id)
+        {
+            existing.signal_count += 1;
+            if !existing
+                .signals
+                .iter()
+                .any(|existing_signal| existing_signal == signal)
+            {
+                existing.signals.push(signal.to_string());
+            }
+            continue;
+        }
+
+        drifts.push(FixtureParityDrift {
+            fixture_id: fixture_id.to_string(),
+            signal_count: 1,
+            signals: vec![signal.to_string()],
+        });
+    }
+
+    drifts
+}
+
+fn split_fixture_signal(name: &str) -> Option<(&str, &str)> {
+    let scoped = name.strip_prefix("fixtures.")?;
+    scoped.split_once('.')
+}
+
 fn build_caveats(
     preprocess: &CheckSummary,
     tensors: &[TensorValidationSummary],
@@ -422,5 +482,62 @@ mod tests {
         assert_eq!(summary.tensors[0].status, ValidationStatus::Unverified);
         assert_eq!(summary.parity.status, ValidationStatus::Unverified);
         assert!(summary.backend.summary.contains("Stub backend is active"));
+    }
+
+    #[test]
+    fn parity_diagnostics_group_fixture_deltas() {
+        let parity = ParityValidationSummary {
+            status: ValidationStatus::Failed,
+            summary: "Reference parity drift detected.".into(),
+            artifact_id: Some("artifact".into()),
+            fixture_set: Some("standard".into()),
+            checked_signals: 0,
+            drifted_signals: 0,
+            deltas: vec![
+                ParitySignalDelta {
+                    name: "patch_mean".into(),
+                    observed: "1.0".into(),
+                    expected: "0.0".into(),
+                    abs_diff: Some(1.0),
+                    tolerance: Some(0.1),
+                },
+                ParitySignalDelta {
+                    name: "fixtures.gradient-224.patch_signature[0]".into(),
+                    observed: "1.0".into(),
+                    expected: "0.0".into(),
+                    abs_diff: Some(1.0),
+                    tolerance: Some(0.1),
+                },
+                ParitySignalDelta {
+                    name: "fixtures.gradient-224.cls_signature[1]".into(),
+                    observed: "1.0".into(),
+                    expected: "0.0".into(),
+                    abs_diff: Some(1.0),
+                    tolerance: Some(0.1),
+                },
+                ParitySignalDelta {
+                    name: "fixtures.center-square-224.patch_std".into(),
+                    observed: "1.0".into(),
+                    expected: "0.0".into(),
+                    abs_diff: Some(1.0),
+                    tolerance: Some(0.1),
+                },
+            ],
+            drifted_fixtures: Vec::new(),
+        }
+        .with_diagnostics(19);
+
+        assert_eq!(parity.checked_signals, 19);
+        assert_eq!(parity.drifted_signals, 4);
+        assert_eq!(parity.drifted_fixtures.len(), 2);
+        assert_eq!(parity.drifted_fixtures[0].fixture_id, "gradient-224");
+        assert_eq!(parity.drifted_fixtures[0].signal_count, 2);
+        assert_eq!(
+            parity.drifted_fixtures[0].signals,
+            vec![
+                "patch_signature[0]".to_string(),
+                "cls_signature[1]".to_string()
+            ]
+        );
     }
 }

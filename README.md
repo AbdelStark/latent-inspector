@@ -114,6 +114,10 @@ cargo run -- validate --model dinov2-vit-l14 --refresh-goldens
 The validation summary reports preprocessing status, tensor semantics, approved
 reference parity, caveats, and a plain-language recommendation for whether the
 model is safe to interpret as source-aligned.
+Validation JSON, terminal, and HTML outputs now also surface the approved
+artifact identity, checked-signal counts, and grouped fixture-level drift
+summaries so reviewers can trace exactly which evidence bundle was used and
+which fixtures drifted without opening raw fixture artifacts.
 `validate` is the only command that re-executes the fixture set against the
 active backend. The normal report commands (`compare`, `inspect`, `neighbors`,
 `similarity`, `drift`, and `models`) reuse the checked-in approved evidence plus

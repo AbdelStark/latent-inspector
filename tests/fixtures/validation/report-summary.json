@@ -2,6 +2,11 @@
   "model": "dinov2-vit-l14",
   "status": "validated",
   "evidence_timestamp": "2026-03-27T12:00:00Z",
+  "backend": {
+    "kind": "onnx-runtime",
+    "status": "validated",
+    "summary": "Validation ran against live ONNX Runtime execution."
+  },
   "preprocess": {
     "status": "validated",
     "summary": "Input size, normalization, resize filter, and channel layout match the approved source-model contract."
@@ -19,6 +24,8 @@
     "summary": "Compared signals stayed within approved tolerance on the standard validation fixture set.",
     "artifact_id": "dinov2-vit-l14:standard:2026-03-27T12:00:00Z",
     "fixture_set": "standard",
+    "checked_signals": 73,
+    "drifted_signals": 0,
     "deltas": []
   },
   "caveats": [],

@@ -10,6 +10,17 @@ use crate::validation::report::{ParitySignalDelta, ParityValidationSummary, Vali
 
 const SIGNATURE_SAMPLES: usize = 8;
 
+#[derive(Default)]
+struct ParityComparisonStats {
+    checked_signals: usize,
+}
+
+impl ParityComparisonStats {
+    fn record(&mut self) {
+        self.checked_signals += 1;
+    }
+}
+
 pub fn summarize_outputs(
     fixtures: &[MaterializedFixture],
     outputs: &[ModelOutput],
@@ -56,7 +67,9 @@ pub fn compare_against_reference(
     reference: &ReferenceArtifact,
 ) -> ParityValidationSummary {
     let mut deltas = Vec::new();
+    let mut stats = ParityComparisonStats::default();
 
+    stats.record();
     if observed.tensor_name != reference.observed.tensor_name {
         deltas.push(ParitySignalDelta {
             name: "tensor_name".to_string(),
@@ -67,6 +80,7 @@ pub fn compare_against_reference(
         });
     }
 
+    stats.record();
     if observed.output_shape != reference.observed.output_shape {
         deltas.push(ParitySignalDelta {
             name: "output_shape".to_string(),
@@ -77,6 +91,7 @@ pub fn compare_against_reference(
         });
     }
 
+    stats.record();
     if observed.cls_present != reference.observed.cls_present {
         deltas.push(ParitySignalDelta {
             name: "cls_present".to_string(),
@@ -92,6 +107,7 @@ pub fn compare_against_reference(
         observed.patch_count as f32,
         reference.observed.patch_count as f32,
         reference.tolerances.patch_count_abs as f32,
+        &mut stats,
         &mut deltas,
     );
     compare_numeric(
@@ -99,6 +115,7 @@ pub fn compare_against_reference(
         observed.embedding_dim as f32,
         reference.observed.embedding_dim as f32,
         reference.tolerances.embedding_dim_abs as f32,
+        &mut stats,
         &mut deltas,
     );
     compare_numeric(
@@ -106,6 +123,7 @@ pub fn compare_against_reference(
         observed.patch_mean,
         reference.observed.patch_mean,
         reference.tolerances.patch_mean_abs,
+        &mut stats,
         &mut deltas,
     );
     compare_numeric(
@@ -113,6 +131,7 @@ pub fn compare_against_reference(
         observed.patch_std,
         reference.observed.patch_std,
         reference.tolerances.patch_std_abs,
+        &mut stats,
         &mut deltas,
     );
 
@@ -123,15 +142,19 @@ pub fn compare_against_reference(
                 observed_patch_rms,
                 expected_patch_rms,
                 reference.tolerances.patch_rms_abs,
+                &mut stats,
                 &mut deltas,
             ),
-            None => deltas.push(ParitySignalDelta {
-                name: "patch_rms".to_string(),
-                observed: "null".to_string(),
-                expected: format!("{expected_patch_rms:.6}"),
-                abs_diff: None,
-                tolerance: Some(reference.tolerances.patch_rms_abs),
-            }),
+            None => {
+                stats.record();
+                deltas.push(ParitySignalDelta {
+                    name: "patch_rms".to_string(),
+                    observed: "null".to_string(),
+                    expected: format!("{expected_patch_rms:.6}"),
+                    abs_diff: None,
+                    tolerance: Some(reference.tolerances.patch_rms_abs),
+                });
+            }
         }
     }
 
@@ -141,26 +164,31 @@ pub fn compare_against_reference(
             observed,
             expected,
             reference.tolerances.cls_l2_abs,
+            &mut stats,
             &mut deltas,
         ),
         (None, None) => {}
-        (observed, expected) => deltas.push(ParitySignalDelta {
-            name: "cls_l2_norm".to_string(),
-            observed: observed
-                .map(|value| format!("{value:.6}"))
-                .unwrap_or_else(|| "null".to_string()),
-            expected: expected
-                .map(|value| format!("{value:.6}"))
-                .unwrap_or_else(|| "null".to_string()),
-            abs_diff: None,
-            tolerance: Some(reference.tolerances.cls_l2_abs),
-        }),
+        (observed, expected) => {
+            stats.record();
+            deltas.push(ParitySignalDelta {
+                name: "cls_l2_norm".to_string(),
+                observed: observed
+                    .map(|value| format!("{value:.6}"))
+                    .unwrap_or_else(|| "null".to_string()),
+                expected: expected
+                    .map(|value| format!("{value:.6}"))
+                    .unwrap_or_else(|| "null".to_string()),
+                abs_diff: None,
+                tolerance: Some(reference.tolerances.cls_l2_abs),
+            });
+        }
     }
 
     compare_fixture_summaries(
         &observed.fixtures,
         &reference.observed.fixtures,
         &reference.tolerances,
+        &mut stats,
         &mut deltas,
     );
 
@@ -184,8 +212,12 @@ pub fn compare_against_reference(
         summary,
         artifact_id: Some(reference.artifact_id.clone()),
         fixture_set: Some(reference.fixture_set.clone()),
+        checked_signals: 0,
+        drifted_signals: 0,
         deltas,
+        drifted_fixtures: Vec::new(),
     }
+    .with_diagnostics(stats.checked_signals)
 }
 
 pub fn evaluate_reference_parity(
@@ -206,7 +238,10 @@ pub fn evaluate_reference_parity(
             ),
             artifact_id: Some(reference.artifact_id.clone()),
             fixture_set: Some(reference.fixture_set.clone()),
+            checked_signals: 0,
+            drifted_signals: 0,
             deltas: Vec::new(),
+            drifted_fixtures: Vec::new(),
         };
     }
 
@@ -220,7 +255,10 @@ pub fn evaluate_reference_parity(
             ),
             artifact_id: Some(reference.artifact_id.clone()),
             fixture_set: Some(reference.fixture_set.clone()),
+            checked_signals: 0,
+            drifted_signals: 0,
             deltas: Vec::new(),
+            drifted_fixtures: Vec::new(),
         };
     }
 
@@ -327,12 +365,14 @@ fn compare_fixture_summaries(
     observed: &[FixtureSignalSummary],
     reference: &[FixtureSignalSummary],
     tolerances: &ParityTolerances,
+    stats: &mut ParityComparisonStats,
     deltas: &mut Vec<ParitySignalDelta>,
 ) {
     if reference.is_empty() {
         return;
     }
 
+    stats.record();
     if observed.len() != reference.len() {
         deltas.push(ParitySignalDelta {
             name: "fixture_count".to_string(),
@@ -346,6 +386,7 @@ fn compare_fixture_summaries(
     for (observed_fixture, reference_fixture) in observed.iter().zip(reference.iter()) {
         let fixture_name = format!("fixtures.{}", reference_fixture.id);
 
+        stats.record();
         if observed_fixture.id != reference_fixture.id {
             deltas.push(ParitySignalDelta {
                 name: format!("{fixture_name}.id"),
@@ -361,6 +402,7 @@ fn compare_fixture_summaries(
             observed_fixture.patch_mean,
             reference_fixture.patch_mean,
             tolerances.patch_mean_abs,
+            stats,
             deltas,
         );
         compare_numeric(
@@ -368,6 +410,7 @@ fn compare_fixture_summaries(
             observed_fixture.patch_std,
             reference_fixture.patch_std,
             tolerances.patch_std_abs,
+            stats,
             deltas,
         );
         compare_numeric(
@@ -375,6 +418,7 @@ fn compare_fixture_summaries(
             observed_fixture.patch_rms,
             reference_fixture.patch_rms,
             tolerances.patch_rms_abs,
+            stats,
             deltas,
         );
         compare_vector(
@@ -382,6 +426,7 @@ fn compare_fixture_summaries(
             &observed_fixture.patch_signature,
             &reference_fixture.patch_signature,
             tolerances.patch_signature_abs,
+            stats,
             deltas,
         );
 
@@ -391,20 +436,24 @@ fn compare_fixture_summaries(
                 observed_cls,
                 expected_cls,
                 tolerances.cls_l2_abs,
+                stats,
                 deltas,
             ),
             (None, None) => {}
-            (observed_cls, expected_cls) => deltas.push(ParitySignalDelta {
-                name: format!("{fixture_name}.cls_l2_norm"),
-                observed: observed_cls
-                    .map(|value| format!("{value:.6}"))
-                    .unwrap_or_else(|| "null".to_string()),
-                expected: expected_cls
-                    .map(|value| format!("{value:.6}"))
-                    .unwrap_or_else(|| "null".to_string()),
-                abs_diff: None,
-                tolerance: Some(tolerances.cls_l2_abs),
-            }),
+            (observed_cls, expected_cls) => {
+                stats.record();
+                deltas.push(ParitySignalDelta {
+                    name: format!("{fixture_name}.cls_l2_norm"),
+                    observed: observed_cls
+                        .map(|value| format!("{value:.6}"))
+                        .unwrap_or_else(|| "null".to_string()),
+                    expected: expected_cls
+                        .map(|value| format!("{value:.6}"))
+                        .unwrap_or_else(|| "null".to_string()),
+                    abs_diff: None,
+                    tolerance: Some(tolerances.cls_l2_abs),
+                });
+            }
         }
 
         compare_vector(
@@ -412,6 +461,7 @@ fn compare_fixture_summaries(
             &observed_fixture.cls_signature,
             &reference_fixture.cls_signature,
             tolerances.cls_signature_abs,
+            stats,
             deltas,
         );
     }
@@ -422,9 +472,11 @@ fn compare_vector(
     observed: &[f32],
     expected: &[f32],
     tolerance: f32,
+    stats: &mut ParityComparisonStats,
     deltas: &mut Vec<ParitySignalDelta>,
 ) {
     if observed.len() != expected.len() {
+        stats.record();
         deltas.push(ParitySignalDelta {
             name: format!("{name}.len"),
             observed: observed.len().to_string(),
@@ -442,6 +494,7 @@ fn compare_vector(
             *observed_value,
             *expected_value,
             tolerance,
+            stats,
             deltas,
         );
     }
@@ -452,8 +505,10 @@ fn compare_numeric(
     observed: f32,
     expected: f32,
     tolerance: f32,
+    stats: &mut ParityComparisonStats,
     deltas: &mut Vec<ParitySignalDelta>,
 ) {
+    stats.record();
     let abs_diff = (observed - expected).abs();
     if abs_diff > tolerance {
         deltas.push(ParitySignalDelta {
@@ -582,6 +637,9 @@ mod tests {
         let parity = compare_against_reference(&observed, &reference);
 
         assert_eq!(parity.status, ValidationStatus::Failed);
+        assert!(parity.checked_signals > 0);
+        assert_eq!(parity.drifted_signals, parity.deltas.len());
+        assert_eq!(parity.drifted_fixtures[0].fixture_id, "gradient-224");
         assert!(parity
             .deltas
             .iter()

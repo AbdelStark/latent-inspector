@@ -45,6 +45,29 @@ fn read_artifact_manifest(dir: &Path) -> Value {
     read_json(&dir.join("artifacts.json"))
 }
 
+fn write_json(path: &Path, value: &Value) {
+    fs::write(path, serde_json::to_string_pretty(value).unwrap()).unwrap();
+}
+
+fn mutate_reference_artifact(path: &Path, mutate: impl FnOnce(&mut Value)) {
+    let mut reference = read_json(path);
+    mutate(&mut reference);
+    write_json(path, &reference);
+}
+
+fn refresh_stub_reference(manifest_path: &Path) {
+    let output = run(&[
+        "validate",
+        "--model",
+        "dinov2-vit-l14",
+        "--fixture-set",
+        manifest_path.to_str().unwrap(),
+        "--refresh-goldens",
+    ]);
+
+    assert_eq!(output.status.code(), Some(1));
+}
+
 fn artifact_entry<'a>(manifest: &'a Value, path: &str) -> &'a Value {
     manifest["artifacts"]
         .as_array()
@@ -127,6 +150,8 @@ fn validate_json_output_matches_contract_shape() {
     assert_eq!(summary["backend"]["status"], "unverified");
     assert!(summary["preprocess"]["summary"].is_string());
     assert!(summary["parity"]["artifact_id"].is_string());
+    assert_eq!(summary["parity"]["checked_signals"], 0);
+    assert_eq!(summary["parity"]["drifted_signals"], 0);
     assert!(summary["tensors"].is_array());
     let manifest = read_artifact_manifest(outdir.path());
     assert_eq!(manifest["command"], "validate");
@@ -143,6 +168,8 @@ fn validate_json_output_matches_contract_shape() {
         manifest["summary"]["failed_models"],
         Value::from(vec!["dinov2-vit-l14"])
     );
+    assert_eq!(manifest["summary"]["checked_signals"], 0);
+    assert_eq!(manifest["summary"]["drifted_signals"], 0);
     assert_eq!(
         manifest["validation_summary"]["overall_status"],
         "unverified"
@@ -171,6 +198,8 @@ fn validate_html_output_writes_companion_json_bundle() {
     assert!(html.contains("artifacts.json"));
     assert!(html.contains("dinov2-vit-l14"));
     assert!(html.contains("Stub backend"));
+    assert!(html.contains("Approved artifact"));
+    assert!(html.contains("Signals checked"));
     assert!(html.contains("SHA-256"));
 
     let payload = read_json(&outdir.path().join("validation.json"));
@@ -206,13 +235,9 @@ fn validate_html_output_writes_companion_json_bundle() {
 fn validate_detects_reference_drift() {
     let fixtures = copy_fixture_dir();
     let reference_path = fixtures.path().join("dinov2-vit-l14.reference.json");
-    let mut reference = read_json(&reference_path);
-    reference["observed"]["fixtures"][0]["patch_signature"][0] = Value::from(9.9);
-    fs::write(
-        &reference_path,
-        serde_json::to_string_pretty(&reference).unwrap(),
-    )
-    .unwrap();
+    mutate_reference_artifact(&reference_path, |reference| {
+        reference["observed"]["fixtures"][0]["patch_signature"][0] = Value::from(9.9);
+    });
 
     let outdir = tempdir().unwrap();
     let output = run(&[
@@ -240,16 +265,115 @@ fn validate_detects_reference_drift() {
 }
 
 #[test]
+fn validate_json_reports_provenance_when_stub_refresh_keeps_parity_stale() {
+    let fixtures = copy_fixture_dir();
+    let manifest_path = fixtures.path().join("manifest.json");
+    refresh_stub_reference(&manifest_path);
+
+    let reference_path = fixtures.path().join("dinov2-vit-l14.reference.json");
+    mutate_reference_artifact(&reference_path, |reference| {
+        reference["observed"]["fixtures"][0]["patch_signature"][0] = Value::from(9.9);
+        reference["observed"]["fixtures"][0]["cls_signature"][1] = Value::from(8.8);
+    });
+
+    let outdir = tempdir().unwrap();
+    let output = run(&[
+        "validate",
+        "--model",
+        "dinov2-vit-l14",
+        "--fixture-set",
+        manifest_path.to_str().unwrap(),
+        "--format",
+        "json",
+        "--output",
+        outdir.path().to_str().unwrap(),
+    ]);
+
+    assert_eq!(output.status.code(), Some(1));
+    let payload = read_json(&outdir.path().join("validation.json"));
+    let summary = &payload[0];
+    assert_eq!(summary["status"], "stale");
+    assert_eq!(summary["parity"]["status"], "stale");
+    assert_eq!(summary["parity"]["checked_signals"], 0);
+    assert_eq!(summary["parity"]["drifted_signals"], 0);
+    assert!(summary["parity"]["deltas"].is_null());
+    assert!(summary["parity"]["drifted_fixtures"].is_null());
+    assert_eq!(
+        summary["parity"]["artifact_id"],
+        "dinov2-vit-l14:standard:2026-03-27T12:00:00Z"
+    );
+
+    let manifest = read_artifact_manifest(outdir.path());
+    assert_eq!(manifest["summary"]["checked_signals"], 0);
+    assert_eq!(manifest["summary"]["drifted_signals"], 0);
+}
+
+#[test]
+fn validate_terminal_reports_provenance_for_stale_stub_refresh() {
+    let fixtures = copy_fixture_dir();
+    let manifest_path = fixtures.path().join("manifest.json");
+    refresh_stub_reference(&manifest_path);
+
+    let reference_path = fixtures.path().join("dinov2-vit-l14.reference.json");
+    mutate_reference_artifact(&reference_path, |reference| {
+        reference["observed"]["fixtures"][0]["patch_signature"][0] = Value::from(9.9);
+    });
+
+    let output = run(&[
+        "validate",
+        "--model",
+        "dinov2-vit-l14",
+        "--fixture-set",
+        manifest_path.to_str().unwrap(),
+    ]);
+
+    assert_eq!(output.status.code(), Some(1));
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("fixture-set=standard"));
+    assert!(stdout.contains("artifact=dinov2-vit-l14:standard:2026-03-27T12:00:00Z"));
+    assert!(stdout.contains("parity=stale"));
+    assert!(stdout.contains("checked 0, drifted 0"));
+}
+
+#[test]
+fn validate_html_reports_provenance_for_stale_stub_refresh() {
+    let fixtures = copy_fixture_dir();
+    let manifest_path = fixtures.path().join("manifest.json");
+    refresh_stub_reference(&manifest_path);
+
+    let reference_path = fixtures.path().join("dinov2-vit-l14.reference.json");
+    mutate_reference_artifact(&reference_path, |reference| {
+        reference["observed"]["fixtures"][0]["patch_signature"][0] = Value::from(9.9);
+    });
+
+    let outdir = tempdir().unwrap();
+    let output = run(&[
+        "validate",
+        "--model",
+        "dinov2-vit-l14",
+        "--fixture-set",
+        manifest_path.to_str().unwrap(),
+        "--format",
+        "html",
+        "--output",
+        outdir.path().to_str().unwrap(),
+    ]);
+
+    assert_eq!(output.status.code(), Some(1));
+    let html = fs::read_to_string(outdir.path().join("validation.html")).unwrap();
+    assert!(html.contains("Approved artifact"));
+    assert!(html.contains("Signals checked"));
+    assert!(html.contains("dinov2-vit-l14:standard:2026-03-27T12:00:00Z"));
+    assert!(html.contains("Signals drifted"));
+}
+
+#[test]
 fn validate_marks_stale_contract_evidence_without_reporting_runtime_failure() {
     let fixtures = copy_fixture_dir();
     let contract_path = fixtures.path().join("dinov2-vit-l14.contract.json");
     let mut contract = read_json(&contract_path);
     contract["profile"]["evidence_timestamp"] = Value::from("2026-03-28T00:00:00Z");
-    fs::write(
-        &contract_path,
-        serde_json::to_string_pretty(&contract).unwrap(),
-    )
-    .unwrap();
+    write_json(&contract_path, &contract);
 
     let outdir = tempdir().unwrap();
     let output = run(&[
@@ -277,15 +401,11 @@ fn validate_marks_stale_contract_evidence_without_reporting_runtime_failure() {
 fn validate_marks_stale_reference_identity_without_reporting_parity_drift() {
     let fixtures = copy_fixture_dir();
     let reference_path = fixtures.path().join("dinov2-vit-l14.reference.json");
-    let mut reference = read_json(&reference_path);
-    reference["backend"] = Value::from("stub");
-    reference["artifact_id"] = Value::from("dinov2-vit-l14:standard:outdated");
-    reference["observed"]["fixtures"][0]["patch_signature"][0] = Value::from(42.0);
-    fs::write(
-        &reference_path,
-        serde_json::to_string_pretty(&reference).unwrap(),
-    )
-    .unwrap();
+    mutate_reference_artifact(&reference_path, |reference| {
+        reference["backend"] = Value::from("stub");
+        reference["artifact_id"] = Value::from("dinov2-vit-l14:standard:outdated");
+        reference["observed"]["fixtures"][0]["patch_signature"][0] = Value::from(42.0);
+    });
 
     let outdir = tempdir().unwrap();
     let output = run(&[

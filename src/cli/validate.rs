@@ -186,11 +186,21 @@ fn validate_manifest_summary(
         .filter(|summary| !matches!(summary.status, ValidationStatus::Validated))
         .map(|summary| summary.model.clone())
         .collect::<Vec<_>>();
+    let checked_signals = summaries
+        .iter()
+        .map(|summary| summary.parity.checked_signals)
+        .sum::<usize>();
+    let drifted_signals = summaries
+        .iter()
+        .map(|summary| summary.parity.drifted_signals)
+        .sum::<usize>();
 
     json!({
         "model_count": summaries.len(),
         "refresh_goldens": args.refresh_goldens,
         "evidence_timestamp": summaries.first().map(|summary| summary.evidence_timestamp.clone()),
         "failed_models": failed_models,
+        "checked_signals": checked_signals,
+        "drifted_signals": drifted_signals,
     })
 }

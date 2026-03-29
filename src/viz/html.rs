@@ -1067,18 +1067,10 @@ fn render_validation_section_body(
 }
 
 fn render_validation_row(summary: &ModelValidationSummary) -> String {
-    let tensor_summary = summary
-        .tensors
-        .iter()
-        .map(|tensor| {
-            format!(
-                "{}: {}",
-                escape_html(&tensor.name),
-                escape_html(&tensor.summary)
-            )
-        })
-        .collect::<Vec<_>>()
-        .join("<br>");
+    let tensor_summary = render_validation_tensor_summary(summary);
+    let provenance = render_validation_provenance(summary);
+    let fixture_drifts = render_validation_fixture_drifts(summary);
+    let parity_deltas = render_validation_delta_table(summary);
     let caveats = if summary.caveats.is_empty() {
         "<p class=\"caveat\">No open caveats.</p>".to_string()
     } else {
@@ -1089,42 +1081,145 @@ fn render_validation_row(summary: &ModelValidationSummary) -> String {
             .collect::<Vec<_>>()
             .join("")
     };
-    let parity_deltas = if summary.parity.deltas.is_empty() {
-        String::new()
-    } else {
-        let items = summary
-            .parity
-            .deltas
-            .iter()
-            .take(5)
-            .map(|delta| {
-                format!(
-                    "<li><code>{}</code>: {} vs {}</li>",
-                    escape_html(&delta.name),
-                    escape_html(&delta.observed),
-                    escape_html(&delta.expected),
-                )
-            })
-            .collect::<Vec<_>>()
-            .join("");
-        format!("<ul class=\"delta-list\">{items}</ul>")
-    };
 
     format!(
-        "<article class=\"validation-card\"><div style=\"display:flex;justify-content:space-between;align-items:center;gap:1rem\"><strong>{}</strong><span class=\"badge {}\">{}</span></div><p>{}</p><p><strong>Backend:</strong> {} <span class=\"badge {}\">{}</span></p><p class=\"caveat\">{}</p><p><strong>Preprocess:</strong> {}</p><p><strong>Tensor semantics:</strong> {}</p><p><strong>Parity:</strong> {}</p>{}{}</article>",
+        "<article class=\"validation-card\"><div style=\"display:flex;justify-content:space-between;align-items:center;gap:1rem\"><strong>{}</strong><span class=\"badge {}\">{}</span></div><p>{}</p>{}<p><strong>Backend:</strong> {} <span class=\"badge {}\">{}</span></p><p class=\"caveat\">{}</p><p><strong>Preprocess:</strong> <span class=\"badge {}\">{}</span> {}</p><div><strong>Tensor semantics:</strong>{}</div><p><strong>Parity:</strong> <span class=\"badge {}\">{}</span> {}</p>{}{}{}</article>",
         escape_html(&summary.model),
         summary.status.label(),
         summary.status.label(),
         escape_html(&summary.recommendation),
+        provenance,
         escape_html(summary.backend.kind.display_name()),
         summary.backend.status.label(),
         summary.backend.status.label(),
         escape_html(&summary.backend.summary),
+        summary.preprocess.status.label(),
+        summary.preprocess.status.label(),
         escape_html(&summary.preprocess.summary),
         tensor_summary,
+        summary.parity.status.label(),
+        summary.parity.status.label(),
         escape_html(&summary.parity.summary),
+        fixture_drifts,
         caveats,
-        parity_deltas
+        parity_deltas,
+    )
+}
+
+fn render_validation_tensor_summary(summary: &ModelValidationSummary) -> String {
+    if summary.tensors.is_empty() {
+        return "<p class=\"empty-state\">No tensor semantics were recorded for this report.</p>"
+            .to_string();
+    }
+
+    let items = summary
+        .tensors
+        .iter()
+        .map(|tensor| {
+            format!(
+                "<li><span class=\"badge {}\">{}</span> <code>{}</code> ({}) {} </li>",
+                tensor.status.label(),
+                tensor.status.label(),
+                escape_html(&tensor.name),
+                escape_html(&tensor.role),
+                escape_html(&tensor.summary),
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("");
+
+    format!("<ul class=\"delta-list\">{items}</ul>")
+}
+
+fn render_validation_provenance(summary: &ModelValidationSummary) -> String {
+    format!(
+        "<div class=\"stats-grid\">\
+         <div class=\"stat-card\"><span>Evidence timestamp</span><strong>{}</strong></div>\
+         <div class=\"stat-card\"><span>Fixture set</span><strong>{}</strong></div>\
+         <div class=\"stat-card\"><span>Signals checked</span><strong>{}</strong></div>\
+         <div class=\"stat-card\"><span>Signals drifted</span><strong>{}</strong></div>\
+         <div class=\"stat-card\"><span>Drifted fixtures</span><strong>{}</strong></div>\
+         </div>\
+         <p><strong>Approved artifact:</strong> <code>{}</code></p>",
+        escape_html(&summary.evidence_timestamp),
+        escape_html(summary.parity.fixture_set.as_deref().unwrap_or("n/a")),
+        summary.parity.checked_signals,
+        summary.parity.drifted_signals,
+        summary.parity.drifted_fixtures.len(),
+        escape_html(summary.parity.artifact_id.as_deref().unwrap_or("n/a")),
+    )
+}
+
+fn render_validation_fixture_drifts(summary: &ModelValidationSummary) -> String {
+    if summary.parity.checked_signals == 0 {
+        return String::new();
+    }
+
+    if summary.parity.drifted_fixtures.is_empty() {
+        return "<p class=\"caveat\"><strong>Fixture drift:</strong> none across the checked fixture set.</p>"
+            .to_string();
+    }
+
+    let items = summary
+        .parity
+        .drifted_fixtures
+        .iter()
+        .map(|fixture| {
+            format!(
+                "<li><code>{}</code>: {} signal(s) drifted ({})</li>",
+                escape_html(&fixture.fixture_id),
+                fixture.signal_count,
+                escape_html(&fixture.signals.join(", ")),
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("");
+
+    format!("<div><strong>Fixture drift:</strong><ul class=\"delta-list\">{items}</ul></div>")
+}
+
+fn render_validation_delta_table(summary: &ModelValidationSummary) -> String {
+    if summary.parity.deltas.is_empty() {
+        return String::new();
+    }
+
+    let rows = summary
+        .parity
+        .deltas
+        .iter()
+        .take(8)
+        .map(|delta| {
+            format!(
+                "<tr><td><code>{}</code></td><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>",
+                escape_html(&delta.name),
+                escape_html(&delta.observed),
+                escape_html(&delta.expected),
+                delta
+                    .abs_diff
+                    .map(|value| format!("{value:.6}"))
+                    .unwrap_or_else(|| "N/A".to_string()),
+                delta
+                    .tolerance
+                    .map(|value| format!("{value:.6}"))
+                    .unwrap_or_else(|| "N/A".to_string()),
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    let omitted = summary.parity.deltas.len().saturating_sub(8);
+    let footer = if omitted == 0 {
+        String::new()
+    } else {
+        format!(
+            "<p class=\"caveat\">{} additional parity deltas were omitted from this preview.</p>",
+            omitted
+        )
+    };
+
+    format!(
+        "<div><strong>Parity deltas</strong><table><thead><tr><th>Signal</th><th>Observed</th><th>Expected</th><th>Abs diff</th><th>Tolerance</th></tr></thead><tbody>{}</tbody></table>{}</div>",
+        rows,
+        footer,
     )
 }
 
@@ -1886,8 +1981,8 @@ mod tests {
     use crate::dataset::{DatasetProcessingSummary, SkippedImage};
     use crate::models::{build_model_catalog, EvidenceStatus};
     use crate::validation::report::{
-        CheckSummary, ModelValidationSummary, ParityValidationSummary, TensorValidationSummary,
-        ValidationStatus,
+        CheckSummary, ModelValidationSummary, ParitySignalDelta, ParityValidationSummary,
+        TensorValidationSummary, ValidationStatus,
     };
     use crate::viz::manifest::{ArtifactKind, OutputArtifactManifest};
     use crate::viz::report::{
@@ -1912,6 +2007,48 @@ mod tests {
                 ValidationStatus::Validated,
                 "Reference parity matches approved evidence.",
             ),
+        )
+    }
+
+    fn failed_validation_summary(model: &str) -> ModelValidationSummary {
+        let parity = ParityValidationSummary {
+            status: ValidationStatus::Failed,
+            summary: "Reference parity drift detected in 2 checked signals.".into(),
+            artifact_id: Some("dinov2-vit-l14:standard:2026-03-27T12:00:00Z".into()),
+            fixture_set: Some("standard".into()),
+            checked_signals: 0,
+            drifted_signals: 0,
+            deltas: vec![
+                ParitySignalDelta {
+                    name: "fixtures.gradient-224.patch_signature[0]".into(),
+                    observed: "9.900000".into(),
+                    expected: "0.100000".into(),
+                    abs_diff: Some(9.8),
+                    tolerance: Some(0.001),
+                },
+                ParitySignalDelta {
+                    name: "fixtures.gradient-224.cls_signature[1]".into(),
+                    observed: "8.800000".into(),
+                    expected: "0.200000".into(),
+                    abs_diff: Some(8.6),
+                    tolerance: Some(0.001),
+                },
+            ],
+            drifted_fixtures: Vec::new(),
+        }
+        .with_diagnostics(73);
+
+        ModelValidationSummary::from_checks(
+            model,
+            "2026-03-27T12:00:00Z",
+            CheckSummary::validated("Preprocess matches contract."),
+            vec![TensorValidationSummary {
+                name: "last_hidden_state".into(),
+                role: "patch embeddings".into(),
+                status: ValidationStatus::Validated,
+                summary: "Tensor semantics match the registry contract.".into(),
+            }],
+            parity,
         )
     }
 
@@ -2156,6 +2293,22 @@ mod tests {
         assert!(html.contains("Run Context"));
         assert!(html.contains("compare.json"));
         assert!(html.contains("dinov2-vit-l14"));
+    }
+
+    #[test]
+    fn test_validation_html_renders_fixture_drift_details() {
+        let html = render_validation_html_with_bundle(
+            &[failed_validation_summary("dinov2-vit-l14")],
+            None,
+        );
+
+        assert!(html.contains("Approved artifact"));
+        assert!(html.contains("Signals checked"));
+        assert!(html.contains("Fixture drift"));
+        assert!(html.contains("gradient-224"));
+        assert!(html.contains("Parity deltas"));
+        assert!(html.contains("patch_signature[0]"));
+        assert!(html.contains("Abs diff"));
     }
 
     #[test]

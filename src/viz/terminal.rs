@@ -619,26 +619,91 @@ pub fn print_validation_summaries(summaries: &[ModelValidationSummary]) {
             truncate(&summary.recommendation, 42),
         );
 
-        if !summary.backend.status.is_validated() {
-            println!("  backend: {}", summary.backend.summary);
-        }
-        if !summary.caveats.is_empty() {
-            println!("  caveats: {}", summary.caveats.join(" | "));
-        }
-        if !summary.parity.deltas.is_empty() {
-            let labels = summary
-                .parity
-                .deltas
-                .iter()
-                .take(3)
-                .map(|delta| delta.name.as_str())
-                .collect::<Vec<_>>()
-                .join(" | ");
-            println!("  deltas:  {labels}");
+        for line in validation_detail_lines(summary) {
+            println!("{line}");
         }
     }
 
     println!("{}", heavy_rule(116));
+}
+
+fn summarize_tensor_checks(summary: &ModelValidationSummary) -> String {
+    summary
+        .tensors
+        .iter()
+        .map(|tensor| format!("{}={}", tensor.name, tensor.status.label()))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+fn format_parity_delta(delta: &crate::validation::report::ParitySignalDelta) -> String {
+    match (delta.abs_diff, delta.tolerance) {
+        (Some(abs_diff), Some(tolerance)) => format!(
+            "{} obs={} exp={} diff={:.6} tol={:.6}",
+            delta.name, delta.observed, delta.expected, abs_diff, tolerance
+        ),
+        _ => format!(
+            "{} obs={} exp={}",
+            delta.name, delta.observed, delta.expected
+        ),
+    }
+}
+
+fn validation_detail_lines(summary: &ModelValidationSummary) -> Vec<String> {
+    let mut lines = vec![
+        format!(
+            "  evidence: fixture-set={} artifact={}",
+            summary.parity.fixture_set.as_deref().unwrap_or("n/a"),
+            truncate(summary.parity.artifact_id.as_deref().unwrap_or("n/a"), 78),
+        ),
+        format!(
+            "  checks:   preprocess={} tensors={} parity={} (checked {}, drifted {})",
+            summary.preprocess.status.label(),
+            summarize_tensor_checks(summary),
+            summary.parity.status.label(),
+            summary.parity.checked_signals,
+            summary.parity.drifted_signals,
+        ),
+    ];
+
+    if !summary.backend.status.is_validated() {
+        lines.push(format!("  backend: {}", summary.backend.summary));
+    }
+    if !summary.caveats.is_empty() {
+        lines.push(format!("  caveats: {}", summary.caveats.join(" | ")));
+    }
+    if !summary.parity.drifted_fixtures.is_empty() {
+        lines.push(format!(
+            "  fixtures: {}",
+            summary
+                .parity
+                .drifted_fixtures
+                .iter()
+                .take(2)
+                .map(|fixture| format!(
+                    "{} ({})",
+                    fixture.fixture_id,
+                    truncate(&fixture.signals.join(", "), 54)
+                ))
+                .collect::<Vec<_>>()
+                .join(" | ")
+        ));
+    }
+    if !summary.parity.deltas.is_empty() {
+        lines.push(format!(
+            "  deltas:  {}",
+            summary
+                .parity
+                .deltas
+                .iter()
+                .take(2)
+                .map(format_parity_delta)
+                .collect::<Vec<_>>()
+                .join(" | ")
+        ));
+    }
+
+    lines
 }
 
 pub fn print_neighbors_report(report: &NeighborsReport) {
@@ -814,6 +879,11 @@ fn truncate_with_glyphs(s: &str, max: usize, glyphs: TerminalGlyphs) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::models::InferenceBackend;
+    use crate::validation::report::{
+        CheckSummary, ModelValidationSummary, ParitySignalDelta, ParityValidationSummary,
+        TensorValidationSummary, ValidationStatus,
+    };
 
     #[test]
     fn test_value_to_block() {
@@ -848,5 +918,52 @@ mod tests {
             truncate_with_glyphs("checkpoint-0000001", 8, TerminalGlyphs::Ascii),
             "check..."
         );
+    }
+
+    #[test]
+    fn validation_detail_lines_include_fixture_drift_preview() {
+        let parity = ParityValidationSummary {
+            status: ValidationStatus::Failed,
+            summary: "Reference parity drift detected.".into(),
+            artifact_id: Some("dinov2-vit-l14:standard:2026-03-27T12:00:00Z".into()),
+            fixture_set: Some("standard".into()),
+            checked_signals: 0,
+            drifted_signals: 0,
+            deltas: vec![ParitySignalDelta {
+                name: "fixtures.gradient-224.patch_signature[0]".into(),
+                observed: "9.900000".into(),
+                expected: "0.100000".into(),
+                abs_diff: Some(9.8),
+                tolerance: Some(0.001),
+            }],
+            drifted_fixtures: Vec::new(),
+        }
+        .with_diagnostics(73);
+        let summary = ModelValidationSummary::from_checks(
+            "dinov2-vit-l14",
+            "2026-03-27T12:00:00Z",
+            CheckSummary::validated("Preprocess matches contract."),
+            vec![TensorValidationSummary {
+                name: "last_hidden_state".into(),
+                role: "patch embeddings".into(),
+                status: ValidationStatus::Validated,
+                summary: "Tensor semantics match.".into(),
+            }],
+            parity,
+        )
+        .with_backend(InferenceBackend::Stub);
+
+        let lines = validation_detail_lines(&summary);
+
+        assert!(lines
+            .iter()
+            .any(|line| line.contains("fixture-set=standard")));
+        assert!(lines
+            .iter()
+            .any(|line| line.contains("checked 73, drifted 1")));
+        assert!(lines
+            .iter()
+            .any(|line| line.contains("fixtures: gradient-224")));
+        assert!(lines.iter().any(|line| line.contains("patch_signature[0]")));
     }
 }
