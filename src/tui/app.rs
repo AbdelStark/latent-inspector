@@ -207,8 +207,8 @@ pub struct App {
     pub metrics: Vec<ModelMetrics>,
     /// Pairwise comparison metrics.
     pub comparisons: Vec<ComparisonMetrics>,
-    /// Per-model variance spectra.
-    pub spectra: Vec<VarianceSpectrum>,
+    /// Per-model variance spectra, keyed by model name.
+    pub spectra: Vec<(String, VarianceSpectrum)>,
 
     /// Image being analysed (if any).
     pub image_path: Option<PathBuf>,
@@ -230,7 +230,7 @@ impl App {
         image_path: Option<PathBuf>,
         metrics: Vec<ModelMetrics>,
         comparisons: Vec<ComparisonMetrics>,
-        spectra: Vec<VarianceSpectrum>,
+        spectra: Vec<(String, VarianceSpectrum)>,
     ) -> Self {
         let models = registry::registry();
         let mut model_table_state = TableState::default();
@@ -316,8 +316,12 @@ impl App {
 
     /// Return the `VarianceSpectrum` for the currently selected model.
     pub fn selected_spectrum(&self) -> Option<&VarianceSpectrum> {
-        if self.selected_model < self.spectra.len() {
-            Some(&self.spectra[self.selected_model])
+        if self.selected_model < self.models.len() {
+            let name = &self.models[self.selected_model].info.name;
+            self.spectra
+                .iter()
+                .find(|(n, _)| n == name)
+                .map(|(_, s)| s)
         } else {
             None
         }
@@ -517,12 +521,12 @@ fn generate_spectrum(alpha: f32, k: usize) -> VarianceSpectrum {
     }
 }
 
-fn demo_spectra() -> Vec<VarianceSpectrum> {
+fn demo_spectra() -> Vec<(String, VarianceSpectrum)> {
     vec![
-        generate_spectrum(0.12, 32), // DINOv2
-        generate_spectrum(0.22, 32), // MAE
-        generate_spectrum(0.18, 32), // CLIP
-        generate_spectrum(0.10, 32), // I-JEPA
-        generate_spectrum(0.16, 32), // SigLIP
+        ("dinov2-vit-l14".into(), generate_spectrum(0.12, 32)),
+        ("mae-vit-l16".into(), generate_spectrum(0.22, 32)),
+        ("clip-vit-l14".into(), generate_spectrum(0.18, 32)),
+        ("ijepa-vit-h14".into(), generate_spectrum(0.10, 32)),
+        ("siglip-so400m".into(), generate_spectrum(0.16, 32)),
     ]
 }

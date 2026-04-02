@@ -62,7 +62,7 @@ fn build_app_with_image(path: &std::path::Path, models: Option<Vec<String>>) -> 
         .resize(400, 400, image::imageops::FilterType::Triangle)
         .to_rgb8();
 
-    let model_names = models.unwrap_or_else(crate::models::registry::model_names);
+    let model_names = models.unwrap_or_else(crate::models::registry::ready_model_names);
 
     let mut all_metrics = Vec::new();
     let mut all_features: Vec<(String, ExtractedFeatures)> = Vec::new();
@@ -76,7 +76,7 @@ fn build_app_with_image(path: &std::path::Path, models: Option<Vec<String>>) -> 
         let metrics = compute_metrics(&features, name)?;
         let spectrum = variance_spectrum(&features.patch_tokens, 32)?;
         all_metrics.push(metrics);
-        all_spectra.push(spectrum);
+        all_spectra.push((name.clone(), spectrum));
         all_features.push((name.clone(), features));
     }
 

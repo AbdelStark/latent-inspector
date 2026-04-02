@@ -38,7 +38,7 @@ test:                 ## Run all tests
 # ── Run targets ──────────────────────────────────────────────────
 
 tui: build-release    ## Launch TUI with real ONNX inference on sample image
-	$(CARGO) run $(FEATURES) $(RELEASE) -- tui $(SAMPLE_IMG) -m ijepa-vit-h14
+	$(CARGO) run $(FEATURES) $(RELEASE) -- tui $(SAMPLE_IMG) -m dinov2-vit-l14,ijepa-vit-h14
 
 tui-demo:             ## Launch TUI in demo mode (no ONNX needed)
 	$(CARGO) run -- tui
