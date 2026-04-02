@@ -353,6 +353,8 @@ Run `latent-inspector validate --model <name>` to check a model's integration st
 
 Downloads resume from partial transfers. Cache integrity is verified via SHA-256. Use `latent-inspector models --verbose` to inspect the cache state of every artifact.
 
+To convert a Hugging Face model to ONNX format for use with latent-inspector, use the [ONNX Community Converter](https://huggingface.co/spaces/onnx-community/convert-to-onnx).
+
 ## Development
 
 ```bash
