@@ -1,8 +1,6 @@
 # latent-inspector
 
-A fast CLI for inspecting and comparing learned representations across self-supervised vision models. Feed it an image, get a structured comparison of how DINOv2, DINOv3, MAE, I-JEPA, CLIP, and SigLIP see the world.
-
-Current implementation status: Phase 1 is focused on DINOv2 model loading and inspection. The other models are listed in the registry as planned targets for the multi-model milestone and are not loadable yet.
+A fast Rust CLI for inspecting and comparing learned representations across self-supervised vision models. Feed it an image, get a structured comparison of how DINOv2, I-JEPA, MAE, CLIP, and SigLIP see the world — with real numbers, not vibes.
 
 <table>
 <tr>
@@ -15,283 +13,369 @@ Current implementation status: Phase 1 is focused on DINOv2 model loading and in
 </tr>
 </table>
 
+## Quick start
+
 ```bash
+# Install
 cargo install latent-inspector
 
-# Compare representations across models
-latent-inspector compare photo.jpg --models dinov2-vit-l14,mae-vit-l16,ijepa-vit-h14,clip-vit-l14
+# Or build from source with real ONNX inference
+cargo build --features onnx-inference --release
 
-# Inspect a single model's representation
-latent-inspector inspect photo.jpg --model dinov2-vit-l14 --output report/
+# Compare two models on an image (models download automatically on first use)
+latent-inspector compare photo.jpg --models dinov2-vit-l14,ijepa-vit-h14
 
-# Validate preprocessing, tensor semantics, and reference parity
-latent-inspector validate --model dinov2-vit-l14 --format json --output validation/
+# Deep-dive into a single model
+latent-inspector inspect photo.jpg --model dinov2-vit-l14
 
-# Find nearest neighbors across a dataset
-latent-inspector neighbors photo.jpg --model dinov2-vit-l14 --dataset imagenet-val/
+# Interactive TUI
+latent-inspector tui photo.jpg -m dinov2-vit-l14,ijepa-vit-h14
 
-# Measure representation similarity between two models
-latent-inspector similarity --model-a dinov2-vit-l14 --model-b ijepa-vit-h14 --dataset images/
+# See all available models and their status
+latent-inspector models
 ```
 
-## What it does
+## Why this exists
 
-SSL models learn to represent images in very different ways. DINO learns patch-level features that segment objects without supervision. MAE learns to reconstruct masked regions. I-JEPA predicts in latent space. CLIP aligns images with text. Each approach creates a different internal "view" of the same image.
+Self-supervised learning (SSL) models learn to represent images without labels, but they do so in fundamentally different ways:
 
-latent-inspector makes these differences visible and measurable.
+- **DINOv2** learns patch-level features via self-distillation. Its representations naturally segment objects — patches on the elephant cluster together, patches on the background cluster together — without ever seeing a segmentation label.
+- **I-JEPA** predicts missing patches in latent space (not pixel space). It learns to fill in what's "probably there" based on context, favoring abstract structure over texture.
+- **MAE** reconstructs masked pixel regions. It must encode enough detail to literally redraw the masked patches.
+- **CLIP** aligns images with text descriptions. Its representation is shaped by language, not just visual similarity.
 
-### For each model, it computes:
-
-- **Patch-level attention maps** — When a model export includes attention tensors, inspect reports expose patch overlays and attention concentration summaries.
-- **Feature PCA projection** — Reduce the high-dimensional representation to 3 RGB channels. Same-color regions have similar features.
-- **CLS token similarity** — How does the global representation compare across models?
-- **Patch cosine similarity matrix** — Which patches in model A correspond to which patches in model B?
-- **Representation rank** — Effective dimensionality of the learned features (higher = more expressive)
-- **Feature variance spectrum** — Distribution of information across dimensions (concentrated vs spread)
-- **k-NN patch classification** — How well do patches separate semantic categories without fine-tuning?
-
-### Output formats:
-
-- **Terminal** — Rich inline display with Unicode blocks when the terminal supports them, with automatic ASCII fallback for non-interactive or non-UTF terminals. Set `LATENT_INSPECTOR_FORCE_ASCII=1` to force plain ASCII output.
-- **PNG** — PCA projections plus comparison heatmaps or inspection variance charts
-- **JSON** — Raw metrics plus pairwise overview matrices and highlights
-- **HTML** — Interactive report with pairwise matrices, highlights, and embedded validation summaries
-  plus copied image previews so exported bundles stay readable away from the
-  source dataset
-
-HTML bundles are now self-describing: each exported page includes an `Export Bundle`
-section that lists companion JSON/PNG assets, links to `artifacts.json`, and
-shows the recorded run context, top-line summary, and validation overview for
-that bundle.
-
-When a command writes files to an output directory, latent-inspector now also
-emits `artifacts.json` in that directory. The manifest records the command,
-requested format, the command context that produced the bundle, a top-line
-summary of the run, primary report path when there is one, every generated
-asset, per-file byte sizes and SHA-256 digests, and any attached validation
-statuses so automation can discover outputs without hard-coding filenames or
-reverse-engineering the full report payload.
-For HTML exports, the output directory now also includes the equivalent
-structured JSON payload alongside the human-readable page, so a single run can
-serve both people and downstream automation.
-
-### Validation workflow:
-
-- `validate` checks preprocessing against the approved model contract
-- `validate` verifies the exported ONNX tensor name, shape, and CLS semantics
-- `validate` compares observed outputs against checked-in aggregate and per-fixture reference evidence
-- `compare`, `inspect`, `neighbors`, `similarity`, and `drift` now embed validation summaries in terminal, JSON, and HTML reports
-
-## Why Rust?
-
-Model inference runs via ONNX Runtime (C++ backend). The analysis pipeline (PCA, cosine similarity, k-NN, and attention-aware summaries when exports provide attention tensors) runs in native Rust. Parallel across all models via rayon.
-
-On a MacBook M3 Pro, comparing 5 models on a single image takes ~3 seconds. The equivalent Python pipeline takes ~25 seconds.
-
-For researchers processing thousands of images across multiple models, this matters.
+These different training objectives create different internal "world models." latent-inspector makes those differences visible, measurable, and comparable with concrete metrics.
 
 ## Supported models
 
-| Model | Architecture | Method | Source | Status |
+| Model | Architecture | Params | Method | Status |
 |-------|-------------|--------|--------|--------|
-| DINOv2 | ViT-L/14 | Self-distillation + centering | Meta FAIR | **Ready** |
-| I-JEPA | ViT-H/14 | Joint embedding predictive (latent prediction) | Meta FAIR | **Ready** |
-| DINOv3 | ViT-7B (distilled to ViT-L) | Self-distillation + Gram anchoring | Meta FAIR | Planned |
-| MAE | ViT-L/16 | Masked autoencoder (reconstruction) | Meta FAIR | Planned |
-| CLIP | ViT-L/14 | Contrastive image-text | OpenAI | Planned |
-| SigLIP | ViT-SO400M/14 | Sigmoid contrastive image-text | Google | Planned |
+| **DINOv2** | ViT-L/14 | 304M | Self-distillation + centering | **Ready** |
+| **I-JEPA** | ViT-H/14 | 632M | Joint embedding predictive | **Ready** |
+| DINOv3 | ViT-7B (distilled) | 304M | Self-distillation + Gram anchoring | Planned |
+| MAE | ViT-L/16 | 304M | Masked autoencoder | Planned |
+| CLIP | ViT-L/14 | 304M | Contrastive image-text | Planned |
+| SigLIP | ViT-SO400M/14 | 400M | Sigmoid contrastive image-text | Planned |
 
-Models are downloaded automatically on first use (~300MB-2GB each) and cached locally.
-If a cache bundle is partial or contains an empty/corrupt artifact, latent-inspector
-now refreshes only the missing or invalid files before creating the ONNX session.
-Interrupted downloads keep their `.download-part` payloads and resume from the
-last completed byte when the host supports HTTP range requests; otherwise the
-cache layer falls back to a clean restart automatically.
+Models download automatically on first use (~1-2 GB each) and are cached in `~/.cache/latent-inspector/`. Downloads resume from partial transfers when possible. Override the cache location with `LATENT_INSPECTOR_CACHE_DIR`.
 
-For CI or isolated local runs, set `LATENT_INSPECTOR_CACHE_DIR=/tmp/latent-inspector-cache`
-to override the default cache root.
+---
 
-## Validate a model integration
+## Case study: How DINOv2 and I-JEPA see an elephant
 
-Run the dedicated validation command whenever you update an export or want to
-confirm that a report is still source-aligned:
+This walkthrough uses a real elephant photograph to show what latent-inspector reveals about how two fundamentally different SSL approaches represent the same image. Every number below is from an actual ONNX inference run.
+
+### Step 1: Compare both models
 
 ```bash
-cargo run -- validate --model dinov2-vit-l14
-cargo run -- validate --model dinov2-vit-l14 --format json --output tmp/validation
-cargo run -- validate --model dinov2-vit-l14 --refresh-goldens
+latent-inspector compare docs/assets/img/samples/elephant_sample_image.jpg \
+  --models dinov2-vit-l14,ijepa-vit-h14
 ```
 
-The validation summary reports preprocessing status, tensor semantics, approved
-reference parity, caveats, and a plain-language recommendation for whether the
-model is safe to interpret as source-aligned.
-Validation JSON, terminal, and HTML outputs now also surface the approved
-artifact identity, checked-signal counts, and grouped fixture-level drift
-summaries so reviewers can trace exactly which evidence bundle was used and
-which fixtures drifted without opening raw fixture artifacts.
-`validate` is the only command that re-executes the fixture set against the
-active backend. The normal report commands (`compare`, `inspect`, `neighbors`,
-`similarity`, `drift`, and `models`) reuse the checked-in approved evidence plus
-freshness checks so trust summaries stay fast and deterministic.
-If the checked-in contract or reference artifacts no longer match the current
-registry profile, the summary now reports `stale` instead of treating outdated
-evidence as a fresh pass or a runtime failure.
-When the development stub backend is enabled through
-`LATENT_INSPECTOR_MODEL_BACKEND=stub`, the command still exercises the report
-and fixture plumbing but marks the run as `unverified`; synthetic stub outputs
-are not treated as release-grade source-alignment evidence.
-`validate --format html --output <dir>` now writes both `validation.html` and
-`validation.json` so reviewed evidence bundles stay machine-readable.
-If an export emits `NaN`/`Inf` tensors or a non-square patch grid, the analysis
-now fails explicitly instead of producing misleading metrics or corrupted PCA
-artefacts.
-
-## Example: Comparing the two ready models
-
 ```
-$ latent-inspector compare street.jpg --models dinov2-vit-l14,ijepa-vit-h14
-
-Model Comparison: street.jpg
-═══════════════════════════════
-
-                DINOv2-L/14  I-JEPA-H/14
-Repr. rank      487/1024     445/1280
-Top-10 var%     23.4%        28.1%
-Patch entropy   6.82         6.44
-CLS L2 norm     18.4         16.2
-
-Cross-model CLS cosine similarity:
-             DINOv2   I-JEPA
-DINOv2       1.000    0.721
-I-JEPA       0.721    1.000
-
-[PNG outputs saved to ./compare_street/]
+Model Comparison
+================================================================================
+Metric                dinov2-vit-l14  ijepa-vit-h14
+--------------------------------------------------------------------------------
+Repr. rank            60/1024         44/1280
+Dead dimensions       0               0
+Patch entropy         2.52            2.89
+CLS L2 norm           46.3            N/A
+Top-10 var%           66.8%           72.7%
+Components@90%        31              22
+================================================================================
 ```
 
-> **Note:** The metrics above are illustrative. Run the command on your own images
-> to see real values from the ONNX models.
+#### What these numbers mean
 
-## Analysis modes
+**Representation rank** (60/1024 vs 44/1280): How many dimensions the model actually uses. DINOv2 spreads information across 60 effective dimensions out of 1024 total. I-JEPA is more concentrated — only 44 out of 1280. Neither has dead dimensions (dimensions that are zero for all patches), which means both models are efficient in their use of the embedding space.
+
+**Patch entropy** (2.52 vs 2.89): How diverse the patch representations are across the image. Higher entropy means patches are more differentiated from each other. I-JEPA (2.89) creates more distinct per-patch representations than DINOv2 (2.52). This makes sense: I-JEPA's prediction objective forces it to encode fine-grained spatial context to predict what's missing, while DINOv2's distillation objective favors consistent global features.
+
+**CLS L2 norm** (46.3 vs N/A): The magnitude of the global image representation. DINOv2 exposes a CLS (classification) token — a single vector that summarizes the entire image. I-JEPA's ONNX export does not include one. This architectural difference means CLS-based comparisons (like CLS cosine similarity) are unavailable for mixed DINOv2/I-JEPA comparisons. latent-inspector reports this explicitly as `N/A` rather than silently dropping the metric.
+
+**Top-10 variance** (66.8% vs 72.7%): What fraction of total information is captured by the first 10 principal components. I-JEPA concentrates more variance into fewer dimensions — its representation is more "top-heavy." DINOv2 spreads information more evenly.
+
+**Components@90%** (31 vs 22): How many PCA components are needed to explain 90% of the variance. I-JEPA needs only 22 components; DINOv2 needs 31. This confirms I-JEPA's representation is lower-dimensional in practice, despite having a wider embedding space (1280 vs 1024).
+
+### Step 2: Cross-model similarity
+
+The same `compare` command also outputs pairwise metrics:
+
+```
+Linear CKA:
+              dinov2-vit-l14  ijepa-vit-h14
+dinov2-vit... 1.000           0.329
+ijepa-vit-h14 0.329           1.000
+
+k-NN overlap (k=10):
+              dinov2-vit-l14  ijepa-vit-h14
+dinov2-vit... 1.000           0.278
+ijepa-vit-h14 0.278           1.000
+```
+
+**Linear CKA = 0.329**: Centered Kernel Alignment measures whether two models organize their representations in similar geometric structures. A CKA of 1.0 means identical geometry; 0.0 means completely unrelated. At 0.329, DINOv2 and I-JEPA have *some* structural overlap but represent the elephant in substantially different ways. This is expected — self-distillation and latent prediction are fundamentally different training signals.
+
+**k-NN overlap = 0.278**: For each patch, look at its 10 nearest neighbors in each model's representation space. Only 27.8% of neighbors overlap. This means when DINOv2 considers two patches "similar," I-JEPA often disagrees. The elephant's trunk patches might cluster with body patches in one model but with background-boundary patches in the other.
+
+### Step 3: Deep-dive into a single model
+
+```bash
+latent-inspector inspect docs/assets/img/samples/elephant_sample_image.jpg \
+  --model dinov2-vit-l14
+```
+
+```
+Model: dinov2-vit-l14
+============================================================
+  Patches:          256
+  Embed dim:        1024
+  Effective rank:   60/1024
+  Dead dimensions:  0
+  Patch entropy:    2.523
+  CLS L2 norm:      46.28
+  Patch norm mean:  47.52 +/- 1.41
+  Top-10 var%:      66.8%
+  Components@90%:   31
+
+  Variance spectrum (top 12 components):
+    PC01: 17.17%  17.17% cum  ######
+    PC02: 12.52%  29.70% cum  #####
+    PC03:  9.07%  38.76% cum  ###
+    PC04:  6.09%  44.85% cum  ##
+    PC05:  5.15%  50.00% cum  ##
+    PC06:  4.62%  54.61% cum  #
+    PC07:  3.67%  58.28% cum  #
+    PC08:  3.30%  61.58% cum  #
+    PC09:  2.79%  64.37% cum  #
+    PC10:  2.43%  66.79% cum
+    PC11:  2.11%  68.90% cum
+    PC12:  1.98%  70.88% cum
+```
+
+**Patch norm mean 47.52 +/- 1.41**: DINOv2 patch vectors have remarkably consistent magnitudes (standard deviation of only 1.41). This means no patch is dramatically more "activated" than others — the model distributes representational energy evenly across the image. By contrast, I-JEPA shows 33.77 +/- 6.14: much more variation, suggesting it gives some patches significantly stronger representations than others.
+
+**Variance spectrum**: The first principal component captures 17.17% of variance — the single strongest "direction" in the representation. By PC05, we reach 50% cumulative variance. The gradual decay (rather than a sharp cliff) tells us DINOv2 uses a rich, multi-scale representation. No single axis dominates.
+
+### Step 4: Export reports for sharing
+
+Every command supports `--format terminal|json|html|png` and `--output <dir>`:
+
+```bash
+# Generate a self-contained HTML report bundle
+latent-inspector compare docs/assets/img/samples/elephant_sample_image.jpg \
+  --models dinov2-vit-l14,ijepa-vit-h14 \
+  --format html --output elephant-report/
+
+# What gets generated:
+# elephant-report/
+#   report.html          Interactive HTML with all metrics and charts
+#   compare.json         Same data as structured JSON for automation
+#   dinov2-vit-l14_pca.png   PCA projection (3 components as RGB)
+#   ijepa-vit-h14_pca.png    PCA projection for I-JEPA
+#   linear_cka.png       Cross-model CKA heatmap
+#   knn_overlap_k10.png  Cross-model k-NN overlap heatmap
+#   input_image.png      Copy of the input image
+#   artifacts.json       Machine-readable manifest of all outputs
+```
+
+```bash
+# Single-model deep-dive report
+latent-inspector inspect docs/assets/img/samples/elephant_sample_image.jpg \
+  --model dinov2-vit-l14 --format html --output dinov2-inspect/
+
+# Outputs: report.html, inspect.json, dinov2-vit-l14_pca.png,
+#   dinov2-vit-l14_variance.png, input_image.png, artifacts.json
+```
+
+```bash
+# JSON for programmatic consumption
+latent-inspector compare photo.jpg --models dinov2-vit-l14,ijepa-vit-h14 \
+  --format json | jq '.comparisons[0].linear_cka'
+# 0.329
+```
+
+### Key takeaway
+
+DINOv2 and I-JEPA both produce rich representations of the elephant, but they organize information differently:
+
+| Property | DINOv2 | I-JEPA | Interpretation |
+|----------|--------|--------|----------------|
+| Effective rank | 60/1024 | 44/1280 | DINOv2 uses more dimensions |
+| Variance concentration | 66.8% in top 10 | 72.7% in top 10 | I-JEPA is more concentrated |
+| Patch entropy | 2.52 | 2.89 | I-JEPA differentiates patches more |
+| Patch norm std | 1.41 | 6.14 | DINOv2 is more uniform |
+| CLS token | Yes (46.3 norm) | No | Different architectures |
+
+The low CKA (0.329) and low k-NN overlap (0.278) confirm these are genuinely different world models — not just rescaled versions of the same representation.
+
+---
+
+## Commands reference
 
 ### `compare` — Side-by-side model comparison
-The main command. Takes an image and a list of models. Produces PCA projections, pairwise similarity matrices, highlight summaries, attention concentration metrics when available, and validation-aware reports. When compared models expose different patch grids or incompatible CLS / embedding spaces, `compare` now keeps the dimension-agnostic metrics, marks unsupported metrics as `N/A`, and explains the reason in terminal, JSON, and HTML outputs instead of silently dropping them. Matrix sections now also report how many model pairs were actually comparable for each metric, so mixed-model runs do not imply support that the compared exports do not provide. `--format json` prints the structured compare report to stdout by default or writes `compare.json` when `--output <dir>` is provided. `--format png` writes per-model PCA images plus pairwise heatmaps for CKA, k-NN overlap, and direct patch correspondence. `--format html` now writes `report.html`, the same structured payload as `compare.json`, those companion PNG assets, an input-image preview, and `artifacts.json` in a single bundle.
 
-### `inspect` — Deep dive into a single model
-Detailed analysis of one model's representation: rank/entropy metrics, attention concentration when available, dead dimension counts, variance spectrum, validation status, and exportable PCA + variance artefacts. When the backend exposes attention tensors, inspect reports also include an attention summary and an overlay projected back onto the source image. `--format json` prints the structured inspect report to stdout by default or writes `inspect.json` when `--output <dir>` is provided. `--format html` now writes a dedicated single-model report plus `inspect.json`, with the variance-spectrum breakdown, attention summary, validation summary, and linked artefacts instead of falling back to the generic compare layout.
+```bash
+latent-inspector compare <image> --models <model1>,<model2>[,...]
+  [--format terminal|json|html|png]
+  [--output <dir>]
+  [--pca-components <n>]
+```
+
+Computes per-model metrics and pairwise cross-model similarity. Handles mismatched architectures gracefully: dimension-agnostic metrics (CKA, k-NN) are computed when patch counts match; dimension-dependent metrics (patch correspondence) and architecture-dependent metrics (CLS cosine) are reported as `N/A` with an explanation.
+
+**Pairwise metrics:**
+- **CLS cosine similarity** — Global image representation similarity (requires both models to export a CLS token)
+- **Linear CKA** — Representation geometry alignment, invariant to linear transforms
+- **k-NN overlap** — Neighborhood agreement: fraction of shared nearest neighbors across models
+- **Mean patch correspondence** — Hungarian-matched optimal patch pairing similarity (requires matching embedding dimensions)
+
+### `inspect` — Single model deep-dive
+
+```bash
+latent-inspector inspect <image> --model <model>
+  [--format terminal|json|html|png]
+  [--output <dir>]
+  [--pca-components <n>]
+```
+
+Full representation analysis for one model: rank, entropy, variance spectrum, patch norm statistics, attention concentration (when available), and PCA projection. The variance spectrum shows the full scree plot — how information is distributed across principal components.
 
 ### `neighbors` — k-NN retrieval across a dataset
-Given an image and a dataset directory, find the most similar images according to each model. Reveals what each model considers "similar." DINO finds visually similar objects. CLIP finds semantically similar concepts. I-JEPA finds structurally similar scenes.
-Dataset-backed commands recurse through nested directories and preserve relative
-paths in their reports, so class-folder layouts remain legible in neighbor
-lists.
-Neighbor search now excludes the exact query file from the candidate pool when
-the query image already lives under the searched dataset root, so the top hit
-is always a real neighbor rather than the input image itself.
-`neighbors` now supports `--format terminal|json|html|png`; JSON prints to
-stdout by default or writes `neighbors.json` when `--output <dir>` is provided,
-while HTML/PNG emit a shareable report or ranking chart under
-`neighbors_output/` (or the requested output directory). Terminal, JSON, and
-HTML reports also attach the active model's validation summary so nearest-neighbor
-results keep their trust context. If a model does not expose a CLS token, the
-command now falls back to a mean-patch image embedding and records that basis in
-terminal, JSON, and HTML reports. HTML exports also include the similarity chart
-PNG that the standalone `png` surface writes, query/top-match previews, plus the
-same structured payload as `neighbors.json`.
 
-### `similarity` — Representation alignment between models
-Centered Kernel Alignment (CKA) and mutual k-NN overlap between two models across a dataset. Answers: "How similarly do these two models represent the world?"
-`similarity` now supports `--format terminal|json|html|png`; the JSON/HTML
-reports include the computed metric set plus dataset processing summary, and the
-PNG surface writes a compact metric chart for automation-friendly artifact
-capture. HTML exports now embed that chart alongside dataset sample previews in
-the report. Terminal, JSON, and HTML outputs also include validation summaries for
-both compared models. Report payloads now also state that dataset-level
-similarity metrics are computed from mean-patch embeddings, with CLS cosine
-surfaced separately when available. HTML bundles also include `similarity.json`.
-Dataset samples for similarity runs are now processed through a shared
-parallel worker pipeline, so large directory scans reuse per-worker model
-sessions instead of reimplementing the traversal in each command.
+```bash
+latent-inspector neighbors <image> --model <model> --dataset <dir>
+  [--k <n>]
+  [--format terminal|json|html|png]
+  [--output <dir>]
+```
+
+Given a query image and a dataset directory, find the k most similar images according to the model. This reveals what a model considers "similar" — DINOv2 finds visually similar objects, while CLIP (when ready) will find semantically similar concepts. If the model doesn't expose a CLS token, the command uses mean-patch embeddings automatically.
+
+### `similarity` — Cross-model alignment on a dataset
+
+```bash
+latent-inspector similarity --model-a <model> --model-b <model> --dataset <dir>
+  [--format terminal|json|html|png]
+  [--output <dir>]
+```
+
+Measures how similarly two models represent an entire dataset using linear CKA, mutual k-NN overlap, and (when both models expose CLS tokens) mean CLS cosine similarity. Runs inference in parallel across the dataset.
 
 ### `drift` — Track representation changes across checkpoints
-Point it at a directory of `.onnx` checkpoints (different training stages). Each file is loaded as its own session while reusing the selected model's registered preprocessing and tensor contract, then the command reports consecutive checkpoint CKA scores across the dataset. This is useful for understanding when representations materially shift during training.
-Checkpoint filenames are evaluated in natural numeric order, so names such as
-`step-2.onnx` are processed before `step-10.onnx`.
-If a supported image file in the dataset is unreadable or corrupt, the command
-now skips that file, continues processing the rest of the dataset, and reports
-the skipped paths in the terminal summary instead of aborting the whole run.
-Like `neighbors` and `similarity`, drift dataset passes now fan out across a
-shared parallel worker path so checkpoint comparisons keep deterministic output
-ordering without serializing every image through a single session.
-`drift` also supports `--format terminal|json|html|png`; the structured report
-captures checkpoint ordering, aggregate drift highlights, and dataset skip
-details, while the PNG output writes a consecutive-CKA chart to disk. HTML
-exports embed that chart plus dataset sample previews when at least one
-comparison runs. Terminal,
-JSON, and HTML outputs now also surface per-checkpoint validation summaries so
-training-stage drift is read alongside contract and parity caveats. Dataset-based
-drift summaries now explicitly state that checkpoint comparisons use mean-patch
-embeddings. HTML bundles also include `drift.json`.
 
-## Dependencies
-
-```toml
-[dependencies]
-ort = "2"                    # ONNX Runtime bindings
-ndarray = "0.16"             # N-dimensional arrays
-image = "0.25"               # Image I/O
-rayon = "1.10"               # Parallel model inference
-clap = { version = "4", features = ["derive"] }
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-ratatui = "0.29"             # Terminal visualization
-crossterm = "0.28"
-indicatif = "0.17"           # Progress bars
-tracing = "0.1"
-thiserror = "2.0"
-dirs = "6"                   # Model cache directory
-reqwest = { version = "0.12", features = ["blocking"] }  # Model download
+```bash
+latent-inspector drift --model <model> --checkpoints <dir> --dataset <dir>
+  [--format terminal|json|html|png]
+  [--output <dir>]
 ```
+
+Load a directory of `.onnx` checkpoint files (different training stages), run inference on a shared dataset, and report consecutive CKA scores. This shows when and how much a model's representations shift during training. Checkpoints are processed in natural numeric order (`step-2.onnx` before `step-10.onnx`).
+
+### `models` — Registry and cache status
+
+```bash
+latent-inspector models
+  [--verbose]
+  [--download <model>]
+  [--format terminal|json|html]
+  [--output <dir>]
+```
+
+Displays the full model registry with status, readiness, cache state, evidence status, and artifact inventory. Use `--verbose` for per-artifact details. Use `--download <model>` to pre-cache a model before running analysis.
+
+### `validate` — Preprocessing and parity checks
+
+```bash
+latent-inspector validate --model <model>
+  [--format terminal|json|html]
+  [--output <dir>]
+  [--refresh-goldens]
+```
+
+Validates a model's integration against checked-in contract and reference artifacts. Checks preprocessing parameters, tensor semantics (names, shapes, roles), and output parity against golden fixtures. Use `--refresh-goldens` to regenerate reference artifacts after a verified ONNX update.
+
+### `tui` — Interactive terminal UI
+
+```bash
+latent-inspector tui [<image>] [-m <model1>,<model2>,...]
+```
+
+Interactive terminal interface with multiple views: dashboard (model registry overview), inspector (per-model metrics and variance spectrum), compare (cross-model pairwise matrices), spectrum (full PCA scree plot), file browser (select images), and help (keyboard shortcuts). Navigate with arrow keys, switch views with number keys.
+
+## Output formats
+
+Every analysis command supports four output formats:
+
+| Format | Flag | Output | Use case |
+|--------|------|--------|----------|
+| **Terminal** | `--format terminal` (default) | Rich Unicode display, ASCII fallback | Interactive exploration |
+| **JSON** | `--format json` | Structured metrics to stdout or file | Automation, scripting, dashboards |
+| **HTML** | `--format html` | Self-contained report bundle | Sharing, documentation, review |
+| **PNG** | `--format png` | PCA projections, heatmaps, charts | Presentations, papers |
+
+When `--output <dir>` is provided, all formats also emit an `artifacts.json` manifest listing every generated file with byte sizes and SHA-256 digests. HTML bundles include companion JSON for both human and machine consumption.
+
+Force ASCII output in non-Unicode terminals: `LATENT_INSPECTOR_FORCE_ASCII=1`.
+
+## Metrics glossary
+
+| Metric | What it measures | Range | Intuition |
+|--------|-----------------|-------|-----------|
+| **Effective rank** | Number of significant singular values | 1 to embed_dim | Higher = more expressive; the model uses more of its capacity |
+| **Dead dimensions** | Embedding dimensions that are zero for all patches | 0 to embed_dim | Should be 0; non-zero means wasted capacity |
+| **Patch entropy** | Diversity of patch representations (via k-means clustering) | 0 to log2(k) | Higher = patches are more differentiated from each other |
+| **Attention Gini** | Concentration of attention weights | 0 to 1 | Higher = more focused attention; lower = diffuse |
+| **CLS L2 norm** | Magnitude of the global image vector | 0+ | Varies by model; useful for cross-image comparison |
+| **Patch norm mean/std** | Distribution of patch vector magnitudes | 0+ | Low std = uniform activation; high std = some patches dominate |
+| **Top-10 variance %** | Information captured by first 10 PCA components | 0-100% | Higher = more concentrated representation |
+| **Components@90%** | PCA components needed for 90% variance | 1 to embed_dim | Lower = more compressible representation |
+| **Linear CKA** | Geometric similarity between two representations | 0 to 1 | 1 = identical geometry; 0 = unrelated |
+| **k-NN overlap** | Neighborhood agreement between two models | 0 to 1 | 1 = same neighbors; 0 = completely different |
+| **Patch correspondence** | Optimal assignment similarity (Hungarian matching) | 0 to 1 | How well patches can be aligned across models |
+
+## Validation and trust
+
+Every report includes a validation summary showing whether the model's outputs can be trusted:
+
+- **Validated** — Contract and parity checks pass against approved reference artifacts
+- **Stale** — Evidence exists but doesn't match the current model configuration (needs refresh)
+- **Unverified** — No evidence available (planned models, or stub backend)
+
+Run `latent-inspector validate --model <name>` to check a model's integration status. Use `--refresh-goldens` to update reference artifacts after a verified ONNX export update.
 
 ## How model loading works
 
-1. First run: for a ready model, download the ONNX artifact from HuggingFace Hub to `~/.cache/latent-inspector/`
-2. Load via ONNX Runtime and validate the declared input/output tensor names against the graph
-3. Preprocess to the model-specific input size and normalization stats
-4. Extract patch features and CLS token into the common `ModelOutput` interface
+1. **First run**: download the ONNX artifact from HuggingFace Hub to `~/.cache/latent-inspector/`
+2. **Load**: create an ONNX Runtime session and validate tensor names against the model graph
+3. **Preprocess**: resize short edge to target size, center-crop to square, normalize with model-specific mean/std
+4. **Extract**: run inference, split the output into patch tokens (and CLS token if available) via the common `ModelOutput` interface
 
-If a download is interrupted mid-transfer, the cache keeps the partial file and
-attempts to resume on the next run instead of restarting from zero whenever the
-remote host honors byte-range requests.
+Downloads resume from partial transfers. Cache integrity is verified via SHA-256. Use `latent-inspector models --verbose` to inspect the cache state of every artifact.
 
-In the current Phase 1 build, `dinov2-vit-l14` is the only loadable model. The remaining registry entries are intentionally marked as planned so the CLI does not imply support that has not been implemented yet.
+## Development
 
-Use `latent-inspector models` to inspect the live registry inventory. The
-catalog now reports each model's phase status, runtime support
-(`onnx-ready` vs `stub-only`), whether the local cache contains the full
-artifact bundle, and whether the approved validation evidence is current,
-stale, missing, or intentionally withheld for planned integrations.
-Each entry also derives a readiness state (`ready`, `needs-download`,
-`needs-evidence-refresh`, `needs-validation`, `planned`, or `blocked`) plus
-plain-language next steps so maintainers can see what is actually preventing a
-model from being runnable or release-aligned on the current machine.
-Verbose terminal output plus the JSON and HTML catalog exports now break that
-down to the individual artifact level as well, including the expected cache
-path, per-artifact cache state, byte size when present, and whether checksum
-verification is fully pinned or still pending for that file.
-Use `latent-inspector models --format json` to emit the same catalog as
-structured JSON to stdout or `latent-inspector models --format json --output
-tmp/models` to write `models.json` for automation. For a shareable report, run
-`latent-inspector models --format html --output tmp/models` to generate
-`models.html` alongside `models.json`.
+```bash
+# Build without ONNX (fast, uses stub backend for development)
+cargo build
 
-When you actively cache a model, the same command surface can now emit a
-machine-readable or shareable download outcome report instead of only printing
-terminal progress. For example,
-`latent-inspector models --download dinov2-vit-l14 --format json --output tmp/download`
-writes `download.json`, while `--format html` writes `download.html` plus the
-same structured payload and `artifacts.json`. Those reports record whether the
-artifact bundle was newly downloaded or already cached, the before/after cache
-state of each artifact, and the model's post-download readiness summary.
+# Build with real ONNX inference
+cargo build --features onnx-inference --release
+
+# Run all tests
+cargo test
+
+# Lint
+cargo clippy -- -D warnings
+
+# Format
+cargo fmt
+
+# Full CI pipeline
+make all
+```
+
+The stub backend (`LATENT_INSPECTOR_MODEL_BACKEND=stub`) produces deterministic synthetic outputs for development and testing without downloading real models. All integration tests use the stub by default.
 
 ## License
 

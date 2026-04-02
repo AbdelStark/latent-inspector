@@ -14,7 +14,7 @@
     },
     "tensor": {
       "name": "last_hidden_state",
-      "role": "patch sequence",
+      "role": "patch-sequence",
       "cls_expected": false,
       "batch_size": 1,
       "patch_count": 256,
