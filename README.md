@@ -4,6 +4,17 @@ A fast CLI for inspecting and comparing learned representations across self-supe
 
 Current implementation status: Phase 1 is focused on DINOv2 model loading and inspection. The other models are listed in the registry as planned targets for the multi-model milestone and are not loadable yet.
 
+<table>
+<tr>
+<td width="50%"><img src="docs/assets/img/screenshots/tui-1.png" alt="Dashboard"/><br/><sub>Dashboard — model registry, image preview, architecture comparison</sub></td>
+<td width="50%"><img src="docs/assets/img/screenshots/tui-2.png" alt="Inspector"/><br/><sub>Inspector — representation health gauges and PCA variance spectrum</sub></td>
+</tr>
+<tr>
+<td width="50%"><img src="docs/assets/img/screenshots/tui-3.png" alt="Compare"/><br/><sub>Compare — cross-model metrics, CLS similarity matrix, CKA and k-NN overlap</sub></td>
+<td width="50%"><img src="docs/assets/img/screenshots/tui-4.png" alt="Spectrum"/><br/><sub>Spectrum — full PCA scree plot with 90%/99% thresholds and interpretation</sub></td>
+</tr>
+</table>
+
 ```bash
 cargo install latent-inspector
 

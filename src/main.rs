@@ -6,6 +6,7 @@ pub use latent_inspector::dataset;
 pub use latent_inspector::errors;
 pub use latent_inspector::extract;
 pub use latent_inspector::models;
+pub use latent_inspector::tui;
 pub use latent_inspector::validation;
 pub use latent_inspector::viz;
 
@@ -39,6 +40,7 @@ fn main() {
         cli::Commands::Drift(a) => cli::drift::run(a),
         cli::Commands::Models(a) => cli::models::run(a),
         cli::Commands::Validate(a) => cli::validate::run(a),
+        cli::Commands::Tui(a) => cli::tui::run(a),
     };
 
     if let Err(e) = result {

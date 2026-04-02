@@ -6,6 +6,7 @@ pub mod inspect;
 pub mod models;
 pub mod neighbors;
 pub mod similarity;
+pub mod tui;
 pub mod validate;
 
 /// Fast CLI for inspecting and comparing SSL vision model representations.
@@ -41,4 +42,6 @@ pub enum Commands {
     Models(models::ModelsArgs),
     /// Validate preprocessing, tensor semantics, and reference parity.
     Validate(validate::ValidateArgs),
+    /// Launch the interactive terminal UI.
+    Tui(tui::TuiArgs),
 }
