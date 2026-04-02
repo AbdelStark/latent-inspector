@@ -52,9 +52,10 @@ These different training objectives create different internal "world models." la
 |-------|-------------|--------|--------|--------|
 | **DINOv2** | ViT-L/14 | 304M | Self-distillation + centering | **Ready** |
 | **I-JEPA** | ViT-H/14 | 632M | Joint embedding predictive | **Ready** |
-| DINOv3 | ViT-7B (distilled) | 304M | Self-distillation + Gram anchoring | Planned |
+| DINOv3 | ViT-L/14 | 304M | Self-distillation + Gram anchoring | Planned |
 | MAE | ViT-L/16 | 304M | Masked autoencoder | Planned |
 | CLIP | ViT-L/14 | 304M | Contrastive image-text | Planned |
+| V-JEPA 2 | ViT-L/16 | 304M | Video joint embedding predictive | Planned |
 | SigLIP | ViT-SO400M/14 | 400M | Sigmoid contrastive image-text | Planned |
 
 Models download automatically on first use (~1-2 GB each) and are cached in `~/.cache/latent-inspector/`. Downloads resume from partial transfers when possible. Override the cache location with `LATENT_INSPECTOR_CACHE_DIR`.

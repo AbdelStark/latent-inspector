@@ -38,6 +38,8 @@ pub struct DriftArgs {
     pub format: OutputFormat,
 }
 
+/// Execute the `drift` subcommand: load checkpoint ONNX files in natural order,
+/// extract features from the dataset with each, and compute inter-checkpoint CKA drift.
 pub fn run(args: DriftArgs) -> Result<(), Error> {
     info!(
         "Measuring drift for {} on {:?}",

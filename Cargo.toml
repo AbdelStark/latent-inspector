@@ -2,6 +2,7 @@
 name = "latent-inspector"
 version = "0.1.0"
 edition = "2021"
+rust-version = "1.75.0"
 description = "Fast CLI for inspecting and comparing learned representations across self-supervised vision models"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/AbdelStark/latent-inspector"

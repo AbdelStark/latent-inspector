@@ -25,6 +25,7 @@ pub struct TuiArgs {
     pub models: Option<Vec<String>>,
 }
 
+/// Launch the interactive terminal UI with ratatui.
 pub fn run(args: TuiArgs) -> Result<(), Error> {
     let app = if let Some(ref path) = args.image {
         build_app_with_image(path, args.models)?
@@ -74,7 +75,8 @@ fn build_app_with_image(path: &std::path::Path, models: Option<Vec<String>>) -> 
         let output = session.infer(&img)?;
         let features = ExtractedFeatures::from_output(output)?;
         let metrics = compute_metrics(&features, name)?;
-        let spectrum = variance_spectrum(&features.patch_tokens, 32)?;
+        let spectrum =
+            variance_spectrum(&features.patch_tokens, crate::analysis::TUI_PCA_COMPONENTS)?;
         all_metrics.push(metrics);
         all_spectra.push((name.clone(), spectrum));
         all_features.push((name.clone(), features));

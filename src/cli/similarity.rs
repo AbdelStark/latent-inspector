@@ -41,6 +41,8 @@ pub struct SimilarityArgs {
     pub format: OutputFormat,
 }
 
+/// Execute the `similarity` subcommand: measure representation similarity
+/// between two models across an entire dataset using CKA and k-NN overlap.
 pub fn run(args: SimilarityArgs) -> Result<(), Error> {
     info!(
         "Measuring similarity {} vs {} on {:?}",

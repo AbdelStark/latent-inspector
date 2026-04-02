@@ -28,6 +28,8 @@ pub struct ModelsArgs {
     pub output: Option<PathBuf>,
 }
 
+/// Execute the `models` subcommand: list the model registry with availability
+/// status, evidence state, and cache information.
 pub fn run(args: ModelsArgs) -> Result<(), Error> {
     if matches!(args.format, OutputFormat::Png) {
         return Err(ValidationError::Usage(

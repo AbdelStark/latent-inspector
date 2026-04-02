@@ -6,6 +6,7 @@ use crate::models::ModelOutput;
 use ndarray::{Array1, Array2, Array4, Axis};
 use serde::{Deserialize, Serialize};
 
+/// Which token is used as the global image embedding.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum EmbeddingBasis {
@@ -33,6 +34,7 @@ impl EmbeddingBasis {
     }
 }
 
+/// Which token dimension is used when extracting 2-D attention maps over the patch grid.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum AttentionMapBasis {

@@ -19,6 +19,7 @@ self-supervised vision models (DINOv2, I-JEPA, MAE, CLIP, SigLIP) via ONNX Runti
 src/
   main.rs          CLI dispatch (clap)
   lib.rs           Library root — re-exports all modules
+  errors.rs        Typed error enums (Error, ModelError, AnalysisError, etc.)
   cli/             Subcommand implementations
   models/          Model registry, ONNX loading, cache, preprocessing
   extract/         Feature extraction from model outputs
@@ -34,8 +35,8 @@ src/
 | Model | Status |
 |-------|--------|
 | dinov2-vit-l14 | Ready — real ONNX inference, approved evidence |
-| ijepa-vit-h14 | Ready — real ONNX inference, evidence needs refresh |
-| dinov3-vit-l14, mae-vit-l16, clip-vit-l14, siglip-so400m | Planned |
+| ijepa-vit-h14 | Ready — ONNX artifacts verified, reference evidence uses stub backend (needs ONNX refresh) |
+| dinov3-vit-l14, mae-vit-l16, clip-vit-l14, siglip-so400m, vjepa2-vitl-fpc2-256 | Planned |
 
 ## Conventions
 
