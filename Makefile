@@ -4,7 +4,7 @@
 CARGO       := cargo
 FEATURES    := --features onnx-inference
 RELEASE     := --release
-SAMPLE_IMG  := docs/assets/img/samples/buffalo_sample_image.jpg
+SAMPLE_IMG  := docs/assets/img/samples/elephant_sample_image.jpg
 CACHE_DIR   := $(HOME)/.cache/latent-inspector
 
 .PHONY: build build-release build-stub check clippy fmt test clean \
@@ -38,7 +38,7 @@ test:                 ## Run all tests
 # ── Run targets ──────────────────────────────────────────────────
 
 tui: build-release    ## Launch TUI with real ONNX inference on sample image
-	$(CARGO) run $(FEATURES) $(RELEASE) -- tui $(SAMPLE_IMG) -m dinov2-vit-l14
+	$(CARGO) run $(FEATURES) $(RELEASE) -- tui $(SAMPLE_IMG) -m ijepa-vit-h14
 
 tui-demo:             ## Launch TUI in demo mode (no ONNX needed)
 	$(CARGO) run -- tui

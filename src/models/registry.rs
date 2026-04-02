@@ -487,25 +487,27 @@ pub fn registry() -> Vec<RegistryEntry> {
                 input_size: 224,
                 params_m: 632,
             },
-            availability: Availability::planned("Phase 3", phase_three_note),
+            availability: Availability::ready(
+                "ONNX community export with verified SHA-256 hashes for both model graph and external data.",
+            ),
             artifacts: vec![
                 ModelArtifact {
                     relative_path: "ijepa-vit-h14/model.onnx".to_string(),
                     download_url:
                         "https://huggingface.co/onnx-community/ijepa_vith14_1k/resolve/main/onnx/model.onnx".to_string(),
-                    checksum: Checksum::Pending {
-                        reason: "Download metadata will be validated when I-JEPA support lands in the comparison milestone."
+                    checksum: Checksum::Sha256(
+                        "10b70b2151a5db382f03d52cfa0c223b0c6ea3c79e0f2068e0bc8f4ee2d6bfb8"
                             .to_string(),
-                    },
+                    ),
                 },
                 ModelArtifact {
                     relative_path: "ijepa-vit-h14/model.onnx_data".to_string(),
                     download_url:
                         "https://huggingface.co/onnx-community/ijepa_vith14_1k/resolve/main/onnx/model.onnx_data".to_string(),
-                    checksum: Checksum::Pending {
-                        reason: "Download metadata will be validated when I-JEPA support lands in the comparison milestone."
+                    checksum: Checksum::Sha256(
+                        "82ab3565d733de48f2e142a2289b92f15b990bd461fe18c4d79635d4c34ade6f"
                             .to_string(),
-                    },
+                    ),
                 },
             ],
             norm_mean: [0.485, 0.456, 0.406],
@@ -629,7 +631,13 @@ mod tests {
     #[test]
     fn test_only_dinov2_is_ready_in_phase_one() {
         let ready = ready_model_names();
-        assert_eq!(ready, vec!["dinov2-vit-l14".to_string()]);
+        assert_eq!(
+            ready,
+            vec![
+                "dinov2-vit-l14".to_string(),
+                "ijepa-vit-h14".to_string(),
+            ]
+        );
     }
 
     #[test]
