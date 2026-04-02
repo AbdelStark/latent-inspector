@@ -37,7 +37,7 @@ fn models_output_includes_evidence_and_fixture_summary() {
     assert!(stdout.contains("stub-only"));
     assert!(stdout.contains("unverified"));
     assert!(stdout.contains("Artifact summary:"));
-    assert!(stdout.contains("6 total"));
+    assert!(stdout.contains("8 total"));
 }
 
 #[test]
@@ -80,15 +80,15 @@ fn models_json_output_writes_structured_catalog() {
     assert_eq!(output.status.code(), Some(0));
 
     let payload = read_json(&outdir.path().join("models.json"));
-    assert_eq!(payload["summary"]["total_models"], 6);
+    assert_eq!(payload["summary"]["total_models"], 7);
     assert_eq!(payload["summary"]["ready_models"], 2);
     assert_eq!(payload["summary"]["evidence"]["approved"], 1);
-    assert_eq!(payload["summary"]["artifacts"]["total"], 6);
+    assert_eq!(payload["summary"]["artifacts"]["total"], 8);
     assert_eq!(payload["summary"]["artifacts"]["usable"], 0);
     assert_eq!(payload["summary"]["readiness"]["ready"], 0);
     assert_eq!(payload["summary"]["readiness"]["needs_download"], 2);
-    assert_eq!(payload["summary"]["readiness"]["planned"], 4);
-    assert_eq!(payload["entries"].as_array().unwrap().len(), 6);
+    assert_eq!(payload["summary"]["readiness"]["planned"], 5);
+    assert_eq!(payload["entries"].as_array().unwrap().len(), 7);
     let dinov2 = payload["entries"]
         .as_array()
         .unwrap()
@@ -130,7 +130,7 @@ fn models_json_output_writes_structured_catalog() {
     assert_eq!(manifest["context"]["mode"], "catalog");
     assert_eq!(manifest["context"]["verbose"], false);
     assert_eq!(manifest["artifacts"][0]["path"], "models.json");
-    assert_eq!(manifest["summary"]["summary"]["total_models"], 6);
+    assert_eq!(manifest["summary"]["summary"]["total_models"], 7);
     assert_eq!(manifest["summary"]["summary"]["ready_models"], 2);
     assert!(manifest["validation_summary"].is_null());
     assert_artifact_metadata(&manifest, "models.json");
@@ -167,7 +167,7 @@ fn models_html_output_writes_shareable_catalog() {
     assert!(html.contains("Artifact details"));
     assert!(html.contains("SHA-256"));
     let payload = read_json(&outdir.path().join("models.json"));
-    assert_eq!(payload["summary"]["total_models"], 6);
+    assert_eq!(payload["summary"]["total_models"], 7);
     assert_eq!(payload["summary"]["ready_models"], 2);
     let manifest = read_artifact_manifest(outdir.path());
     assert_eq!(manifest["command"], "models");

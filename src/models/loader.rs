@@ -332,11 +332,102 @@ impl ModelSession {
     }
 
     /// Preprocess an image and run inference in one call.
+    ///
+    /// For video-backbone models (e.g. V-JEPA 2), the preprocessed frame is
+    /// duplicated to form the required multi-frame input tensor.
     pub fn infer(&mut self, img: &DynamicImage) -> Result<ModelOutput, ModelError> {
         let info = &self.entry.info;
         let cfg = PreprocessConfig::new(info.input_size, self.entry.norm_mean, self.entry.norm_std);
         let tensor = preprocess::preprocess(img, &cfg)?;
-        self.run(&tensor)
+
+        if let Some(num_frames) = self.entry.video_frames {
+            // Build [1, F, 3, H, W] by duplicating the single frame F times.
+            let frame = tensor.index_axis(Axis(0), 0); // [3, H, W]
+            let frames: Vec<_> = (0..num_frames)
+                .map(|_| frame.view().insert_axis(Axis(0)))
+                .collect();
+            let video = ndarray::concatenate(Axis(0), &frames)
+                .map_err(|e| ModelError::InferenceFailed(e.to_string()))?
+                .insert_axis(Axis(0)); // [1, F, 3, H, W]
+            self.run_video(&video)
+        } else {
+            self.run(&tensor)
+        }
+    }
+
+    /// Run inference with a 5D video tensor `[1, F, 3, H, W]`.
+    fn run_video(&mut self, tensor: &ndarray::Array5<f32>) -> Result<ModelOutput, ModelError> {
+        let info = &self.entry.info;
+        let contract = &self.entry.validation.tensor;
+        let expected_dim = contract.embedding_dim;
+        let input_shape = tensor.shape().to_vec();
+
+        match &mut self.inner {
+            SessionInner::Onnx(session) => {
+                let input_data = tensor.as_slice().ok_or_else(|| {
+                    ModelError::InferenceFailed(
+                        "Input tensor must be contiguous in memory".to_string(),
+                    )
+                })?;
+                let input = TensorRef::from_array_view((tensor.shape(), input_data))
+                    .map_err(|e| ModelError::InferenceFailed(e.to_string()))?;
+
+                let outputs = session
+                    .run(ort::inputs![self.entry.input_name.as_str() => input])
+                    .map_err(|e| ModelError::InferenceFailed(e.to_string()))?;
+
+                let hidden = outputs
+                    .get(self.entry.output_name.as_str())
+                    .ok_or_else(|| ModelError::GraphMismatch {
+                        name: info.name.clone(),
+                        kind: "output".to_string(),
+                        expected: self.entry.output_name.clone(),
+                        available: outputs.keys().map(str::to_string).collect(),
+                    })?;
+
+                let (shape, values) = hidden
+                    .try_extract_tensor::<f32>()
+                    .map_err(|e| ModelError::InferenceFailed(e.to_string()))?;
+
+                let output_shape: Vec<usize> = shape
+                    .iter()
+                    .map(|&dim| usize::try_from(dim).unwrap_or(0))
+                    .collect();
+
+                // Output should be [batch, patches, embed_dim]
+                let hidden_array =
+                    ndarray::ArrayViewD::from_shape(ndarray::IxDyn(&output_shape), values)
+                        .map_err(|e| ModelError::InferenceFailed(e.to_string()))?
+                        .into_dimensionality::<Ix3>()
+                        .map_err(|e| ModelError::InferenceFailed(e.to_string()))?;
+
+                let seq_len = hidden_array.shape()[1];
+                let tokens = hidden_array.index_axis(Axis(0), 0);
+                let patch_tokens = tokens.to_owned();
+
+                Ok(ModelOutput {
+                    cls_token: None,
+                    patch_tokens,
+                    attention_weights: None,
+                    model_info: info.clone(),
+                    tensor_metadata: OutputTensorMetadata {
+                        input_name: self.entry.input_name.clone(),
+                        input_shape,
+                        output_name: self.entry.output_name.clone(),
+                        output_shape,
+                        sequence_has_cls: false,
+                        observed_patch_count: seq_len,
+                        embedding_dim: expected_dim,
+                    },
+                })
+            }
+            SessionInner::Stub(_) => {
+                // For stub mode, generate features from the first frame
+                let frame = tensor.index_axis(Axis(0), 0); // [F, 3, H, W]
+                let first_frame = frame.index_axis(Axis(0), 0).insert_axis(Axis(0)).to_owned(); // [1, 3, H, W]
+                self.run(&first_frame)
+            }
+        }
     }
 
     /// Model metadata.

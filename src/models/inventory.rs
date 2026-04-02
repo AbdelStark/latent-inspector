@@ -958,7 +958,7 @@ mod tests {
 
         assert_eq!(dinov2.evidence_status, EvidenceStatus::Approved);
         assert_eq!(dinov2.artifact_summary.total, 1);
-        assert_eq!(report.summary.artifacts.total, 6);
+        assert_eq!(report.summary.artifacts.total, 8);
         assert!(dinov2.evidence_details.is_empty());
         assert_eq!(report.summary.total_models, report.entries.len());
         assert_eq!(report.summary.ready_models, 2);

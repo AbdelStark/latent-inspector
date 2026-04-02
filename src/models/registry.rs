@@ -7,6 +7,7 @@ pub enum SSLMethod {
     DINO,
     MAE,
     IJEPA,
+    VJEPA2,
     CLIP,
     SigLIP,
 }
@@ -17,6 +18,7 @@ impl std::fmt::Display for SSLMethod {
             SSLMethod::DINO => write!(f, "DINO"),
             SSLMethod::MAE => write!(f, "MAE"),
             SSLMethod::IJEPA => write!(f, "I-JEPA"),
+            SSLMethod::VJEPA2 => write!(f, "V-JEPA 2"),
             SSLMethod::CLIP => write!(f, "CLIP"),
             SSLMethod::SigLIP => write!(f, "SigLIP"),
         }
@@ -216,6 +218,10 @@ pub struct RegistryEntry {
     pub input_name: String,
     /// Name of the ONNX output tensor carrying patch tokens (and CLS at index 0).
     pub output_name: String,
+    /// For video-backbone models: number of duplicated frames to construct
+    /// the input tensor `[1, frames, 3, H, W]`. When `None`, the model
+    /// accepts standard image input `[1, 3, H, W]`.
+    pub video_frames: Option<u32>,
     /// Approved validation contract and parity configuration.
     pub validation: ModelValidationProfile,
 }
@@ -322,6 +328,7 @@ pub fn registry() -> Vec<RegistryEntry> {
             norm_std: [0.229, 0.224, 0.225],
             input_name: "pixel_values".to_string(),
             output_name: "last_hidden_state".to_string(),
+            video_frames: None,
             validation: default_validation_profile(
                 "facebookresearch/dinov2",
                 PreprocessContract {
@@ -363,6 +370,7 @@ pub fn registry() -> Vec<RegistryEntry> {
             norm_std: [0.229, 0.224, 0.225],
             input_name: "pixel_values".to_string(),
             output_name: "last_hidden_state".to_string(),
+            video_frames: None,
             validation: default_validation_profile(
                 "meta/dinov3",
                 PreprocessContract {
@@ -409,6 +417,7 @@ pub fn registry() -> Vec<RegistryEntry> {
             norm_std: [0.5, 0.5, 0.5],
             input_name: "pixel_values".to_string(),
             output_name: "last_hidden_state".to_string(),
+            video_frames: None,
             validation: default_validation_profile(
                 "facebookresearch/mae",
                 PreprocessContract {
@@ -455,6 +464,7 @@ pub fn registry() -> Vec<RegistryEntry> {
             norm_std: [0.268_629_54, 0.261_302_6, 0.275_777_1],
             input_name: "pixel_values".to_string(),
             output_name: "last_hidden_state".to_string(),
+            video_frames: None,
             validation: default_validation_profile(
                 "openai/clip-vit-large-patch14",
                 PreprocessContract {
@@ -514,6 +524,7 @@ pub fn registry() -> Vec<RegistryEntry> {
             norm_std: [0.229, 0.224, 0.225],
             input_name: "pixel_values".to_string(),
             output_name: "last_hidden_state".to_string(),
+            video_frames: None,
             validation: default_validation_profile(
                 "facebookresearch/ijepa",
                 PreprocessContract {
@@ -531,6 +542,71 @@ pub fn registry() -> Vec<RegistryEntry> {
                     batch_size: 1,
                     patch_count: 256,
                     embedding_dim: 1280,
+                },
+            ),
+        },
+        RegistryEntry {
+            info: ModelInfo {
+                name: "vjepa2-vitl-fpc2-256".to_string(),
+                architecture: "ViT-L/16".to_string(),
+                patch_size: 16,
+                embed_dim: 1024,
+                num_layers: 24,
+                num_heads: 16,
+                method: SSLMethod::VJEPA2,
+                input_size: 256,
+                params_m: 304,
+            },
+            availability: Availability::planned(
+                "Phase 2",
+                "V-JEPA 2 ONNX export verified in Python but requires ort crate upgrade for Rust loading. See CHANGELOG for details.",
+            ),
+            artifacts: vec![
+                ModelArtifact {
+                    relative_path: "vjepa2-vitl-fpc2-256/model.onnx".to_string(),
+                    download_url:
+                        "https://huggingface.co/AbdelStark/vjepa2-vitl-fpc2-256-onnx/resolve/main/model.onnx"
+                            .to_string(),
+                    checksum: Checksum::Pending {
+                        reason:
+                            "SHA-256 will be pinned after the ONNX artifact is uploaded to HuggingFace Hub."
+                                .to_string(),
+                    },
+                },
+                ModelArtifact {
+                    relative_path: "vjepa2-vitl-fpc2-256/model.onnx_data".to_string(),
+                    download_url:
+                        "https://huggingface.co/AbdelStark/vjepa2-vitl-fpc2-256-onnx/resolve/main/model.onnx_data"
+                            .to_string(),
+                    checksum: Checksum::Pending {
+                        reason:
+                            "SHA-256 will be pinned after the ONNX artifact is uploaded to HuggingFace Hub."
+                                .to_string(),
+                    },
+                },
+            ],
+            norm_mean: [0.485, 0.456, 0.406],
+            norm_std: [0.229, 0.224, 0.225],
+            input_name: "pixel_values_videos".to_string(),
+            output_name: "last_hidden_state".to_string(),
+            video_frames: Some(2),
+            validation: default_validation_profile(
+                "facebookresearch/vjepa2",
+                PreprocessContract {
+                    input_size: 256,
+                    resize_filter: "lanczos3".to_string(),
+                    color_space: "rgb".to_string(),
+                    layout: "ntchw".to_string(),
+                    mean: [0.485, 0.456, 0.406],
+                    std: [0.229, 0.224, 0.225],
+                },
+                TensorContract {
+                    name: "last_hidden_state".to_string(),
+                    role: TensorRole::PatchSequence,
+                    cls_expected: false,
+                    batch_size: 1,
+                    patch_count: 256,
+                    embedding_dim: 1024,
                 },
             ),
         },
@@ -560,6 +636,7 @@ pub fn registry() -> Vec<RegistryEntry> {
             norm_std: [0.5, 0.5, 0.5],
             input_name: "pixel_values".to_string(),
             output_name: "last_hidden_state".to_string(),
+            video_frames: None,
             validation: default_validation_profile(
                 "google/siglip-so400m-patch14-224",
                 PreprocessContract {
@@ -619,17 +696,18 @@ mod tests {
     #[test]
     fn test_registry_contains_current_and_planned_models() {
         let names = model_names();
-        assert_eq!(names.len(), 6);
+        assert_eq!(names.len(), 7);
         assert!(names.contains(&"dinov2-vit-l14".to_string()));
         assert!(names.contains(&"dinov3-vit-l14".to_string()));
         assert!(names.contains(&"mae-vit-l16".to_string()));
         assert!(names.contains(&"clip-vit-l14".to_string()));
         assert!(names.contains(&"ijepa-vit-h14".to_string()));
+        assert!(names.contains(&"vjepa2-vitl-fpc2-256".to_string()));
         assert!(names.contains(&"siglip-so400m".to_string()));
     }
 
     #[test]
-    fn test_only_dinov2_is_ready_in_phase_one() {
+    fn test_ready_models() {
         let ready = ready_model_names();
         assert_eq!(
             ready,
