@@ -313,10 +313,10 @@ pub fn registry() -> Vec<RegistryEntry> {
                 relative_path: "dinov2-vit-l14.onnx".to_string(),
                 download_url:
                     "https://huggingface.co/onnx-community/dinov2-large/resolve/main/onnx/model.onnx".to_string(),
-                checksum: Checksum::Pending {
-                    reason: "Download is pinned, but the canonical SHA-256 still needs to be captured for this release artifact."
+                checksum: Checksum::Sha256(
+                    "305351060a1939d944e2dbe97dd64e4937ce5a220dce254e4cd74c7e4777d6ac"
                         .to_string(),
-                },
+                ),
             }],
             norm_mean: [0.485, 0.456, 0.406],
             norm_std: [0.229, 0.224, 0.225],

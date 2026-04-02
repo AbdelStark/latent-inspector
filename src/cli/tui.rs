@@ -70,7 +70,7 @@ fn build_app_with_image(path: &std::path::Path, models: Option<Vec<String>>) -> 
 
     for name in &model_names {
         info!("Loading model: {}", name);
-        let session = ModelSession::load(name)?;
+        let mut session = ModelSession::load(name)?;
         let output = session.infer(&img)?;
         let features = ExtractedFeatures::from_output(output)?;
         let metrics = compute_metrics(&features, name)?;

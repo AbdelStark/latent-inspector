@@ -1,6 +1,8 @@
 //! Application state for the interactive TUI.
 
-use crate::analysis::{ComparisonMetrics, ModelMetrics, VarianceSpectrum};
+use crate::analysis::{
+    ComparisonAlignment, ComparisonMetrics, ModelMetrics, VarianceSpectrum,
+};
 use crate::models::registry::{self, RegistryEntry};
 use ndarray::Array1;
 use ratatui::widgets::TableState;
@@ -344,6 +346,7 @@ fn demo_metrics() -> Vec<ModelMetrics> {
             effective_rank: 512,
             dead_dimensions: 12,
             patch_entropy: 2.34,
+            attention_gini: None,
             cls_l2_norm: Some(15.2),
             patch_norm_mean: 8.21,
             patch_norm_std: 1.13,
@@ -357,6 +360,7 @@ fn demo_metrics() -> Vec<ModelMetrics> {
             effective_rank: 398,
             dead_dimensions: 28,
             patch_entropy: 1.89,
+            attention_gini: None,
             cls_l2_norm: None,
             patch_norm_mean: 6.54,
             patch_norm_std: 2.37,
@@ -370,6 +374,7 @@ fn demo_metrics() -> Vec<ModelMetrics> {
             effective_rank: 467,
             dead_dimensions: 19,
             patch_entropy: 2.15,
+            attention_gini: None,
             cls_l2_norm: Some(12.8),
             patch_norm_mean: 7.92,
             patch_norm_std: 1.44,
@@ -383,6 +388,7 @@ fn demo_metrics() -> Vec<ModelMetrics> {
             effective_rank: 723,
             dead_dimensions: 8,
             patch_entropy: 2.51,
+            attention_gini: None,
             cls_l2_norm: Some(18.7),
             patch_norm_mean: 9.45,
             patch_norm_std: 0.92,
@@ -396,6 +402,7 @@ fn demo_metrics() -> Vec<ModelMetrics> {
             effective_rank: 501,
             dead_dimensions: 15,
             patch_entropy: 2.22,
+            attention_gini: None,
             cls_l2_norm: Some(14.1),
             patch_norm_mean: 8.03,
             patch_norm_std: 1.28,
@@ -413,6 +420,7 @@ fn demo_comparisons() -> Vec<ComparisonMetrics> {
         "ijepa-vit-h14",
         "siglip-so400m",
     ];
+    let patch_counts: [usize; 5] = [256, 196, 256, 256, 256];
     let cka = [
         [1.0, 0.63, 0.82, 0.87, 0.75],
         [0.0, 1.0, 0.45, 0.58, 0.51],
@@ -438,9 +446,22 @@ fn demo_comparisons() -> Vec<ComparisonMetrics> {
     let mut out = Vec::new();
     for i in 0..names.len() {
         for j in (i + 1)..names.len() {
+            let pc_a = patch_counts[i];
+            let pc_b = patch_counts[j];
+            let compared = pc_a.min(pc_b);
             out.push(ComparisonMetrics {
                 model_a: names[i].to_string(),
                 model_b: names[j].to_string(),
+                alignment: ComparisonAlignment {
+                    patch_count_a: pc_a,
+                    patch_count_b: pc_b,
+                    compared_patch_count: compared,
+                    note: if pc_a != pc_b {
+                        Some(format!("Truncated to {} patches", compared))
+                    } else {
+                        None
+                    },
+                },
                 cls_cosine_sim: if cls_sim[i][j] < 0.0 {
                     None
                 } else {
@@ -453,6 +474,7 @@ fn demo_comparisons() -> Vec<ComparisonMetrics> {
                 } else {
                     Some(0.3 + 0.5 * cka[i][j])
                 },
+                metric_caveats: Vec::new(),
             });
         }
     }
@@ -482,7 +504,11 @@ fn generate_spectrum(alpha: f32, k: usize) -> VarianceSpectrum {
         .unwrap_or(k);
     let top10_concentration: f32 = ratios.iter().take(10).sum();
 
+    // Simulate eigenvalues scaled by a plausible total variance
+    let explained_variance: Vec<f32> = raw.iter().map(|&r| r * 100.0).collect();
+
     VarianceSpectrum {
+        explained_variance: Array1::from_vec(explained_variance),
         ratios: Array1::from_vec(ratios),
         cumulative: Array1::from_vec(cumulative),
         components_90pct,
