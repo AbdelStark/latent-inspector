@@ -17,3 +17,5 @@ compare_output/
 inspect_output/
 validation_output/
 .claude/worktrees/
+.claude/cache/
+.claude/tsc-cache/
