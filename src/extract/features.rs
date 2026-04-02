@@ -107,7 +107,7 @@ impl ExtractedFeatures {
             .patch_tokens
             .rows()
             .into_iter()
-            .map(|row| l2_norm_view(&row))
+            .map(|row| l2_norm(&row.to_owned()))
             .collect::<Array1<f32>>();
 
         Ok(Self {
@@ -133,8 +133,12 @@ impl ExtractedFeatures {
     }
 
     /// Mean of patch tokens `[D]`.
+    ///
+    /// Safe: `from_output` validates patch_tokens has at least one row.
     pub fn mean_patch(&self) -> Array1<f32> {
-        self.patch_tokens.mean_axis(Axis(0)).unwrap()
+        self.patch_tokens
+            .mean_axis(Axis(0))
+            .expect("ExtractedFeatures: patch_tokens must be non-empty")
     }
 
     /// Global embedding for the requested basis, when available.
@@ -217,10 +221,6 @@ impl ExtractedFeatures {
 }
 
 fn l2_norm(v: &Array1<f32>) -> f32 {
-    v.iter().map(|x| x * x).sum::<f32>().sqrt()
-}
-
-fn l2_norm_view(v: &ndarray::ArrayView1<f32>) -> f32 {
     v.iter().map(|x| x * x).sum::<f32>().sqrt()
 }
 

@@ -1,29 +1,45 @@
-# latent-inspector Development Guidelines
+# latent-inspector — Agent Development Guide
 
-Auto-generated from all feature plans. Last updated: 2026-03-27
+Fast Rust CLI for inspecting and comparing learned representations across
+self-supervised vision models (DINOv2, I-JEPA, MAE, CLIP, SigLIP) via ONNX Runtime.
 
-## Active Technologies
+## Quick reference
 
-- Rust 2021 + clap 4, ort 2.0.0-rc.12, ndarray 0.16, image 0.25, serde/serde_json, tracing, approx, tempfile (001-validate-onnx-groundtruth)
+| Task             | Command                        |
+|------------------|--------------------------------|
+| Build            | `cargo build`                  |
+| Build (ONNX)     | `cargo build --features onnx-inference` |
+| Test             | `cargo test`                   |
+| Lint             | `cargo clippy -- -D warnings`  |
+| Format           | `cargo fmt`                    |
 
-## Project Structure
+## Architecture
 
-```text
+```
 src/
-tests/
+  main.rs          CLI dispatch (clap)
+  lib.rs           Library root — re-exports all modules
+  cli/             Subcommand implementations
+  models/          Model registry, ONNX loading, cache, preprocessing
+  extract/         Feature extraction from model outputs
+  analysis/        Metrics: PCA, CKA, k-NN, rank, variance, attention, entropy
+  validation/      Contract and parity validation against golden fixtures
+  viz/             Output: terminal, JSON, HTML, PNG
+  dataset/         Image loading and batch iteration
+  tui/             Interactive terminal UI (ratatui)
 ```
 
-## Commands
+## Ready models
 
-cargo test [ONLY COMMANDS FOR ACTIVE TECHNOLOGIES][ONLY COMMANDS FOR ACTIVE TECHNOLOGIES] cargo clippy
+| Model | Status |
+|-------|--------|
+| dinov2-vit-l14 | Ready — real ONNX inference, approved evidence |
+| ijepa-vit-h14 | Ready — real ONNX inference, evidence needs refresh |
+| dinov3-vit-l14, mae-vit-l16, clip-vit-l14, siglip-so400m | Planned |
 
-## Code Style
+## Conventions
 
-Rust 2021: Follow standard conventions
-
-## Recent Changes
-
-- 001-validate-onnx-groundtruth: Added Rust 2021 + clap 4, ort 2.0.0-rc.12, ndarray 0.16, image 0.25, serde/serde_json, tracing, approx, tempfile
-
-<!-- MANUAL ADDITIONS START -->
-<!-- MANUAL ADDITIONS END -->
+- **Error handling**: `thiserror` enums per module, propagate with `?`, no `unwrap` in library code
+- **Naming**: `snake_case` functions, `PascalCase` types, `SCREAMING_SNAKE` constants
+- **Testing**: inline `#[cfg(test)]` for unit tests, `tests/` for integration tests
+- **Commits**: `type(scope): description` — e.g. `fix(analysis): correct CKA normalization`

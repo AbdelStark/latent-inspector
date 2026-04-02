@@ -10,10 +10,18 @@ fn linear_kernel(x: &Array2<f32>) -> Array2<f32> {
 }
 
 /// Centre a kernel matrix: K_c = H * K * H, where H = I - (1/n)*11^T.
+/// Centre a kernel matrix: K_c = H * K * H, where H = I - (1/n)*11^T.
+///
+/// Caller must ensure `k` has at least 1 row/column (guaranteed by the
+/// `nx >= 2` check in `linear_cka`).
 fn centre_kernel(k: &Array2<f32>) -> Array2<f32> {
-    let n = k.shape()[0] as f32;
-    let row_mean = k.mean_axis(ndarray::Axis(0)).unwrap();
-    let grand_mean = row_mean.mean().unwrap();
+    // safe: k has ≥2 rows from caller's guard
+    let row_mean = k
+        .mean_axis(ndarray::Axis(0))
+        .expect("centre_kernel: k must be non-empty");
+    let grand_mean = row_mean
+        .mean()
+        .expect("centre_kernel: row_mean must be non-empty");
 
     let mut kc = k.clone();
     for mut row in kc.rows_mut() {
@@ -23,8 +31,6 @@ fn centre_kernel(k: &Array2<f32>) -> Array2<f32> {
         col -= &(ndarray::Array1::from_elem(col.len(), row_mean[j]));
     }
     kc += grand_mean;
-    // Scale by 1/n (optional: HSIC uses 1/(n-1)^2, so we keep raw HSIC)
-    let _ = n;
     kc
 }
 
@@ -71,11 +77,15 @@ pub fn linear_cka(x: &Array2<f32>, y: &Array2<f32>) -> Result<f32, AnalysisError
     let hsic_yy = hsic(&kyc, &kyc);
 
     let denom = (hsic_xx * hsic_yy).sqrt();
-    if denom < 1e-10 {
+    if !denom.is_finite() || denom < 1e-10 {
         return Ok(0.0);
     }
 
-    Ok((hsic_xy / denom).clamp(0.0, 1.0))
+    let cka = hsic_xy / denom;
+    if !cka.is_finite() {
+        return Ok(0.0);
+    }
+    Ok(cka.clamp(0.0, 1.0))
 }
 
 /// CLS cosine similarity between two CLS vectors.

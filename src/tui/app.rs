@@ -1,8 +1,6 @@
 //! Application state for the interactive TUI.
 
-use crate::analysis::{
-    ComparisonAlignment, ComparisonMetrics, ModelMetrics, VarianceSpectrum,
-};
+use crate::analysis::{ComparisonAlignment, ComparisonMetrics, ModelMetrics, VarianceSpectrum};
 use crate::models::registry::{self, RegistryEntry};
 use ndarray::Array1;
 use ratatui::widgets::TableState;
@@ -318,10 +316,7 @@ impl App {
     pub fn selected_spectrum(&self) -> Option<&VarianceSpectrum> {
         if self.selected_model < self.models.len() {
             let name = &self.models[self.selected_model].info.name;
-            self.spectra
-                .iter()
-                .find(|(n, _)| n == name)
-                .map(|(_, s)| s)
+            self.spectra.iter().find(|(n, _)| n == name).map(|(_, s)| s)
         } else {
             None
         }

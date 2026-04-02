@@ -12,6 +12,7 @@ pub use attention::{gini, mean_gini, per_head_gini};
 pub use cka::{cls_cosine_similarity, linear_cka};
 pub use correspondence::{patch_correspondence, patch_cosine_similarity, CorrespondenceResult};
 pub use entropy::{patch_entropy, patch_norm_stats, shannon_entropy, NormStats};
+pub use finite::square_grid_side;
 pub use knn::{cosine_similarity_matrix, knn_overlap, top_k_neighbors};
 pub use pca::{pca, transform, PcaResult};
 pub use rank::{dead_dimensions, effective_rank};
@@ -94,6 +95,10 @@ pub fn model_metrics_from_spectrum(
     })
 }
 
+/// How two models' patch grids were aligned for comparison.
+///
+/// When models have different patch counts, metrics are computed over the
+/// smaller count and the alignment is documented here.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ComparisonAlignment {
     pub patch_count_a: usize,
@@ -104,6 +109,7 @@ pub struct ComparisonAlignment {
 }
 
 impl ComparisonAlignment {
+    /// Human-readable description of the alignment (e.g. "256 shared patches").
     pub fn summary(&self) -> String {
         if self.patch_count_a == self.patch_count_b {
             format!("{} shared patches", self.compared_patch_count)
@@ -116,6 +122,8 @@ impl ComparisonAlignment {
     }
 }
 
+/// A labelled warning attached to a comparison metric explaining why its
+/// value may be unreliable or incomplete.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct MetricCaveat {
     pub key: String,
@@ -138,10 +146,12 @@ pub struct ComparisonMetrics {
 }
 
 impl ComparisonMetrics {
+    /// Returns `true` if the comparison has any alignment notes or metric caveats.
     pub fn has_caveats(&self) -> bool {
         self.alignment.note.is_some() || !self.metric_caveats.is_empty()
     }
 
+    /// Format all caveats as displayable text lines.
     pub fn caveat_lines(&self) -> Vec<String> {
         let mut lines = Vec::new();
         if let Some(note) = &self.alignment.note {

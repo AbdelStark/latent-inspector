@@ -238,16 +238,7 @@ fn render_pca_artifacts(
 }
 
 fn patch_grid_side(patch_count: usize, context: &str) -> Result<usize, Error> {
-    let grid = (patch_count as f64).sqrt().round() as usize;
-    if grid > 0 && grid.checked_mul(grid) == Some(patch_count) {
-        Ok(grid)
-    } else {
-        Err(crate::errors::AnalysisError::InvalidPatchGrid {
-            context: context.to_string(),
-            patch_count,
-        }
-        .into())
-    }
+    Ok(crate::analysis::square_grid_side(patch_count, context)?)
 }
 
 fn render_pairwise_heatmap_artifacts(

@@ -116,3 +116,34 @@ pub fn accent_style() -> Style {
 pub fn panel_block_style() -> Style {
     Style::new().fg(FG_DIM).bg(BG_DARK)
 }
+
+// ── Shared TUI helpers ─────────────────────────────────────────────────────
+
+/// Dim a base color by an intensity factor in `[0, 1]`.
+pub fn dim_color(base: Color, intensity: f32) -> Color {
+    let intensity = intensity.clamp(0.0, 1.0);
+    match base {
+        Color::Rgb(r, g, b) => Color::Rgb(
+            (r as f32 * intensity) as u8,
+            (g as f32 * intensity) as u8,
+            (b as f32 * intensity) as u8,
+        ),
+        other => other,
+    }
+}
+
+/// Render a compact filled/empty bar: `████░░░░`.
+pub fn mini_bar(ratio: f32, width: usize) -> String {
+    let filled = (ratio.clamp(0.0, 1.0) * width as f32).round() as usize;
+    let empty = width.saturating_sub(filled);
+    format!("{}{}", "█".repeat(filled), "░".repeat(empty))
+}
+
+/// Truncate a string to `max` bytes, appending `…` if it overflows.
+pub fn truncate(s: &str, max: usize) -> String {
+    if s.len() <= max {
+        s.to_string()
+    } else {
+        format!("{}…", &s[..max.saturating_sub(1)])
+    }
+}

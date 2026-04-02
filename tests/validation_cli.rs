@@ -1,13 +1,11 @@
+mod common;
+use common::*;
+
 use serde_json::Value;
-use sha2::{Digest, Sha256};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use tempfile::{tempdir, TempDir};
-
-fn bin() -> &'static str {
-    env!("CARGO_BIN_EXE_latent-inspector")
-}
 
 fn fixture_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -37,14 +35,6 @@ fn run(args: &[&str]) -> std::process::Output {
         .unwrap()
 }
 
-fn read_json(path: &Path) -> Value {
-    serde_json::from_str(&fs::read_to_string(path).unwrap()).unwrap()
-}
-
-fn read_artifact_manifest(dir: &Path) -> Value {
-    read_json(&dir.join("artifacts.json"))
-}
-
 fn write_json(path: &Path, value: &Value) {
     fs::write(path, serde_json::to_string_pretty(value).unwrap()).unwrap();
 }
@@ -66,36 +56,6 @@ fn refresh_stub_reference(manifest_path: &Path) {
     ]);
 
     assert_eq!(output.status.code(), Some(1));
-}
-
-fn artifact_entry<'a>(manifest: &'a Value, path: &str) -> &'a Value {
-    manifest["artifacts"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|artifact| artifact["path"] == path)
-        .unwrap_or_else(|| panic!("missing artifact entry for {path}"))
-}
-
-fn assert_artifact_metadata(manifest: &Value, path: &str) -> String {
-    let artifact = artifact_entry(manifest, path);
-    assert!(artifact["byte_size"].as_u64().unwrap() > 0);
-    let digest = artifact["sha256"].as_str().unwrap();
-    assert_eq!(digest.len(), 64);
-    digest.to_string()
-}
-
-fn sha256_preview(digest: &str) -> String {
-    if digest.len() > 16 {
-        format!("{}…", &digest[..16])
-    } else {
-        digest.to_string()
-    }
-}
-
-fn digest_preview_for(path: &Path) -> String {
-    let digest = hex::encode(Sha256::digest(fs::read(path).unwrap()));
-    sha256_preview(&digest)
 }
 
 fn write_test_image(dir: &Path) -> PathBuf {

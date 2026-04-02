@@ -31,8 +31,10 @@ pub fn pca(data: &Array2<f32>, k: usize, max_iter: usize) -> Result<PcaResult, A
     ensure_finite_2d(data, "input data for PCA")?;
     let k = k.min(d).min(n - 1).max(1);
 
-    // Centre the data
-    let mean = data.mean_axis(Axis(0)).unwrap();
+    // Centre the data — safe: n >= 2 from guard above
+    let mean = data
+        .mean_axis(Axis(0))
+        .expect("pca: data must have at least one row");
     let mut centred = data.to_owned();
     for mut row in centred.rows_mut() {
         row -= &mean;

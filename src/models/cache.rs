@@ -855,21 +855,21 @@ mod tests {
 
     #[test]
     fn test_cache_dir_created() {
-        let _lock = CACHE_ENV_LOCK.lock().unwrap();
+        let _lock = CACHE_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let result = cache_dir();
         assert!(result.is_ok());
     }
 
     #[test]
     fn test_model_path_format() {
-        let _lock = CACHE_ENV_LOCK.lock().unwrap();
+        let _lock = CACHE_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let path = model_path("dinov2-vit-l14").unwrap();
         assert!(path.to_str().unwrap().ends_with("dinov2-vit-l14.onnx"));
     }
 
     #[test]
     fn test_external_data_model_path_format() {
-        let _lock = CACHE_ENV_LOCK.lock().unwrap();
+        let _lock = CACHE_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let path = model_path("ijepa-vit-h14").unwrap();
         assert!(path.to_str().unwrap().ends_with("ijepa-vit-h14/model.onnx"));
     }
@@ -897,7 +897,7 @@ mod tests {
 
     #[test]
     fn test_cache_dir_uses_env_override() {
-        let _lock = CACHE_ENV_LOCK.lock().unwrap();
+        let _lock = CACHE_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let dir = tempdir().unwrap();
         let _guard = CacheDirEnvGuard::set(dir.path());
 
@@ -907,25 +907,37 @@ mod tests {
 
     #[test]
     fn test_is_cached_requires_complete_artifact_bundle() {
-        let _lock = CACHE_ENV_LOCK.lock().unwrap();
+        let _lock = CACHE_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let dir = tempdir().unwrap();
         let _guard = CacheDirEnvGuard::set(dir.path());
 
+        // I-JEPA requires two artifacts (model.onnx + model.onnx_data).
+        // With only the primary artifact present, the bundle is incomplete.
         let primary = model_path("ijepa-vit-h14").unwrap();
         fs::create_dir_all(primary.parent().unwrap()).unwrap();
         fs::write(&primary, b"onnx").unwrap();
 
         assert!(!is_cached("ijepa-vit-h14").unwrap());
 
+        // Even with both artifacts present, fake data fails SHA-256
+        // verification, so the bundle is still not usable.
         let companion = dir.path().join("ijepa-vit-h14/model.onnx_data");
         fs::write(companion, b"external-data").unwrap();
 
-        assert!(is_cached("ijepa-vit-h14").unwrap());
+        assert!(!is_cached("ijepa-vit-h14").unwrap());
+
+        // Verify the artifacts are reported as invalid (checksum mismatch),
+        // not missing.
+        let artifacts = inspect_model_artifacts("ijepa-vit-h14").unwrap();
+        assert_eq!(artifacts.len(), 2);
+        assert!(artifacts
+            .iter()
+            .all(|a| a.cache_status == ArtifactCacheStatus::Invalid));
     }
 
     #[test]
     fn test_is_cached_rejects_empty_artifact_files() {
-        let _lock = CACHE_ENV_LOCK.lock().unwrap();
+        let _lock = CACHE_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let dir = tempdir().unwrap();
         let _guard = CacheDirEnvGuard::set(dir.path());
 
@@ -958,7 +970,7 @@ mod tests {
 
     #[test]
     fn test_inspect_artifact_detects_checksum_mismatch() {
-        let _lock = CACHE_ENV_LOCK.lock().unwrap();
+        let _lock = CACHE_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let dir = tempdir().unwrap();
         let _guard = CacheDirEnvGuard::set(dir.path());
 

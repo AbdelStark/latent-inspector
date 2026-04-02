@@ -102,7 +102,7 @@ pub fn patch_entropy(
     Ok(shannon_entropy(&probs))
 }
 
-/// Compute feature norm distribution statistics.
+/// Per-patch L2-norm distribution statistics (mean, std, min, max).
 pub struct NormStats {
     pub mean: f32,
     pub std: f32,
@@ -110,6 +110,7 @@ pub struct NormStats {
     pub max: f32,
 }
 
+/// Compute per-patch L2-norm statistics over all rows of `patch_tokens`.
 pub fn patch_norm_stats(patch_tokens: &Array2<f32>) -> NormStats {
     let norms: Vec<f32> = patch_tokens
         .rows()

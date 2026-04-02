@@ -1,7 +1,7 @@
 //! File browser popup overlay for selecting images.
 
 use crate::tui::app::FileBrowser;
-use crate::tui::theme;
+use crate::tui::theme::{self, truncate};
 use ratatui::prelude::*;
 use ratatui::widgets::*;
 
@@ -96,7 +96,7 @@ fn draw_file_list(frame: &mut Frame, area: Rect, browser: &FileBrowser) {
         };
 
         let available = area.width.saturating_sub(18) as usize;
-        let name_display = truncate_str(&entry.name, available);
+        let name_display = truncate(&entry.name, available);
 
         let mut spans = vec![
             Span::styled(
@@ -172,7 +172,7 @@ fn draw_browser_footer(frame: &mut Frame, area: Rect, browser: &FileBrowser) {
             )
         };
         let info_line = Line::from(Span::styled(
-            truncate_str(&info, area.width.saturating_sub(2) as usize),
+            truncate(&info, area.width.saturating_sub(2) as usize),
             theme::dim_style(),
         ));
         frame.render_widget(Paragraph::new(info_line), chunks[1]);
@@ -204,14 +204,6 @@ fn format_size(bytes: u64) -> String {
         format!("{:.0} KB", bytes as f64 / 1_000.0)
     } else {
         format!("{} B", bytes)
-    }
-}
-
-fn truncate_str(s: &str, max: usize) -> String {
-    if s.len() <= max {
-        s.to_string()
-    } else {
-        format!("{}…", &s[..max.saturating_sub(1)])
     }
 }
 

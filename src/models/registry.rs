@@ -633,10 +633,7 @@ mod tests {
         let ready = ready_model_names();
         assert_eq!(
             ready,
-            vec![
-                "dinov2-vit-l14".to_string(),
-                "ijepa-vit-h14".to_string(),
-            ]
+            vec!["dinov2-vit-l14".to_string(), "ijepa-vit-h14".to_string(),]
         );
     }
 

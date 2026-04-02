@@ -93,7 +93,10 @@ fn test_registry_has_all_models() {
     assert!(names.contains(&"siglip-so400m".to_string()));
 
     let ready = latent_inspector::models::registry::ready_model_names();
-    assert_eq!(ready, vec!["dinov2-vit-l14".to_string()]);
+    assert_eq!(
+        ready,
+        vec!["dinov2-vit-l14".to_string(), "ijepa-vit-h14".to_string()]
+    );
 }
 
 #[test]
@@ -114,9 +117,18 @@ fn test_validation_fixture_manifest_available() {
 
 #[test]
 fn test_validate_model_returns_structured_summary() {
-    std::env::set_var("LATENT_INSPECTOR_MODEL_BACKEND", "stub");
+    // Safety: this test mutates the process environment. It is safe as long as
+    // no other test in this binary reads LATENT_INSPECTOR_MODEL_BACKEND
+    // concurrently. The guard struct ensures cleanup even on panic.
+    struct EnvGuard;
+    impl Drop for EnvGuard {
+        fn drop(&mut self) {
+            unsafe { std::env::remove_var("LATENT_INSPECTOR_MODEL_BACKEND") };
+        }
+    }
+    unsafe { std::env::set_var("LATENT_INSPECTOR_MODEL_BACKEND", "stub") };
+    let _guard = EnvGuard;
     let summary = validate_model("dinov2-vit-l14", None, false).unwrap();
-    std::env::remove_var("LATENT_INSPECTOR_MODEL_BACKEND");
     assert_eq!(summary.model, "dinov2-vit-l14");
     assert_eq!(summary.status, ValidationStatus::Unverified);
     assert_eq!(

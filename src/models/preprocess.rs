@@ -20,8 +20,11 @@ impl PreprocessConfig {
     }
 }
 
-/// Resize an image to `(input_size, input_size)` and normalize it into a
-/// `[1, 3, H, W]` float32 tensor using the given mean/std.
+/// Resize the short edge to `input_size`, center-crop to square, then
+/// normalize into a `[1, 3, H, W]` float32 tensor.
+///
+/// This matches the standard torchvision ViT preprocessing pipeline:
+/// `Resize(size) → CenterCrop(size) → ToTensor → Normalize(mean, std)`.
 pub fn preprocess(img: &DynamicImage, cfg: &PreprocessConfig) -> Result<Array4<f32>, ModelError> {
     if cfg.input_size == 0 {
         return Err(ModelError::Preprocessing(
@@ -35,9 +38,24 @@ pub fn preprocess(img: &DynamicImage, cfg: &PreprocessConfig) -> Result<Array4<f
     }
     let size = cfg.input_size;
 
-    // Resize to square
-    let resized = img.resize_exact(size, size, image::imageops::FilterType::Lanczos3);
-    let rgb: RgbImage = resized.to_rgb8();
+    // Step 1: Resize so the short edge equals input_size (preserve aspect ratio).
+    let (w, h) = (img.width(), img.height());
+    let resized = if w == size && h == size {
+        img.clone()
+    } else {
+        let scale = size as f64 / w.min(h) as f64;
+        let new_w = (w as f64 * scale).round() as u32;
+        let new_h = (h as f64 * scale).round() as u32;
+        img.resize_exact(new_w, new_h, image::imageops::FilterType::Lanczos3)
+    };
+
+    // Step 2: Center-crop to (size, size).
+    let rw = resized.width();
+    let rh = resized.height();
+    let crop_x = (rw.saturating_sub(size)) / 2;
+    let crop_y = (rh.saturating_sub(size)) / 2;
+    let cropped = resized.crop_imm(crop_x, crop_y, size, size);
+    let rgb: RgbImage = cropped.to_rgb8();
 
     let h = size as usize;
     let w = size as usize;
@@ -86,6 +104,15 @@ mod tests {
         let tensor = preprocess(&img, &cfg).unwrap();
         // Black pixels → 0.0 normalized
         assert!((tensor[[0, 0, 0, 0]] - 0.0).abs() < 1e-5);
+    }
+
+    #[test]
+    fn test_preprocess_non_square_image_preserves_aspect_via_crop() {
+        // A 400x200 image → short edge is 200 → scale to 224x448 → center-crop to 224x224
+        let img = DynamicImage::new_rgb8(400, 200);
+        let cfg = PreprocessConfig::new(224, [0.485, 0.456, 0.406], [0.229, 0.224, 0.225]);
+        let tensor = preprocess(&img, &cfg).unwrap();
+        assert_eq!(tensor.shape(), &[1, 3, 224, 224]);
     }
 
     #[test]

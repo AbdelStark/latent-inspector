@@ -7,8 +7,6 @@ use ndarray::{Array1, Array2, Array4, Axis, Ix3};
 use ort::session::Session;
 use ort::value::TensorRef;
 use serde::{Deserialize, Serialize};
-use std::collections::hash_map::DefaultHasher;
-use std::hash::{Hash, Hasher};
 use std::path::Path;
 use tracing::info;
 
@@ -268,19 +266,24 @@ impl ModelSession {
                 }
 
                 let seq_len = hidden_array.shape()[1];
-                let has_cls = if contract.cls_expected {
-                    seq_len == expected_patches + 1
-                } else {
-                    false
-                };
+                let expected_with_cls = expected_patches + 1;
+                let has_cls = contract.cls_expected && seq_len == expected_with_cls;
 
-                if seq_len != expected_patches && !has_cls {
+                if seq_len != expected_patches && seq_len != expected_with_cls {
                     return Err(ModelError::InferenceFailed(format!(
                         "Expected {} or {} tokens for '{}', got {}",
-                        expected_patches,
-                        expected_patches + usize::from(contract.cls_expected),
-                        info.name,
-                        seq_len
+                        expected_patches, expected_with_cls, info.name, seq_len
+                    )));
+                }
+
+                // When the contract expects CLS but the model returned only
+                // patch tokens (no CLS prefix), reject rather than silently
+                // proceeding with cls_token = None.
+                if contract.cls_expected && !has_cls {
+                    return Err(ModelError::InferenceFailed(format!(
+                        "Contract for '{}' expects a CLS token (sequence length {}), \
+                         but got {} tokens (patches only)",
+                        info.name, expected_with_cls, seq_len
                     )));
                 }
 
@@ -393,10 +396,16 @@ fn use_stub_backend() -> bool {
         .unwrap_or(false)
 }
 
+/// FNV-1a hash — deterministic across Rust versions unlike `DefaultHasher`.
 fn stub_seed_value(value: &str) -> u64 {
-    let mut hasher = DefaultHasher::new();
-    value.hash(&mut hasher);
-    hasher.finish()
+    const FNV_OFFSET: u64 = 0xcbf29ce484222325;
+    const FNV_PRIME: u64 = 0x100000001b3;
+    let mut hash = FNV_OFFSET;
+    for byte in value.as_bytes() {
+        hash ^= *byte as u64;
+        hash = hash.wrapping_mul(FNV_PRIME);
+    }
+    hash
 }
 
 fn validate_artifact_path(entry: &RegistryEntry, artifact_path: &Path) -> Result<(), ModelError> {

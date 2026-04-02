@@ -133,6 +133,9 @@ pub enum VizError {
     #[error("HTML generation error: {0}")]
     Html(String),
 
+    #[error("JSON serialization error: {0}")]
+    Json(String),
+
     #[error("Artifact manifest error: {0}")]
     Artifact(String),
 }

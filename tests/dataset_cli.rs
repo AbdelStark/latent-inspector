@@ -1,13 +1,11 @@
+mod common;
+use common::*;
+
 use serde_json::Value;
-use sha2::{Digest, Sha256};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use tempfile::tempdir;
-
-fn bin() -> &'static str {
-    env!("CARGO_BIN_EXE_latent-inspector")
-}
 
 fn write_image(path: &Path, offset: u8) {
     let image = image::RgbImage::from_fn(224, 224, |x, y| {
@@ -24,38 +22,6 @@ fn write_query_image(dir: &Path) -> PathBuf {
     let path = dir.join("query.png");
     write_image(&path, 7);
     path
-}
-
-fn read_json(path: &Path) -> Value {
-    serde_json::from_str(&fs::read_to_string(path).unwrap()).unwrap()
-}
-
-fn read_artifact_manifest(dir: &Path) -> Value {
-    read_json(&dir.join("artifacts.json"))
-}
-
-fn artifact_entry<'a>(manifest: &'a Value, path: &str) -> &'a Value {
-    manifest["artifacts"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|artifact| artifact["path"] == path)
-        .unwrap_or_else(|| panic!("missing artifact entry for {path}"))
-}
-
-fn assert_artifact_metadata(manifest: &Value, path: &str) {
-    let artifact = artifact_entry(manifest, path);
-    assert!(artifact["byte_size"].as_u64().unwrap() > 0);
-    assert_eq!(artifact["sha256"].as_str().unwrap().len(), 64);
-}
-
-fn digest_preview_for(path: &Path) -> String {
-    let digest = hex::encode(Sha256::digest(fs::read(path).unwrap()));
-    if digest.len() > 16 {
-        format!("{}…", &digest[..16])
-    } else {
-        digest
-    }
 }
 
 #[test]

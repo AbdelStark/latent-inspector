@@ -1,7 +1,7 @@
 //! Compare view — side-by-side model comparison with similarity matrices.
 
 use crate::tui::app::App;
-use crate::tui::theme;
+use crate::tui::theme::{self, mini_bar, truncate};
 use ratatui::prelude::*;
 use ratatui::widgets::*;
 
@@ -286,19 +286,5 @@ fn sim_block(v: f32) -> &'static str {
         "▒"
     } else {
         "░"
-    }
-}
-
-fn mini_bar(ratio: f32, width: usize) -> String {
-    let filled = (ratio.clamp(0.0, 1.0) * width as f32).round() as usize;
-    let empty = width.saturating_sub(filled);
-    format!("{}{}", "█".repeat(filled), "░".repeat(empty))
-}
-
-fn truncate(s: &str, max: usize) -> String {
-    if s.len() <= max {
-        s.to_string()
-    } else {
-        format!("{}…", &s[..max.saturating_sub(1)])
     }
 }

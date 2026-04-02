@@ -22,6 +22,8 @@ pub struct VarianceSpectrum {
 }
 
 impl VarianceSpectrum {
+    /// Return a new spectrum keeping only the first `k` components, recomputing
+    /// cumulative ratios and concentration fields.
     pub fn truncated(&self, k: usize) -> Self {
         let k = k.max(1).min(self.ratios.len());
         let explained_variance = self.explained_variance.slice(s![..k]).to_owned();

@@ -230,7 +230,7 @@ pub struct ModelInventoryEntry {
     pub artifacts: Vec<ModelArtifactInventory>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EvidenceStatusCounts {
     pub approved: usize,
     pub stale: usize,
@@ -238,7 +238,7 @@ pub struct EvidenceStatusCounts {
     pub unverified: usize,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ModelCatalogSummary {
     pub total_models: usize,
     pub ready_models: usize,
@@ -368,20 +368,8 @@ pub fn build_model_catalog(fixture_selection: Option<&str>) -> ModelCatalogRepor
         fixture_set: fixture_name,
         evidence_timestamp,
         fixture_error,
-        summary: ModelCatalogSummary {
-            total_models: 0,
-            ready_models: 0,
-            planned_models: 0,
-            cached_models: 0,
-            readiness: ModelReadinessCounts::default(),
-            artifacts: ArtifactInventorySummary::default(),
-            evidence: EvidenceStatusCounts {
-                approved: 0,
-                stale: 0,
-                missing: 0,
-                unverified: 0,
-            },
-        },
+        // Placeholder — immediately replaced by build_summary() below.
+        summary: ModelCatalogSummary::default(),
         entries,
     };
     report.summary = report.build_summary();
@@ -394,23 +382,16 @@ fn build_inventory_entry(
     fixture_error: Option<&str>,
 ) -> ModelInventoryEntry {
     let (runtime_support, runtime_summary) = runtime_support(entry);
-    let (
-        artifacts,
-        artifact_summary,
-        cache_status,
-        cache_summary,
-        verification_label,
-        verification_note,
-    ) = build_artifact_inventory(entry);
+    let abr = build_artifact_inventory(entry);
 
     let (evidence_status, evidence_summary, evidence_details) =
         assess_evidence(entry, fixture_set, fixture_error);
     let (readiness_status, readiness_summary, next_steps) = assess_readiness(
         entry,
-        cache_status,
-        &artifact_summary,
+        abr.cache_status,
+        &abr.artifact_summary,
         evidence_status,
-        verification_note.as_deref(),
+        abr.verification_note.as_deref(),
     );
 
     ModelInventoryEntry {
@@ -430,39 +411,42 @@ fn build_inventory_entry(
         embed_dim: entry.info.embed_dim,
         num_layers: entry.info.num_layers,
         num_heads: entry.info.num_heads,
-        verification_label,
-        verification_note,
-        cache_status,
-        cache_summary,
-        artifact_summary,
+        verification_label: abr.verification_label,
+        verification_note: abr.verification_note,
+        cache_status: abr.cache_status,
+        cache_summary: abr.cache_summary,
+        artifact_summary: abr.artifact_summary,
         evidence_status,
         evidence_summary,
         evidence_details,
         approved_fixture_set: entry.validation.fixture_set.clone(),
         approved_evidence_timestamp: entry.validation.evidence_timestamp.clone(),
-        artifacts,
+        artifacts: abr.artifacts,
     }
 }
 
-fn build_artifact_inventory(
-    entry: &RegistryEntry,
-) -> (
-    Vec<ModelArtifactInventory>,
-    ArtifactInventorySummary,
-    CacheStatus,
-    String,
-    String,
-    Option<String>,
-) {
+struct ArtifactBuildResult {
+    artifacts: Vec<ModelArtifactInventory>,
+    artifact_summary: ArtifactInventorySummary,
+    cache_status: CacheStatus,
+    cache_summary: String,
+    verification_label: String,
+    verification_note: Option<String>,
+}
+
+fn build_artifact_inventory(entry: &RegistryEntry) -> ArtifactBuildResult {
     if entry.artifacts.is_empty() {
-        return (
-            Vec::new(),
-            ArtifactInventorySummary::default(),
-            CacheStatus::Missing,
-            "No download artifacts are pinned for this registry entry yet.".to_string(),
-            "pending".to_string(),
-            Some("Artifact metadata has not been pinned for this integration yet.".to_string()),
-        );
+        return ArtifactBuildResult {
+            artifacts: Vec::new(),
+            artifact_summary: ArtifactInventorySummary::default(),
+            cache_status: CacheStatus::Missing,
+            cache_summary: "No download artifacts are pinned for this registry entry yet."
+                .to_string(),
+            verification_label: "pending".to_string(),
+            verification_note: Some(
+                "Artifact metadata has not been pinned for this integration yet.".to_string(),
+            ),
+        };
     }
 
     let (artifacts, cache_status, cache_summary) = match cache::inspect_registry_artifacts(entry) {
@@ -499,14 +483,14 @@ fn build_artifact_inventory(
     let artifact_summary = ArtifactInventorySummary::from_artifacts(&artifacts);
     let (verification_label, verification_note) = summarize_verification(&artifacts);
 
-    (
+    ArtifactBuildResult {
         artifacts,
         artifact_summary,
         cache_status,
         cache_summary,
         verification_label,
         verification_note,
-    )
+    }
 }
 
 fn build_unknown_artifacts(entry: &RegistryEntry, reason: &str) -> Vec<ModelArtifactInventory> {
@@ -977,7 +961,10 @@ mod tests {
         assert_eq!(report.summary.artifacts.total, 6);
         assert!(dinov2.evidence_details.is_empty());
         assert_eq!(report.summary.total_models, report.entries.len());
-        assert_eq!(report.summary.ready_models, 1);
+        assert_eq!(report.summary.ready_models, 2);
+        // Only DINOv2 has ONNX-backed evidence; I-JEPA is ready but its
+        // reference artifacts were generated by the stub backend, so evidence
+        // is stale rather than approved.
         assert_eq!(report.summary.evidence.approved, 1);
     }
 

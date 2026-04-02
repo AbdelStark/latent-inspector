@@ -1,5 +1,6 @@
 //! Patch correspondence via optimal assignment (Hungarian algorithm).
 
+use crate::analysis::finite::ensure_finite_2d;
 use crate::errors::AnalysisError;
 use ndarray::Array2;
 use pathfinding::matrix::Matrix;
@@ -58,6 +59,9 @@ pub fn patch_correspondence(
     a: &Array2<f32>,
     b: &Array2<f32>,
 ) -> Result<CorrespondenceResult, AnalysisError> {
+    ensure_finite_2d(a, "left patches for correspondence")?;
+    ensure_finite_2d(b, "right patches for correspondence")?;
+
     let na = a.shape()[0];
     let nb = b.shape()[0];
 
@@ -74,7 +78,8 @@ pub fn patch_correspondence(
             cost_flat.push(((1.0 - sim[[i, j]]) * scale as f32) as i64);
         }
     }
-    let cost_matrix = Matrix::from_vec(n, n, cost_flat).unwrap_or_else(|_| Matrix::new(n, n, 0i64));
+    let cost_matrix =
+        Matrix::from_vec(n, n, cost_flat).expect("invariant: cost_flat has exactly n*n elements");
 
     let (_total_cost, assignments): (i64, Vec<usize>) = kuhn_munkres_min(&cost_matrix);
 

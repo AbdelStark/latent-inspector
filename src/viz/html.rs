@@ -291,13 +291,14 @@ fn render_html(
 }
 
 fn render_html_with_bundle(
-    image_name: &str,
+    image_name_raw: &str,
     metrics: &[ModelMetrics],
     comparisons: &[ComparisonMetrics],
     validation: &[ModelValidationSummary],
     assets: &CompareHtmlAssets,
     bundle: Option<&OutputArtifactManifest>,
 ) -> String {
+    let image_name = escape_html(image_name_raw);
     let overview = build_compare_overview(metrics, comparisons);
     let comparison_rows = comparisons
         .iter()
@@ -1484,7 +1485,7 @@ fn render_model_catalog_details(entry: &crate::models::ModelInventoryEntry) -> S
                     byte_size,
                     verification,
                     escape_html(&artifact.absolute_path),
-                    escape_html(&artifact.url),
+                    sanitize_href(&artifact.url),
                     escape_html(&artifact.url),
                     escape_html(&artifact.cache_summary),
                 )
@@ -1659,6 +1660,7 @@ fn render_secondary_html(
     sections: &[(&str, String)],
     bundle: Option<&OutputArtifactManifest>,
 ) -> String {
+    let escaped_title = escape_html(title);
     let stats_html = render_secondary_stats(stats);
     let bundle_section = bundle
         .map(|bundle| {
@@ -1686,7 +1688,7 @@ fn render_secondary_html(
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>latent-inspector: {}</title>
+<title>latent-inspector: {escaped_title}</title>
 <style>
   :root {{
     color-scheme: dark;
@@ -1744,12 +1746,7 @@ fn render_secondary_html(
 {}
 </body>
 </html>"#,
-        escape_html(title),
-        escape_html(title),
-        subtitle,
-        stats_html,
-        bundle_section,
-        sections_html
+        &escaped_title, subtitle, stats_html, bundle_section, sections_html
     )
 }
 
@@ -1973,6 +1970,20 @@ fn escape_html(s: &str) -> String {
         .replace('<', "&lt;")
         .replace('>', "&gt;")
         .replace('"', "&quot;")
+}
+
+/// Sanitize a URL for use in `href` attributes.
+/// Blocks `javascript:`, `data:`, and `vbscript:` schemes.
+fn sanitize_href(url: &str) -> String {
+    let lower = url.trim().to_lowercase();
+    if lower.starts_with("javascript:")
+        || lower.starts_with("data:")
+        || lower.starts_with("vbscript:")
+    {
+        "#blocked".to_string()
+    } else {
+        escape_html(url)
+    }
 }
 
 #[cfg(test)]
@@ -2564,8 +2575,10 @@ mod tests {
         let report = model_catalog_report();
         let html = render_model_catalog_html(&report);
 
+        // DINOv2 has ONNX-backed evidence (approved); I-JEPA is ready but
+        // its reference was stub-generated so evidence is stale, not approved.
         assert_eq!(report.summary.evidence.approved, 1);
-        assert_eq!(report.summary.evidence.unverified, 5);
+        assert_eq!(report.summary.evidence.unverified, 4);
         assert!(html.contains("Registered models"));
         assert!(html.contains("Ready to run"));
         assert!(html.contains("Readiness summary:"));

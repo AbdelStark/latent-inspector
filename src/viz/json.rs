@@ -97,13 +97,13 @@ fn print_value<T: Serialize + ?Sized>(value: &T) -> Result<(), VizError> {
 fn write_value<T: Serialize + ?Sized>(value: &T, path: &Path) -> Result<(), VizError> {
     let json = serialize_pretty(value)?;
     std::fs::write(path, json)
-        .map_err(|e| VizError::Html(format!("Failed to write {}: {e}", path.display())))?;
+        .map_err(|e| VizError::Json(format!("Failed to write {}: {e}", path.display())))?;
     Ok(())
 }
 
 fn serialize_pretty<T: Serialize + ?Sized>(value: &T) -> Result<String, VizError> {
     serde_json::to_string_pretty(value)
-        .map_err(|e| VizError::Html(format!("JSON serialization failed: {e}")))
+        .map_err(|e| VizError::Json(format!("JSON serialization failed: {e}")))
 }
 
 #[cfg(test)]

@@ -35,7 +35,10 @@ pub(crate) fn ensure_finite_4d(data: &Array4<f32>, context: &str) -> Result<(), 
     Ok(())
 }
 
-pub(crate) fn square_grid_side(patch_count: usize, context: &str) -> Result<usize, AnalysisError> {
+/// Compute the integer side length of a square patch grid.
+///
+/// Returns an error if `patch_count` is not a perfect square.
+pub fn square_grid_side(patch_count: usize, context: &str) -> Result<usize, AnalysisError> {
     let grid = (patch_count as f64).sqrt().round() as usize;
     if grid > 0 && grid.checked_mul(grid) == Some(patch_count) {
         Ok(grid)

@@ -94,10 +94,10 @@ For researchers processing thousands of images across multiple models, this matt
 
 | Model | Architecture | Method | Source | Status |
 |-------|-------------|--------|--------|--------|
-| DINOv2 | ViT-L/14 | Self-distillation + centering | Meta FAIR | Ready in Phase 1 |
+| DINOv2 | ViT-L/14 | Self-distillation + centering | Meta FAIR | **Ready** |
+| I-JEPA | ViT-H/14 | Joint embedding predictive (latent prediction) | Meta FAIR | **Ready** |
 | DINOv3 | ViT-7B (distilled to ViT-L) | Self-distillation + Gram anchoring | Meta FAIR | Planned |
 | MAE | ViT-L/16 | Masked autoencoder (reconstruction) | Meta FAIR | Planned |
-| I-JEPA | ViT-H/14 | Joint embedding predictive (latent prediction) | Meta FAIR | Planned |
 | CLIP | ViT-L/14 | Contrastive image-text | OpenAI | Planned |
 | SigLIP | ViT-SO400M/14 | Sigmoid contrastive image-text | Google | Planned |
 
@@ -146,33 +146,30 @@ If an export emits `NaN`/`Inf` tensors or a non-square patch grid, the analysis
 now fails explicitly instead of producing misleading metrics or corrupted PCA
 artefacts.
 
-## Example: How different models see a street scene
+## Example: Comparing the two ready models
 
 ```
-$ latent-inspector compare street.jpg --models dinov2,mae,ijepa,clip
+$ latent-inspector compare street.jpg --models dinov2-vit-l14,ijepa-vit-h14
 
 Model Comparison: street.jpg
 ═══════════════════════════════
 
-                DINOv2-L    MAE-L       I-JEPA-H    CLIP-L
-Repr. rank      487/1024    312/1024    445/1024    198/1024
-Top-10 var%     23.4%       41.7%       28.1%       62.3%
-Patch entropy   6.82        5.91        6.44        4.12
-CLS L2 norm     18.4        N/A         16.2        12.7
+                DINOv2-L/14  I-JEPA-H/14
+Repr. rank      487/1024     445/1280
+Top-10 var%     23.4%        28.1%
+Patch entropy   6.82         6.44
+CLS L2 norm     18.4         16.2
 
 Cross-model CLS cosine similarity:
-             DINOv2  MAE     I-JEPA  CLIP
-DINOv2       1.000   -       0.721   0.534
-MAE          -       -       -       -
-I-JEPA       0.721   -       1.000   0.488
-CLIP         0.534   -       0.488   1.000
-
-Attention concentration (Gini coefficient):
-DINOv2: 0.72 (focused)   MAE: 0.31 (diffuse)
-I-JEPA: 0.58 (moderate)  CLIP: 0.81 (very focused)
+             DINOv2   I-JEPA
+DINOv2       1.000    0.721
+I-JEPA       0.721    1.000
 
 [PNG outputs saved to ./compare_street/]
 ```
+
+> **Note:** The metrics above are illustrative. Run the command on your own images
+> to see real values from the ONNX models.
 
 ## Analysis modes
 

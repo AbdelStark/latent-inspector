@@ -1,7 +1,7 @@
 //! Dashboard view — model registry overview and high-level metrics.
 
 use crate::tui::app::App;
-use crate::tui::theme;
+use crate::tui::theme::{self, mini_bar, truncate};
 use ratatui::prelude::*;
 use ratatui::widgets::*;
 
@@ -316,18 +316,4 @@ fn metric_line(label: &str, value: &str, ratio: f32, good_high: bool) -> Line<'s
         Span::styled(format!("{} ", bar), Style::new().fg(color)),
         Span::styled(value.to_string(), Style::new().fg(color)),
     ])
-}
-
-fn mini_bar(ratio: f32, width: usize) -> String {
-    let filled = (ratio.clamp(0.0, 1.0) * width as f32).round() as usize;
-    let empty = width.saturating_sub(filled);
-    format!("{}{}", "█".repeat(filled), "░".repeat(empty))
-}
-
-fn truncate(s: &str, max: usize) -> String {
-    if s.len() <= max {
-        s.to_string()
-    } else {
-        format!("{}…", &s[..max.saturating_sub(1)])
-    }
 }

@@ -1,16 +1,16 @@
+mod common;
+use common::*;
+
 use std::path::PathBuf;
 use std::process::Command;
 use tempfile::tempdir;
-
-fn bin() -> &'static str {
-    env!("CARGO_BIN_EXE_latent-inspector")
-}
 
 fn fixture_image() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("docs")
         .join("assets")
         .join("img")
+        .join("samples")
         .join("cat.jpeg")
 }
 

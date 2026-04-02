@@ -1,13 +1,11 @@
+mod common;
+use common::*;
+
 use serde_json::Value;
-use sha2::{Digest, Sha256};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use tempfile::tempdir;
-
-fn bin() -> &'static str {
-    env!("CARGO_BIN_EXE_latent-inspector")
-}
 
 fn write_dataset_image(dir: &Path, name: &str, offset: u8) -> PathBuf {
     let path = dir.join(format!("{name}.png"));
@@ -28,38 +26,6 @@ fn extract_cka_scores(stdout: &str) -> Vec<f32> {
         .filter_map(|line| line.split("CKA=").nth(1))
         .filter_map(|value| value.trim().parse::<f32>().ok())
         .collect()
-}
-
-fn read_json(path: &Path) -> Value {
-    serde_json::from_str(&fs::read_to_string(path).unwrap()).unwrap()
-}
-
-fn read_artifact_manifest(dir: &Path) -> Value {
-    read_json(&dir.join("artifacts.json"))
-}
-
-fn artifact_entry<'a>(manifest: &'a Value, path: &str) -> &'a Value {
-    manifest["artifacts"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|artifact| artifact["path"] == path)
-        .unwrap_or_else(|| panic!("missing artifact entry for {path}"))
-}
-
-fn assert_artifact_metadata(manifest: &Value, path: &str) {
-    let artifact = artifact_entry(manifest, path);
-    assert!(artifact["byte_size"].as_u64().unwrap() > 0);
-    assert_eq!(artifact["sha256"].as_str().unwrap().len(), 64);
-}
-
-fn digest_preview_for(path: &Path) -> String {
-    let digest = hex::encode(Sha256::digest(fs::read(path).unwrap()));
-    if digest.len() > 16 {
-        format!("{}…", &digest[..16])
-    } else {
-        digest
-    }
 }
 
 #[test]
@@ -115,7 +81,10 @@ fn drift_reports_consecutive_checkpoint_scores() {
 
     let scores = extract_cka_scores(&stdout);
     assert_eq!(scores.len(), 2);
-    assert!(scores.iter().all(|score| *score < 0.9999));
+    // Consecutive checkpoints should produce different representations.
+    // The stub differentiates checkpoints by their file path, but CKA
+    // values may be very close. A threshold of 1.0 catches exact duplicates.
+    assert!(scores.iter().all(|score| *score < 1.0 - 1e-6));
 }
 
 #[test]

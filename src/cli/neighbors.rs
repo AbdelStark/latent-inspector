@@ -110,7 +110,7 @@ pub fn run(args: NeighborsArgs) -> Result<(), Error> {
                 .sum::<f32>()
                 .sqrt()
                 .max(1e-8);
-            (dot / (na * nb), sample.entry.clone())
+            ((dot / (na * nb)).clamp(-1.0, 1.0), sample.entry.clone())
         })
         .collect();
 

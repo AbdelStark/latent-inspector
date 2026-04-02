@@ -1,7 +1,7 @@
 //! Spectrum view — full PCA variance spectrum visualization.
 
 use crate::tui::app::App;
-use crate::tui::theme;
+use crate::tui::theme::{self, dim_color};
 use ratatui::prelude::*;
 use ratatui::widgets::*;
 
@@ -228,16 +228,4 @@ fn draw_spectrum_summary(
 
     let paragraph = Paragraph::new(Text::from(lines));
     frame.render_widget(paragraph, inner);
-}
-
-fn dim_color(base: Color, intensity: f32) -> Color {
-    if let Color::Rgb(r, g, b) = base {
-        Color::Rgb(
-            (r as f32 * intensity) as u8,
-            (g as f32 * intensity) as u8,
-            (b as f32 * intensity) as u8,
-        )
-    } else {
-        base
-    }
 }
