@@ -526,8 +526,8 @@ pub fn registry() -> Vec<RegistryEntry> {
                 },
                 TensorContract {
                     name: "last_hidden_state".to_string(),
-                    role: TensorRole::PatchAndClsSequence,
-                    cls_expected: true,
+                    role: TensorRole::PatchSequence,
+                    cls_expected: false,
                     batch_size: 1,
                     patch_count: 256,
                     embedding_dim: 1280,
