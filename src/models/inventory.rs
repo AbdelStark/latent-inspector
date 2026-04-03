@@ -958,13 +958,12 @@ mod tests {
 
         assert_eq!(dinov2.evidence_status, EvidenceStatus::Approved);
         assert_eq!(dinov2.artifact_summary.total, 1);
-        assert_eq!(report.summary.artifacts.total, 8);
+        assert_eq!(report.summary.artifacts.total, 10);
         assert!(dinov2.evidence_details.is_empty());
         assert_eq!(report.summary.total_models, report.entries.len());
-        assert_eq!(report.summary.ready_models, 3);
-        // All three ready models (DINOv2, I-JEPA, V-JEPA 2) have ONNX-backed
-        // reference evidence.
-        assert_eq!(report.summary.evidence.approved, 3);
+        assert_eq!(report.summary.ready_models, 4);
+        // All four ready models have ONNX-backed reference evidence.
+        assert_eq!(report.summary.evidence.approved, 4);
     }
 
     #[test]

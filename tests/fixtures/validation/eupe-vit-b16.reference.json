@@ -1,0 +1,116 @@
+{
+  "model": "eupe-vit-b16",
+  "fixture_set": "standard",
+  "evidence_timestamp": "2026-03-27T12:00:00Z",
+  "artifact_id": "eupe-vit-b16:standard:2026-03-27T12:00:00Z",
+  "source": "facebookresearch/eupe",
+  "backend": "onnx-runtime",
+  "tolerances": {
+    "patch_count_abs": 0,
+    "embedding_dim_abs": 0,
+    "patch_mean_abs": 0.001,
+    "patch_std_abs": 0.001,
+    "cls_l2_abs": 0.001,
+    "patch_rms_abs": 0.001,
+    "patch_signature_abs": 0.001,
+    "cls_signature_abs": 0.001
+  },
+  "observed": {
+    "tensor_name": "last_hidden_state",
+    "output_shape": [
+      1,
+      197,
+      768
+    ],
+    "cls_present": true,
+    "patch_count": 196,
+    "embedding_dim": 768,
+    "patch_mean": -0.097588986,
+    "patch_std": 2.1475537,
+    "patch_rms": 2.1497693,
+    "cls_l2_norm": 59.879787,
+    "fixtures": [
+      {
+        "id": "gradient-224",
+        "patch_mean": -0.09220831,
+        "patch_std": 2.22155,
+        "patch_rms": 2.2234516,
+        "patch_signature": [
+          -0.4286912,
+          -0.8406176,
+          -0.81155974,
+          -0.8437906,
+          -0.847937,
+          -0.83377784,
+          -0.7746815,
+          -0.69480973
+        ],
+        "cls_l2_norm": 60.930317,
+        "cls_signature": [
+          -0.44081378,
+          1.1494873,
+          -0.9458688,
+          0.57483953,
+          0.015819578,
+          0.37048873,
+          0.56902575,
+          -0.9474535
+        ]
+      },
+      {
+        "id": "checkerboard-224",
+        "patch_mean": -0.110485464,
+        "patch_std": 2.1966627,
+        "patch_rms": 2.1994138,
+        "patch_signature": [
+          -0.40307027,
+          -0.838743,
+          -0.8133681,
+          -0.8128943,
+          -0.82093406,
+          -0.82185465,
+          -0.8226056,
+          -0.81019086
+        ],
+        "cls_l2_norm": 61.56226,
+        "cls_signature": [
+          -0.50315666,
+          0.80034095,
+          -1.0044932,
+          0.38197115,
+          0.07150593,
+          0.40507767,
+          0.585927,
+          -0.68349975
+        ]
+      },
+      {
+        "id": "center-square-224",
+        "patch_mean": -0.09007318,
+        "patch_std": 2.024448,
+        "patch_rms": 2.0264425,
+        "patch_signature": [
+          -0.35078675,
+          -0.61012024,
+          -0.68886834,
+          -0.6909223,
+          -0.66095555,
+          -0.6071156,
+          -0.5755689,
+          -0.58590734
+        ],
+        "cls_l2_norm": 57.14678,
+        "cls_signature": [
+          -0.4766245,
+          0.5435708,
+          -0.6161537,
+          0.39701957,
+          -0.021277415,
+          0.53993726,
+          0.6658753,
+          -0.6560677
+        ]
+      }
+    ]
+  }
+}

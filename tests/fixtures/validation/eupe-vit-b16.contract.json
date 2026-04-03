@@ -1,0 +1,34 @@
+{
+  "model": "eupe-vit-b16",
+  "profile": {
+    "source": "facebookresearch/eupe",
+    "evidence_timestamp": "2026-03-27T12:00:00Z",
+    "fixture_set": "standard",
+    "preprocess": {
+      "input_size": 224,
+      "resize_filter": "lanczos3",
+      "color_space": "rgb",
+      "layout": "nchw",
+      "mean": [0.485, 0.456, 0.406],
+      "std": [0.229, 0.224, 0.225]
+    },
+    "tensor": {
+      "name": "last_hidden_state",
+      "role": "patch-and-cls-sequence",
+      "cls_expected": true,
+      "batch_size": 1,
+      "patch_count": 196,
+      "embedding_dim": 768
+    },
+    "tolerances": {
+      "patch_count_abs": 0,
+      "embedding_dim_abs": 0,
+      "patch_mean_abs": 0.001,
+      "patch_std_abs": 0.001,
+      "cls_l2_abs": 0.001,
+      "patch_rms_abs": 0.001,
+      "patch_signature_abs": 0.001,
+      "cls_signature_abs": 0.001
+    }
+  }
+}

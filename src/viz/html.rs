@@ -2729,8 +2729,8 @@ mod tests {
         let report = model_catalog_report();
         let html = render_model_catalog_html(&report);
 
-        // All three ready models have ONNX-backed evidence.
-        assert_eq!(report.summary.evidence.approved, 3);
+        // All four ready models have ONNX-backed evidence.
+        assert_eq!(report.summary.evidence.approved, 4);
         assert_eq!(report.summary.evidence.unverified, 4);
         assert!(html.contains("Registered models"));
         assert!(html.contains("Ready to run"));
