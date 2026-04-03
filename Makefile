@@ -5,7 +5,7 @@ CARGO       := cargo
 FEATURES    := --features onnx-inference
 RELEASE     := --release
 BIN         := target/release/latent-inspector
-TUI_MODELS  := dinov2-vit-l14,ijepa-vit-h14
+MODELS      := dinov2-vit-l14,ijepa-vit-h14,vjepa2-vitl-fpc2-256,eupe-vit-b16
 SAMPLE_IMG  := docs/assets/img/samples/elephant_sample_image.jpg
 CACHE_DIR   := $(HOME)/.cache/latent-inspector
 
@@ -40,7 +40,7 @@ test:                 ## Run all tests
 # ── Run targets ──────────────────────────────────────────────────
 
 tui: build-release    ## Launch TUI with real ONNX inference on sample image
-	$(BIN) tui $(SAMPLE_IMG) -m $(TUI_MODELS)
+	$(BIN) tui $(SAMPLE_IMG) -m $(MODELS)
 
 tui-demo: build-release ## Launch TUI in demo mode with the release binary
 	$(BIN) tui
@@ -48,8 +48,9 @@ tui-demo: build-release ## Launch TUI in demo mode with the release binary
 inspect: build-release ## Inspect sample image with DINOv2
 	$(BIN) inspect $(SAMPLE_IMG) --model dinov2-vit-l14
 
-compare: build-release ## Compare models on sample image
-	$(BIN) compare $(SAMPLE_IMG) --models dinov2-vit-l14
+compare: build-release ## Compare models on sample image and write an HTML report
+	@outdir=./target/comparison-reports/$$(date +%Y%m%d-%H%M%S)/; \
+	$(BIN) compare $(SAMPLE_IMG) --models $(MODELS) --format html --output "$$outdir"
 
 models: build-release ## List registered models and their status
 	$(BIN) models
