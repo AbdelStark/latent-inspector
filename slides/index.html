@@ -1,0 +1,588 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>latent-inspector — How AI Models See the World</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/theme/black.css" id="theme">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/monokai.css">
+<style>
+  /* ── Custom Theme Override ── */
+  :root {
+    --r-background-color: #0a0a0f;
+    --r-main-font: 'Inter', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    --r-heading-font: 'Inter', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    --r-main-color: #e0e0e8;
+    --r-heading-color: #ffffff;
+    --r-link-color: #6ea8fe;
+    --r-link-color-hover: #9ec5fe;
+    --r-selection-background-color: #3d5a80;
+    --r-heading-text-transform: none;
+  }
+
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+  .reveal { font-weight: 300; }
+  .reveal h1 { font-weight: 700; font-size: 2.2em; letter-spacing: -0.02em; }
+  .reveal h2 { font-weight: 600; font-size: 1.6em; letter-spacing: -0.01em; color: #c8c8d4; }
+  .reveal h3 { font-weight: 500; font-size: 1.15em; color: #9898a8; }
+
+  /* Accent colors per domain */
+  .accent-orange { color: #ff8c42; }
+  .accent-blue { color: #6ea8fe; }
+  .accent-green { color: #63e6be; }
+  .accent-red { color: #ff6b6b; }
+  .accent-purple { color: #b197fc; }
+  .accent-yellow { color: #ffd43b; }
+  .accent-dim { color: #6c6c7e; }
+
+  /* Metric highlight */
+  .metric-big {
+    font-size: 3.5em;
+    font-weight: 700;
+    line-height: 1.1;
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .metric-label {
+    font-size: 0.9em;
+    font-weight: 400;
+    color: #9898a8;
+    margin-top: 0.3em;
+  }
+
+  /* Tables */
+  .reveal table { margin: 0.8em auto; font-size: 0.72em; border-collapse: collapse; }
+  .reveal table th { background: #1a1a2e; color: #c8c8d4; font-weight: 600; padding: 0.5em 0.8em; border-bottom: 2px solid #2a2a3e; }
+  .reveal table td { padding: 0.45em 0.8em; border-bottom: 1px solid #1a1a2e; }
+  .reveal table tr:hover td { background: #12121e; }
+  .highlight-cell { background: #2a1a1a !important; color: #ff6b6b !important; font-weight: 600; }
+  .highlight-cell-green { background: #1a2a1a !important; color: #63e6be !important; font-weight: 600; }
+
+  /* Code */
+  .reveal pre { box-shadow: none; font-size: 0.65em; }
+  .reveal code { font-family: 'JetBrains Mono', monospace; }
+  .reveal pre code { padding: 1.2em; border-radius: 8px; background: #12121e; }
+
+  /* Layout helpers */
+  .two-col { display: flex; gap: 2em; align-items: flex-start; }
+  .two-col > div { flex: 1; }
+  .two-col-60-40 { display: flex; gap: 2em; }
+  .two-col-60-40 > div:first-child { flex: 3; }
+  .two-col-60-40 > div:last-child { flex: 2; }
+
+  /* Image grid */
+  .img-grid-2x2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.5em;
+    max-width: 700px;
+    margin: 0 auto;
+  }
+  .img-grid-2x2 img { width: 100%; border-radius: 4px; }
+  .img-grid-2x2 .caption { font-size: 0.55em; color: #9898a8; text-align: center; margin-top: 0.2em; }
+
+  /* CKA Matrix styled */
+  .cka-matrix { font-family: 'JetBrains Mono', monospace; font-size: 0.65em; }
+  .cka-matrix td, .cka-matrix th { text-align: center; padding: 0.5em 0.7em; }
+  .cka-zero { color: #ff6b6b; font-weight: 700; font-size: 1.1em; }
+  .cka-high { color: #63e6be; }
+  .cka-diag { color: #4a4a5e; }
+
+  /* Subtle divider */
+  .divider { width: 60px; height: 2px; background: #2a2a3e; margin: 1.5em auto; }
+
+  /* Slide number */
+  .reveal .slide-number { font-family: 'JetBrains Mono', monospace; font-size: 0.5em; color: #4a4a5e; }
+
+  /* Fragment highlight */
+  .reveal .fragment.highlight-current-blue.current-fragment { color: #6ea8fe; }
+
+  /* Blockquote */
+  .reveal blockquote {
+    border-left: 3px solid #ff8c42;
+    padding: 0.5em 1em;
+    background: #12121e;
+    font-style: normal;
+    font-size: 0.85em;
+    border-radius: 0 6px 6px 0;
+    margin: 1em 0;
+  }
+
+  /* Progress bar */
+  .reveal .progress { color: #ff8c42; height: 3px; }
+
+  /* Smaller text utility */
+  .small { font-size: 0.75em; }
+  .smaller { font-size: 0.6em; color: #6c6c7e; }
+  .tiny { font-size: 0.5em; color: #4a4a5e; }
+
+  /* Key insight box */
+  .insight-box {
+    background: linear-gradient(135deg, #1a1a2e 0%, #12121e 100%);
+    border: 1px solid #2a2a3e;
+    border-radius: 8px;
+    padding: 1em 1.5em;
+    margin: 1em 0;
+    text-align: left;
+  }
+  .insight-box strong { color: #ff8c42; }
+
+  /* Person card */
+  .person { font-size: 0.7em; color: #9898a8; }
+  .person strong { color: #e0e0e8; }
+</style>
+</head>
+<body>
+<div class="reveal">
+<div class="slides">
+
+<!-- ═══════════════════════════════════════════════════ -->
+<!-- TITLE -->
+<!-- ═══════════════════════════════════════════════════ -->
+<section>
+  <h1>How AI Models<br><span class="accent-orange">See the World</span></h1>
+  <div class="divider"></div>
+  <p>A deep dive into self-supervised vision model representations</p>
+  <p class="small accent-dim">with <strong>latent-inspector</strong></p>
+  <p class="tiny" style="margin-top: 2em;">github.com/AbdelStark/latent-inspector</p>
+</section>
+
+<!-- ═══════════════════════════════════════════════════ -->
+<!-- ACT 1: THE HOOK -->
+<!-- ═══════════════════════════════════════════════════ -->
+<section>
+  <section>
+    <h2>Same image.<br>Four models.<br><span class="accent-orange">Four realities.</span></h2>
+    <p class="small accent-dim" style="margin-top: 2em;">↓ scroll down</p>
+  </section>
+  <section>
+    <!-- PLACEHOLDER: Replace with actual PCA grid image -->
+    <h3>PCA Projections — Top 3 components mapped to RGB</h3>
+    <div class="img-grid-2x2">
+      <div><div style="background:#1a1a2e;height:220px;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#4a4a5e;">DINOv2 PCA<br><span class="tiny">Replace with generated image</span></div><div class="caption">DINOv2 — clean segmentation</div></div>
+      <div><div style="background:#1a1a2e;height:220px;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#4a4a5e;">I-JEPA PCA<br><span class="tiny">Replace with generated image</span></div><div class="caption">I-JEPA — fine-grained spatial detail</div></div>
+      <div><div style="background:#1a1a2e;height:220px;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#4a4a5e;">V-JEPA 2 PCA<br><span class="tiny">Replace with generated image</span></div><div class="caption">V-JEPA 2 — maximum dimensional richness</div></div>
+      <div><div style="background:#1a1a2e;height:220px;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#4a4a5e;">EUPE PCA<br><span class="tiny">Replace with generated image</span></div><div class="caption">EUPE — smooth universal compression</div></div>
+    </div>
+    <p class="smaller" style="margin-top:1em;">Same photograph. Same elephant. Same pixels. Different internal representations.</p>
+  </section>
+</section>
+
+<!-- ═══════════════════════════════════════════════════ -->
+<!-- ACT 2: WHAT IS SELF-SUPERVISED LEARNING? -->
+<!-- ═══════════════════════════════════════════════════ -->
+<section>
+  <section>
+    <h2>What is <span class="accent-blue">Self-Supervised Learning</span>?</h2>
+  </section>
+  <section>
+    <h3>The labeling bottleneck</h3>
+    <div class="two-col">
+      <div>
+        <p><strong class="accent-red">Supervised learning</strong></p>
+        <p class="small">Needs human labels for every image</p>
+        <p class="small">ImageNet: 14M images, years of work, millions of dollars</p>
+      </div>
+      <div>
+        <p><strong class="accent-green">Self-supervised learning</strong></p>
+        <p class="small">No labels needed</p>
+        <p class="small">The internet: billions of images, zero annotation cost</p>
+      </div>
+    </div>
+    <div class="divider"></div>
+    <p class="small">The trick: invent a <em>task</em> that requires no labels but forces the model to understand the image's structure.</p>
+  </section>
+  <section>
+    <h3>Different questions, different understanding</h3>
+    <div class="insight-box">
+      <p><strong>Self-distillation:</strong> "Here are two different views of the same image. Produce the same representation for both."</p>
+      <p><strong>Latent prediction:</strong> "I masked part of the image. Predict what the <em>representation</em> of the masked part should be."</p>
+      <p><strong>Video prediction:</strong> "Here's a video. Predict the representation of the next frame."</p>
+      <p><strong>Multi-teacher distillation:</strong> "Match the outputs of all these specialist teachers simultaneously."</p>
+    </div>
+    <p class="small" style="margin-top:1em;">Each question creates a different learning pressure.<br>That pressure <strong class="accent-orange">sculpts the geometry</strong> of the representation.</p>
+  </section>
+</section>
+
+<!-- ═══════════════════════════════════════════════════ -->
+<!-- ACT 2 cont: THE FOUR MODELS -->
+<!-- ═══════════════════════════════════════════════════ -->
+<section>
+  <section>
+    <h2>The Four Models</h2>
+  </section>
+  <section>
+    <h3><span class="accent-green">DINOv2</span> — The Segmenter</h3>
+    <table>
+      <tr><th>Architecture</th><th>Parameters</th><th>Embedding</th><th>Method</th></tr>
+      <tr><td>ViT-L/14</td><td>304M</td><td>1024-dim</td><td>Self-distillation</td></tr>
+    </table>
+    <div class="insight-box">
+      <p>A student network matches a slowly-evolving teacher across different augmented views of the same image. The model learns that <strong>objects are the things that remain stable</strong> when everything else changes.</p>
+    </div>
+    <p class="small">Result: emergent object segmentation — without ever seeing a segmentation label.</p>
+    <p class="person"><strong>Meta FAIR</strong> — Oquab et al., 2023</p>
+  </section>
+  <section>
+    <h3><span class="accent-blue">I-JEPA</span> — The Predictor</h3>
+    <table>
+      <tr><th>Architecture</th><th>Parameters</th><th>Embedding</th><th>Method</th></tr>
+      <tr><td>ViT-H/14</td><td>632M</td><td>1280-dim</td><td>Latent prediction</td></tr>
+    </table>
+    <div class="insight-box">
+      <p>Masks large regions of the image and predicts the <strong>representation</strong> of the missing patches — not the pixels. Predicts meaning, not appearance.</p>
+    </div>
+    <p class="small">Result: the most spatially differentiated representation. Every patch encodes unique context.</p>
+    <p class="person"><strong>Meta FAIR</strong> — Assran et al., 2023 &nbsp;|&nbsp; Based on Yann LeCun's JEPA architecture</p>
+  </section>
+  <section>
+    <h3><span class="accent-purple">V-JEPA 2</span> — The Temporal Thinker</h3>
+    <table>
+      <tr><th>Architecture</th><th>Parameters</th><th>Embedding</th><th>Method</th></tr>
+      <tr><td>ViT-L/16</td><td>304M</td><td>1024-dim</td><td>Video prediction</td></tr>
+    </table>
+    <div class="insight-box">
+      <p>Predicts future video frames in latent space. Even on a static photo, it carries an <strong>implicit prior about motion and time</strong>.</p>
+    </div>
+    <p class="small">Result: the richest dimensional spread. It sees the elephant and understands it could walk.</p>
+    <p class="person"><strong>Meta FAIR</strong> — Bardes et al., 2025</p>
+  </section>
+  <section>
+    <h3><span class="accent-red">EUPE</span> — The Generalist</h3>
+    <table>
+      <tr><th>Architecture</th><th>Parameters</th><th>Embedding</th><th>Method</th></tr>
+      <tr><td>ViT-B/16</td><td>86M</td><td>768-dim</td><td>Multi-teacher distillation</td></tr>
+    </table>
+    <div class="insight-box">
+      <p>Distilled from multiple specialist teachers: DINOv2, depth estimators, segmenters. One compact model that's <strong>decent at everything simultaneously</strong>.</p>
+    </div>
+    <p class="small">Result: extreme compression with radical geometric consequences.</p>
+    <p class="person"><strong>Meta FAIR</strong> — Zhu et al., 2026</p>
+  </section>
+  <section>
+    <h2>Same backbone. Same image. Same patches.</h2>
+    <div class="divider"></div>
+    <p>The <strong class="accent-orange">only difference</strong> is the training objective.</p>
+    <p class="small" style="margin-top: 1.5em;">Let's measure how that single choice<br>reshapes the entire geometry of the representation.</p>
+  </section>
+</section>
+
+<!-- ═══════════════════════════════════════════════════ -->
+<!-- ACT 3: THE TOOL -->
+<!-- ═══════════════════════════════════════════════════ -->
+<section>
+  <h2>The Tool</h2>
+  <pre><code class="language-bash">cargo install latent-inspector</code></pre>
+  <div class="two-col" style="margin-top: 1.5em;">
+    <div>
+      <p class="small"><span class="accent-orange">Rust CLI</span> — single binary, no Python</p>
+      <p class="small"><span class="accent-blue">ONNX Runtime</span> — real inference, not approximations</p>
+      <p class="small"><span class="accent-green">Validated</span> — SHA-256 verified models, golden reference checks</p>
+    </div>
+    <div>
+      <p class="small"><span class="accent-purple">Compare</span> — cross-model metrics</p>
+      <p class="small"><span class="accent-yellow">Inspect</span> — single-model deep-dive</p>
+      <p class="small"><span class="accent-red">TUI</span> — interactive terminal interface</p>
+    </div>
+  </div>
+  <p class="tiny" style="margin-top: 2em;">→ switch to terminal: <code>latent-inspector models --verbose</code></p>
+</section>
+
+<!-- ═══════════════════════════════════════════════════ -->
+<!-- ACT 4: WHAT IS A REPRESENTATION? -->
+<!-- ═══════════════════════════════════════════════════ -->
+<section>
+  <section>
+    <h2>What is a <span class="accent-blue">Representation</span>?</h2>
+  </section>
+  <section>
+    <h3>From pixels to vectors</h3>
+    <div style="font-family:'JetBrains Mono',monospace; font-size:0.7em; text-align:left; background:#12121e; padding:1em; border-radius:8px;">
+      <p><span class="accent-dim">Image (224 x 224 px)</span></p>
+      <p>&nbsp;&nbsp;↓ &nbsp;split into 14x14 pixel patches</p>
+      <p><span class="accent-dim">256 patches</span></p>
+      <p>&nbsp;&nbsp;↓ &nbsp;each patch projected to 1024 dimensions</p>
+      <p><span class="accent-orange">256 vectors of 1024 numbers</span></p>
+      <p>&nbsp;&nbsp;↓ &nbsp;Transformer: each patch attends to every other</p>
+      <p><span class="accent-green">256 refined vectors = the representation</span></p>
+    </div>
+    <p class="small" style="margin-top:1em;">262,144 numbers. That's what we analyze.</p>
+  </section>
+  <section>
+    <h3>PCA — <span class="accent-dim">Principal Component Analysis</span></h3>
+    <div class="insight-box">
+      <p>The representation lives in 1024 dimensions. PCA finds the <strong>directions of maximum variation</strong> — the axes that matter most.</p>
+      <p style="margin-top:0.5em;">Map the top 3 directions to <span class="accent-red">Red</span>, <span class="accent-green">Green</span>, <span class="accent-blue">Blue</span> → a color image.</p>
+      <p style="margin-top:0.5em;">Same-colored regions = the model considers those patches <strong>similar</strong>.</p>
+    </div>
+    <p class="smaller">Colors are relative to each model. You can't compare "red" across models.</p>
+  </section>
+</section>
+
+<!-- ═══════════════════════════════════════════════════ -->
+<!-- ACT 5: PCA VISUALIZATIONS -->
+<!-- ═══════════════════════════════════════════════════ -->
+<section>
+  <section>
+    <h2>How Each Model <span class="accent-orange">Sees</span></h2>
+    <p class="small accent-dim">→ switch to terminal: run compare with --format html</p>
+  </section>
+  <section>
+    <h3><span class="accent-green">DINOv2</span> — Emergent Segmentation</h3>
+    <p>Sharp boundaries. Elephant body = one color. Background = another.</p>
+    <p class="small" style="margin-top:1em;">Self-distillation forces consistency across augmented views.<br>The most consistent thing across crops, rotations, and color shifts... is the <strong>object</strong>.</p>
+    <p class="tiny" style="margin-top:1.5em;">→ point to the PCA image: "Notice how the elephant is cleanly separated from the background"</p>
+  </section>
+  <section>
+    <h3><span class="accent-blue">I-JEPA</span> — Fine-Grained Spatial Detail</h3>
+    <p>More colors. Trunk, legs, ears, background each distinct.</p>
+    <p class="small" style="margin-top:1em;">The prediction objective forces each patch to be unique.<br>If adjacent patches had identical representations, the model couldn't predict which one is missing.</p>
+  </section>
+  <section>
+    <h3><span class="accent-purple">V-JEPA 2</span> — Maximum Diversity</h3>
+    <p>The most colorful image. The most directions in representation space.</p>
+    <p class="small" style="margin-top:1em;">Trained on video, it encodes spatial structure <em>plus</em> temporal priors.<br>More factors to encode = more dimensions used = more colors in the PCA.</p>
+  </section>
+  <section>
+    <h3><span class="accent-red">EUPE</span> — Smooth Universality</h3>
+    <p>Smooth gradients. No sharp boundaries. No segmentation.</p>
+    <p class="small" style="margin-top:1em;">Optimizing for every task simultaneously produces a representation<br>so compressed that the spatial structure DINOv2 develops... isn't there.</p>
+    <p class="small accent-dim" style="margin-top:1em;">Let's quantify exactly how different.</p>
+  </section>
+</section>
+
+<!-- ═══════════════════════════════════════════════════ -->
+<!-- ACT 6: MEASURING — switch to terminal -->
+<!-- ═══════════════════════════════════════════════════ -->
+<section>
+  <section>
+    <h2>Measuring Representations</h2>
+    <pre><code class="language-bash">latent-inspector compare elephant.jpg \
+  --models dinov2-vit-l14,ijepa-vit-h14,vjepa2-vitl-fpc2-256,eupe-vit-b16</code></pre>
+    <p class="small accent-dim" style="margin-top:1em;">→ switch to terminal and run</p>
+  </section>
+  <section>
+    <h3>Effective Rank</h3>
+    <p class="small">How many dimensions the model <em>actually uses</em> to encode information.</p>
+    <table>
+      <tr><th>Model</th><th>Effective Rank</th><th>Embedding Dim</th></tr>
+      <tr><td class="accent-green">DINOv2</td><td>60</td><td>/ 1024</td></tr>
+      <tr><td class="accent-blue">I-JEPA</td><td>44</td><td>/ 1280</td></tr>
+      <tr class="highlight-cell-green"><td class="accent-purple">V-JEPA 2</td><td>64</td><td>/ 1024</td></tr>
+      <tr><td class="accent-red">EUPE</td><td class="highlight-cell">17</td><td>/ 768</td></tr>
+    </table>
+    <p class="small" style="margin-top:0.8em;">Think of a mixing board with 1024 channels.<br>Effective rank = how many channels actually carry signal.</p>
+  </section>
+  <section>
+    <h3>Patch Entropy</h3>
+    <p class="small">How differentiated are the patch representations?</p>
+    <table>
+      <tr><th>Model</th><th>Entropy</th><th>Interpretation</th></tr>
+      <tr><td class="accent-green">DINOv2</td><td>2.52</td><td></td></tr>
+      <tr class="highlight-cell-green"><td class="accent-blue">I-JEPA</td><td>2.89</td><td>← highest: every patch is unique</td></tr>
+      <tr><td class="accent-purple">V-JEPA 2</td><td>2.36</td><td>← lowest: coherent scene</td></tr>
+      <tr><td class="accent-red">EUPE</td><td>2.84</td><td></td></tr>
+    </table>
+    <p class="small" style="margin-top:0.8em;">I-JEPA <em>must</em> differentiate patches to predict which one is missing.<br>V-JEPA 2 sees the elephant as one coherent scene — temporal coherence smooths spatial diversity.</p>
+  </section>
+</section>
+
+<!-- ═══════════════════════════════════════════════════ -->
+<!-- ACT 7: THE ISOTROPY REVEAL -->
+<!-- ═══════════════════════════════════════════════════ -->
+<section>
+  <section>
+    <h2><span class="accent-orange">Isotropy</span></h2>
+    <p class="small">Do patch embeddings point in <em>diverse directions</em>...<br>or do they all cluster in a <strong>narrow cone</strong>?</p>
+    <div class="divider"></div>
+    <p class="small">Picture a room of 256 compasses.<br>High isotropy = every compass points a different direction.<br>Low isotropy = they all point north.</p>
+  </section>
+  <section>
+    <div style="display:flex; justify-content:center; gap:1.5em; align-items:flex-end; margin-top:1em;">
+      <div style="text-align:center;">
+        <div class="metric-big accent-green">0.796</div>
+        <div class="metric-label">DINOv2</div>
+      </div>
+      <div style="text-align:center;">
+        <div class="metric-big accent-blue">0.788</div>
+        <div class="metric-label">I-JEPA</div>
+      </div>
+      <div style="text-align:center;">
+        <div class="metric-big accent-purple">0.678</div>
+        <div class="metric-label">V-JEPA 2</div>
+      </div>
+      <div style="text-align:center;">
+        <div class="metric-big accent-red fragment" data-fragment-index="1">0.026</div>
+        <div class="metric-label fragment" data-fragment-index="1">EUPE</div>
+      </div>
+    </div>
+    <p class="fragment small" data-fragment-index="2" style="margin-top:1.5em;">Nearly <strong>zero</strong>. All 196 patches point almost exactly the same direction.</p>
+  </section>
+  <section>
+    <h3>What happened?</h3>
+    <div class="insight-box">
+      <p>Multi-teacher distillation collapsed the directional diversity into <strong>one compact universal feature direction</strong>.</p>
+      <p style="margin-top:0.5em;">The differences between patches are tiny variations around that one direction. EUPE compressed its entire vocabulary into <strong>17 inflections of a single word</strong>.</p>
+    </div>
+    <div class="divider"></div>
+    <p class="small"><strong>Top-10 variance:</strong> EUPE packs <span class="accent-red">88.8%</span> of its information in just 10 components.<br>V-JEPA 2 needs 38 components to reach 90%.</p>
+  </section>
+</section>
+
+<!-- ═══════════════════════════════════════════════════ -->
+<!-- ACT 8: CKA MATRIX -->
+<!-- ═══════════════════════════════════════════════════ -->
+<section>
+  <section>
+    <h2>Cross-Model Similarity</h2>
+    <h3><span class="accent-dim">CKA — Centered Kernel Alignment</span></h3>
+    <div class="insight-box">
+      <p>Do two models organize their representations in <strong>similar geometric structures</strong>?</p>
+      <p style="margin-top:0.5em;">Like two restaurant critics: do they agree on <em>which restaurants are similar to each other</em>?</p>
+      <p style="margin-top:0.5em;"><strong>1.0</strong> = identical geometry &nbsp;&nbsp; <strong>0.0</strong> = completely unrelated</p>
+    </div>
+  </section>
+  <section>
+    <h3>The CKA Matrix</h3>
+    <table class="cka-matrix">
+      <tr><th></th><th class="accent-green">DINOv2</th><th class="accent-blue">I-JEPA</th><th class="accent-purple">V-JEPA 2</th><th class="accent-red">EUPE</th></tr>
+      <tr><td class="accent-green"><strong>DINOv2</strong></td><td class="cka-diag">1.000</td><td>0.329</td><td class="cka-high">0.358</td><td>0.044</td></tr>
+      <tr><td class="accent-blue"><strong>I-JEPA</strong></td><td>0.329</td><td class="cka-diag">1.000</td><td>0.275</td><td class="cka-zero fragment" data-fragment-index="1">0.000</td></tr>
+      <tr><td class="accent-purple"><strong>V-JEPA 2</strong></td><td class="cka-high">0.358</td><td>0.275</td><td class="cka-diag">1.000</td><td>0.038</td></tr>
+      <tr><td class="accent-red"><strong>EUPE</strong></td><td>0.044</td><td class="cka-zero fragment" data-fragment-index="1">0.000</td><td>0.038</td><td class="cka-diag">1.000</td></tr>
+    </table>
+    <p class="fragment small" data-fragment-index="1" style="margin-top:1em;">EUPE ↔ I-JEPA: <strong class="accent-red">zero</strong>. Not low. Zero.<br>No measurable structural similarity.</p>
+  </section>
+  <section>
+    <h3>Three findings</h3>
+    <p class="small fragment" style="text-align:left;"><span class="accent-green">1.</span> DINOv2 ↔ V-JEPA 2 = <strong>0.358</strong> (highest). Same ViT-L architecture → shared geometry. <em>Architecture constrains more than expected.</em></p>
+    <p class="small fragment" style="text-align:left;"><span class="accent-blue">2.</span> I-JEPA ↔ V-JEPA 2 = <strong>0.275</strong>. Same JEPA framework, but image vs video → different geometries. <em>Modality matters more than paradigm.</em></p>
+    <p class="small fragment" style="text-align:left;"><span class="accent-red">3.</span> EUPE ↔ anything ≈ <strong>0</strong>. Multi-teacher distillation created something <em>geometrically alien</em> to every single-objective model.</p>
+  </section>
+  <section>
+    <h3>The Distillation Paradox</h3>
+    <div class="insight-box">
+      <p>EUPE was trained <strong>on</strong> DINOv2. DINOv2 was its teacher.</p>
+      <p style="margin-top:0.5em;">CKA between EUPE and DINOv2: <strong class="accent-red">0.044</strong></p>
+      <p style="margin-top:0.5em;">The student absorbed the knowledge but <strong>completely reorganized the filing system</strong>.</p>
+    </div>
+  </section>
+</section>
+
+<!-- ═══════════════════════════════════════════════════ -->
+<!-- ACT 8 cont: k-NN OVERLAP -->
+<!-- ═══════════════════════════════════════════════════ -->
+<section>
+  <h3>k-NN Overlap — <span class="accent-dim">Local Neighborhood Agreement</span></h3>
+  <p class="small">For each patch, find its 10 nearest neighbors in each model. How many do they share?</p>
+  <table>
+    <tr><th></th><th class="accent-green">DINOv2</th><th class="accent-blue">I-JEPA</th><th class="accent-purple">V-JEPA 2</th><th class="accent-red">EUPE</th></tr>
+    <tr><td class="accent-green"><strong>DINOv2</strong></td><td class="cka-diag">1.000</td><td class="highlight-cell-green">0.278</td><td>0.205</td><td>0.132</td></tr>
+    <tr><td class="accent-blue"><strong>I-JEPA</strong></td><td class="highlight-cell-green">0.278</td><td class="cka-diag">1.000</td><td>0.202</td><td>0.100</td></tr>
+    <tr><td class="accent-purple"><strong>V-JEPA 2</strong></td><td>0.205</td><td>0.202</td><td class="cka-diag">1.000</td><td class="highlight-cell">0.089</td></tr>
+    <tr><td class="accent-red"><strong>EUPE</strong></td><td>0.132</td><td>0.100</td><td class="highlight-cell">0.089</td><td class="cka-diag">1.000</td></tr>
+  </table>
+  <p class="small" style="margin-top:0.8em;">DINOv2 ↔ I-JEPA: <strong class="accent-green">27.8%</strong> — highest local agreement (same patch size).<br>EUPE ↔ V-JEPA 2: <strong class="accent-red">8.9%</strong> — maximum local disagreement.</p>
+</section>
+
+<!-- ═══════════════════════════════════════════════════ -->
+<!-- ACT 9: TOOLS SHOWCASE -->
+<!-- ═══════════════════════════════════════════════════ -->
+<section>
+  <section>
+    <h2>The Toolkit</h2>
+    <p class="small accent-dim">→ switch to terminal for live demos</p>
+  </section>
+  <section>
+    <h3>Single Model Deep-Dive</h3>
+    <pre><code class="language-bash">latent-inspector inspect elephant.jpg --model dinov2-vit-l14</code></pre>
+    <p class="small" style="margin-top:1em;">Full diagnostics: PCA variance spectrum, patch norm distributions, CLS token analysis, all metrics.</p>
+  </section>
+  <section>
+    <h3>Interactive TUI</h3>
+    <pre><code class="language-bash">latent-inspector tui elephant.jpg \
+  -m dinov2-vit-l14,ijepa-vit-h14,vjepa2-vitl-fpc2-256,eupe-vit-b16</code></pre>
+    <p class="small" style="margin-top:1em;">Dashboard · Inspector · Compare · Spectrum — all interactive, all in the terminal.</p>
+  </section>
+  <section>
+    <h3>Validation Pipeline</h3>
+    <pre><code class="language-bash">latent-inspector validate --model dinov2-vit-l14 --model ijepa-vit-h14 \
+  --model vjepa2-vitl-fpc2-256 --model eupe-vit-b16</code></pre>
+    <div style="font-family:'JetBrains Mono',monospace; font-size:0.65em; margin-top:1em;">
+      <span class="accent-green">DINOv2</span>: 73 signals ✓ &nbsp;&nbsp;
+      <span class="accent-blue">I-JEPA</span>: 45 signals ✓ &nbsp;&nbsp;
+      <span class="accent-purple">V-JEPA 2</span>: 45 signals ✓ &nbsp;&nbsp;
+      <span class="accent-red">EUPE</span>: 73 signals ✓
+    </div>
+    <p class="small" style="margin-top:1em;">Preprocessing contracts. Golden references. Zero drift. Not vibes — <strong>verifiable measurements</strong>.</p>
+  </section>
+</section>
+
+<!-- ═══════════════════════════════════════════════════ -->
+<!-- ACT 10: THE INSIGHT -->
+<!-- ═══════════════════════════════════════════════════ -->
+<section>
+  <section>
+    <h2>What Shapes <span class="accent-orange">Perception</span>?</h2>
+  </section>
+  <section>
+    <h3>The hierarchy of forces</h3>
+    <div style="text-align:left; max-width:700px; margin:0 auto;">
+      <p class="fragment"><span class="accent-orange">1. Training objective</span> <span class="accent-dim">— the dominant force</span><br><span class="small">Self-distillation, latent prediction, video prediction, multi-teacher distillation → four fundamentally different geometries</span></p>
+      <p class="fragment"><span class="accent-blue">2. Architecture</span> <span class="accent-dim">— the container</span><br><span class="small">Same ViT-L = more similar than same paradigm in different ViTs</span></p>
+      <p class="fragment"><span class="accent-purple">3. Modality</span> <span class="accent-dim">— image vs video</span><br><span class="small">Same JEPA framework, different modalities → different geometries</span></p>
+      <p class="fragment"><span class="accent-red">4. Model size</span> <span class="accent-dim">— the compression budget</span><br><span class="small">86M params forces extreme compression that 304M never needs</span></p>
+    </div>
+  </section>
+  <section>
+    <h2>Different <span class="accent-orange">World Models</span>.<br>Different Ways of Seeing.</h2>
+    <div class="divider"></div>
+    <p class="small">If you're building a system that needs to understand the physical world — a robot, an autonomous vehicle, a world model —</p>
+    <p class="small" style="margin-top:0.5em;">the question isn't just <em>"which model gets the best accuracy."</em></p>
+    <p style="margin-top:0.5em;">It's: <strong class="accent-orange">what kind of perception does this model have?</strong></p>
+  </section>
+</section>
+
+<!-- ═══════════════════════════════════════════════════ -->
+<!-- CLOSING -->
+<!-- ═══════════════════════════════════════════════════ -->
+<section>
+  <h1>latent-inspector</h1>
+  <pre><code class="language-bash">cargo install latent-inspector</code></pre>
+  <div class="divider"></div>
+  <p class="small">Open source · Written in Rust · Runs in seconds</p>
+  <p class="small" style="margin-top:0.5em;">DINOv2 · I-JEPA · V-JEPA 2 · EUPE<br><span class="accent-dim">MAE · CLIP · SigLIP · DINOv3 on the roadmap</span></p>
+  <div class="divider"></div>
+  <p style="margin-top:1em;"><strong>github.com/AbdelStark/latent-inspector</strong></p>
+</section>
+
+</div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/highlight.js"></script>
+<script>
+Reveal.initialize({
+  hash: true,
+  slideNumber: 'c/t',
+  showSlideNumber: 'all',
+  transition: 'none',
+  transitionSpeed: 'fast',
+  backgroundTransition: 'none',
+  width: 1920,
+  height: 1080,
+  margin: 0.08,
+  center: true,
+  plugins: [ RevealHighlight ],
+  keyboard: {
+    // Custom bindings
+    39: 'next',     // right arrow
+    37: 'prev',     // left arrow
+    40: 'down',     // down arrow
+    38: 'up',       // up arrow
+  }
+});
+</script>
+</body>
+</html>
