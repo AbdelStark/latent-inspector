@@ -38,6 +38,8 @@ pub struct NeighborsArgs {
     pub format: OutputFormat,
 }
 
+/// Execute the `neighbors` subcommand: find the k nearest dataset images to
+/// a query image in a model's representation space.
 pub fn run(args: NeighborsArgs) -> Result<(), Error> {
     info!(
         "Finding {} neighbors for {:?} using {}",

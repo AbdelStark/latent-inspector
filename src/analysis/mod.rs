@@ -24,6 +24,12 @@ use ndarray::Array2;
 use serde::{Deserialize, Serialize};
 use tracing::warn;
 
+/// Maximum number of PCA components computed for full analysis pipelines.
+pub const MAX_PCA_COMPONENTS: usize = 64;
+
+/// Number of PCA components computed for the interactive TUI (lighter weight).
+pub const TUI_PCA_COMPONENTS: usize = 32;
+
 /// Full set of per-model analysis metrics.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ModelMetrics {
@@ -46,7 +52,7 @@ pub fn compute_metrics(
     features: &ExtractedFeatures,
     model_name: &str,
 ) -> Result<ModelMetrics, AnalysisError> {
-    let spec = variance_spectrum(&features.patch_tokens, 64)?;
+    let spec = variance_spectrum(&features.patch_tokens, MAX_PCA_COMPONENTS)?;
     model_metrics_from_spectrum(features, model_name, &spec)
 }
 

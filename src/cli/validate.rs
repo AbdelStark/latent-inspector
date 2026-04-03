@@ -32,6 +32,8 @@ pub struct ValidateArgs {
     pub refresh_goldens: bool,
 }
 
+/// Execute the `validate` subcommand: run preprocessing contract, tensor
+/// semantics, and reference parity checks against golden fixtures.
 pub fn run(args: ValidateArgs) -> Result<(), Error> {
     if args.models.is_empty() {
         return Err(

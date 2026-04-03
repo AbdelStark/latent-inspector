@@ -31,6 +31,8 @@ pub struct CompareArgs {
     pub format: OutputFormat,
 }
 
+/// Execute the `compare` subcommand: load models, extract features, compute
+/// cross-model metrics, and render the report in the requested format.
 pub fn run(args: CompareArgs) -> Result<(), Error> {
     info!("Comparing {} models on {:?}", args.models.len(), args.image);
 

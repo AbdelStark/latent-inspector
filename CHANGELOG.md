@@ -8,7 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 - Interactive terminal UI with ratatui (dashboard, inspector, compare, spectrum views)
-- I-JEPA ViT-H/14 model with real ONNX inference and verified SHA-256 hashes
+- I-JEPA ViT-H/14 model registration with verified SHA-256 hashes (reference evidence currently stub-backed, pending ONNX refresh)
 - Validation workflow: preprocessing contract, tensor semantics, and reference parity checks
 - HTML report bundles with embedded validation summaries and artifact manifests
 - ASCII fallback for non-Unicode terminals (`LATENT_INSPECTOR_FORCE_ASCII=1`)

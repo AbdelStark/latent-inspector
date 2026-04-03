@@ -34,6 +34,8 @@ pub struct InspectArgs {
     pub pca_components: usize,
 }
 
+/// Execute the `inspect` subcommand: extract features from a single model,
+/// compute per-model metrics (rank, entropy, variance spectrum), and render.
 pub fn run(args: InspectArgs) -> Result<(), Error> {
     info!("Inspecting {} on {:?}", args.model, args.image);
 
@@ -43,8 +45,10 @@ pub fn run(args: InspectArgs) -> Result<(), Error> {
     let features = ExtractedFeatures::from_output(output)?;
     let validation_summary = summarize_session_or_unverified(&mut session, None);
 
-    let requested_components = args.pca_components.clamp(1, 64);
-    let spectrum = variance_spectrum(&features.patch_tokens, 64)?;
+    let requested_components = args
+        .pca_components
+        .clamp(1, crate::analysis::MAX_PCA_COMPONENTS);
+    let spectrum = variance_spectrum(&features.patch_tokens, crate::analysis::MAX_PCA_COMPONENTS)?;
     let metrics = model_metrics_from_spectrum(&features, &args.model, &spectrum)?;
     let display_spectrum = spectrum.truncated(requested_components);
     let attention = build_inspect_attention_summary(&features, metrics.attention_gini);

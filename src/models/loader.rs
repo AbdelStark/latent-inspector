@@ -391,8 +391,14 @@ impl ModelSession {
 
                 let output_shape: Vec<usize> = shape
                     .iter()
-                    .map(|&dim| usize::try_from(dim).unwrap_or(0))
-                    .collect();
+                    .map(|&dim| {
+                        usize::try_from(dim).map_err(|_| {
+                            ModelError::InferenceFailed(format!(
+                                "ONNX output dimension {dim} is not a valid usize"
+                            ))
+                        })
+                    })
+                    .collect::<Result<Vec<_>, _>>()?;
 
                 // Output should be [batch, patches, embed_dim]
                 let hidden_array =
