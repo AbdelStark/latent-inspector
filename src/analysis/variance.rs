@@ -1,6 +1,6 @@
 //! Feature variance spectrum: distribution of information across PCA components.
 
-use crate::analysis::pca;
+use crate::analysis::pca::{self, PcaResult};
 use crate::errors::AnalysisError;
 use ndarray::{s, Array1, Array2};
 
@@ -60,11 +60,10 @@ impl VarianceSpectrum {
     }
 }
 
-/// Compute the variance spectrum of `data` `[N, D]` using `k` PCA components.
-pub fn variance_spectrum(data: &Array2<f32>, k: usize) -> Result<VarianceSpectrum, AnalysisError> {
-    let result = pca::pca(data, k, 500)?;
-    let explained_variance = result.explained_variance;
-    let ratios = result.explained_variance_ratio;
+/// Derive a variance spectrum from an already computed PCA result.
+pub fn variance_spectrum_from_pca_result(result: &PcaResult) -> VarianceSpectrum {
+    let explained_variance = result.explained_variance.clone();
+    let ratios = result.explained_variance_ratio.clone();
 
     let mut cumulative = Array1::<f32>::zeros(ratios.len());
     let mut cum = 0.0_f32;
@@ -87,14 +86,20 @@ pub fn variance_spectrum(data: &Array2<f32>, k: usize) -> Result<VarianceSpectru
 
     let top10_concentration = ratios.iter().take(10).sum();
 
-    Ok(VarianceSpectrum {
+    VarianceSpectrum {
         explained_variance,
         ratios,
         cumulative,
         components_90pct,
         components_99pct,
         top10_concentration,
-    })
+    }
+}
+
+/// Compute the variance spectrum of `data` `[N, D]` using `k` PCA components.
+pub fn variance_spectrum(data: &Array2<f32>, k: usize) -> Result<VarianceSpectrum, AnalysisError> {
+    let result = pca::pca(data, k, 500)?;
+    Ok(variance_spectrum_from_pca_result(&result))
 }
 
 #[cfg(test)]
@@ -136,5 +141,25 @@ mod tests {
         assert_eq!(truncated.ratios.len(), 5);
         assert_eq!(truncated.cumulative.len(), 5);
         assert!(truncated.cumulative[4] <= 1.0 + 1e-5);
+    }
+
+    #[test]
+    fn spectrum_from_pca_result_matches_direct_computation() {
+        let data = Array2::from_shape_fn((60, 16), |(i, j)| (i + j * 3) as f32);
+        let result = pca::pca(&data, 8, 200).unwrap();
+        let from_result = variance_spectrum_from_pca_result(&result);
+        let direct = variance_spectrum(&data, 8).unwrap();
+
+        assert_eq!(
+            from_result.explained_variance.len(),
+            direct.explained_variance.len()
+        );
+        assert_eq!(from_result.components_90pct, direct.components_90pct);
+        assert_eq!(from_result.components_99pct, direct.components_99pct);
+        approx::assert_relative_eq!(
+            from_result.top10_concentration,
+            direct.top10_concentration,
+            epsilon = 1e-5
+        );
     }
 }
