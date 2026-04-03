@@ -59,9 +59,6 @@ hex = "0.4"
 # Hungarian algorithm for patch correspondence
 pathfinding = "4"
 
-[features]
-onnx-inference = []
-
 [dev-dependencies]
 approx = "0.5"
 tempfile = "3"

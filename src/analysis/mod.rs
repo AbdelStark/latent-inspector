@@ -97,12 +97,12 @@ pub fn model_metrics_from_spectrum(
 
     // Per-image patch space metrics (need >= 2 patches)
     let iso = if features.n_patches >= 2 {
-        isotropy_score(&features.patch_tokens).unwrap_or(0.0)
+        isotropy_score(&features.patch_tokens)?
     } else {
         0.0
     };
     let uni = if features.n_patches >= 2 {
-        uniformity(&features.patch_tokens).unwrap_or(0.0)
+        uniformity(&features.patch_tokens)?
     } else {
         0.0
     };

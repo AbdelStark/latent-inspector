@@ -13,22 +13,46 @@ A fast Rust CLI for inspecting and comparing learned representations across self
 </tr>
 </table>
 
+## Status
+
+> As of 2026-04-03, this project is **alpha**. It is suitable for local CLI-driven inspection, comparison, validation, and report generation for the four ready models (`dinov2-vit-l14`, `ijepa-vit-h14`, `vjepa2-vitl-fpc2-256`, `eupe-vit-b16`). It is **not yet suitable** as a stable library API, unattended production batch infrastructure, or `cargo install` from crates.io. Known limitations: planned models are still stub-only for development flows, first-use downloads are large, and the internal Rust/TUI surfaces may still change before `1.0`. The machine-readable report bundle surface for the ready-model commands is now treated as additive-only; see [docs/REPORT-SCHEMA.md](docs/REPORT-SCHEMA.md).
+
+## Project docs
+
+- [Architecture and runbook](docs/ARCHITECTURE.md)
+- [Report schema contract](docs/REPORT-SCHEMA.md)
+- [Contributing guide](CONTRIBUTING.md)
+- [Changelog](CHANGELOG.md)
+- [Agent context](AGENTS.md)
+- [Example case study](docs/latent-inspector-demo-case-study.md)
+
 ## Quick start
 
 ```bash
-cargo install latent-inspector
+git clone https://github.com/AbdelStark/latent-inspector.git
+cd latent-inspector
+cargo build --release
+
+# List models and cache state
+./target/release/latent-inspector models
 
 # Compare three models on a single image (models auto-download on first use)
-latent-inspector compare photo.jpg --models dinov2-vit-l14,ijepa-vit-h14,vjepa2-vitl-fpc2-256
+./target/release/latent-inspector compare photo.jpg \
+  --models dinov2-vit-l14,ijepa-vit-h14,vjepa2-vitl-fpc2-256
 
 # Deep-dive into one model
-latent-inspector inspect photo.jpg --model dinov2-vit-l14
+./target/release/latent-inspector inspect photo.jpg --model dinov2-vit-l14
 
-# Interactive TUI
-latent-inspector tui photo.jpg -m dinov2-vit-l14,ijepa-vit-h14
+# Interactive TUI (real analysis when an image is provided)
+./target/release/latent-inspector tui photo.jpg -m dinov2-vit-l14,ijepa-vit-h14
 
 # Profile a model over a dataset (isotropy, uniformity, intrinsic dimensionality)
-latent-inspector profile --model dinov2-vit-l14 --dataset images/
+./target/release/latent-inspector profile --model dinov2-vit-l14 --dataset images/
+
+# Development-only stub backend (no model downloads, validation downgraded to unverified)
+LATENT_INSPECTOR_MODEL_BACKEND=stub \
+  ./target/release/latent-inspector compare photo.jpg \
+  --models dinov2-vit-l14,clip-vit-l14
 ```
 
 ## Why this exists
@@ -57,7 +81,7 @@ These different training objectives create different internal "world models." la
 | CLIP | ViT-L/14 | 304M | Contrastive image-text | Planned |
 | SigLIP | ViT-SO400M/14 | 400M | Sigmoid contrastive image-text | Planned |
 
-Models download automatically on first use (~1-2 GB each) and are cached locally. All downloads are SHA-256 verified. Override the cache location with `LATENT_INSPECTOR_CACHE_DIR`.
+Models download automatically on first use (~1-2 GB each) and are cached locally. All downloads are SHA-256 verified and now retry bounded transient HTTP/read failures before surfacing an error. Override the cache location with `LATENT_INSPECTOR_CACHE_DIR`.
 
 ## PCA examples across the ready models
 
@@ -259,7 +283,7 @@ Every analysis command supports four output formats:
 | **HTML** | `--format html` | Self-contained report bundle | Sharing, review |
 | **PNG** | `--format png` | PCA projections, heatmaps, charts | Presentations, papers |
 
-When `--output <dir>` is provided, all formats also emit `artifacts.json` — a machine-readable manifest of every generated file with byte sizes and SHA-256 digests. HTML bundles include companion JSON.
+When `--output <dir>` is provided, all formats also emit `artifacts.json` — a machine-readable manifest of every generated file with byte sizes and SHA-256 digests. HTML bundles include companion JSON. The stable file names and top-level JSON keys for these outputs are documented in [docs/REPORT-SCHEMA.md](docs/REPORT-SCHEMA.md).
 
 Force ASCII output: `LATENT_INSPECTOR_FORCE_ASCII=1`.
 
@@ -421,25 +445,64 @@ src/
 <summary><h2>Development</h2></summary>
 
 ```bash
-# Build without ONNX (fast, uses stub backend)
-cargo build
+# Build the release binary
+cargo build --release
 
-# Build with real ONNX inference
-cargo build --features onnx-inference --release
+# Run commands without downloading models
+LATENT_INSPECTOR_MODEL_BACKEND=stub cargo run -- models
+LATENT_INSPECTOR_MODEL_BACKEND=stub cargo run -- compare docs/assets/img/samples/elephant_sample_image.jpg \
+  --models dinov2-vit-l14,ijepa-vit-h14
 
 # Run all tests
 cargo test
 
 # Lint + format
-cargo clippy -- -D warnings && cargo fmt
+cargo fmt -- --check
+cargo clippy --all-targets -- -D warnings
+
+# Coverage gate used by CI (excludes the currently untested TUI surface)
+cargo llvm-cov --workspace \
+  --ignore-filename-regex '(^|/)src/tui/|(^|/)src/cli/tui.rs$' \
+  --fail-under-lines 85 \
+  --fail-under-functions 80 \
+  --summary-only
+
+# Build artifact used by CI
+cargo build --release
 
 # Full CI pipeline
 make all
 ```
 
-The stub backend (`LATENT_INSPECTOR_MODEL_BACKEND=stub`) produces deterministic synthetic outputs for development and testing without downloading real models.
+The stub backend (`LATENT_INSPECTOR_MODEL_BACKEND=stub`) produces deterministic synthetic outputs for development and testing without downloading real models. Validation summaries explicitly downgrade stub-backed results to `unverified`. The TUI launches with demo data when no image is provided; when an image is provided it runs the same live analysis pipeline as the CLI.
 
 </details>
+
+## Known limitations
+
+- Only four models are ready for live ONNX-backed analysis today. Planned models remain in the registry for roadmap visibility and stub-backed development flows.
+- The project is a CLI/TUI application first. The internal Rust modules are reusable, but the crate does not yet promise a stable public library API.
+- Model downloads are large and happen lazily on first use. Cache state is machine-local and validated with SHA-256 checksums.
+- Validation goldens are checked into the repository and must only be refreshed after a verified model artifact or contract change.
+- Coverage enforcement currently excludes `src/tui/` and `src/cli/tui.rs` until the interactive surface has dedicated tests.
+
+## Roadmap
+
+1. **Expand automated coverage**: add dedicated tests for the interactive TUI paths and tighten the coverage gate once that surface is exercised.
+2. **Harden batch workflows further**: improve dataset-scale ergonomics, cache prewarming, and operational guidance for longer-running comparison/profile jobs.
+3. **Promote planned models to ready**: wire real ONNX inference, validation contracts, and parity evidence for DINOv3, MAE, CLIP, and SigLIP.
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, verification commands, validation-golden rules, and the contribution checklist. Autonomous contributors should also read [AGENTS.md](AGENTS.md) before making changes.
+
+## Help
+
+Use the GitHub issue tracker at <https://github.com/AbdelStark/latent-inspector/issues> for bugs, documentation gaps, and model-integration requests.
+
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md) for user-visible changes.
 
 ## License
 

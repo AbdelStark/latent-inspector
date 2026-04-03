@@ -7,12 +7,19 @@ use sha2::{Digest, Sha256};
 use std::fs;
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
+use std::thread;
 use std::time::{Duration, UNIX_EPOCH};
 use tracing::{debug, info, warn};
 
 const CACHE_DIR_ENV: &str = "LATENT_INSPECTOR_CACHE_DIR";
 const DOWNLOAD_CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
 const DOWNLOAD_REQUEST_TIMEOUT: Duration = Duration::from_secs(30 * 60);
+const DOWNLOAD_MAX_ATTEMPTS: usize = 4;
+#[cfg(not(test))]
+const DOWNLOAD_RETRY_BACKOFF_BASE: Duration = Duration::from_millis(250);
+#[cfg(test)]
+const DOWNLOAD_RETRY_BACKOFF_BASE: Duration = Duration::ZERO;
+const DOWNLOAD_RETRY_BACKOFF_CAP: Duration = Duration::from_secs(2);
 const DOWNLOAD_USER_AGENT: &str = concat!("latent-inspector/", env!("CARGO_PKG_VERSION"));
 const VERIFICATION_CACHE_SUFFIX: &str = ".sha256-cache.json";
 
@@ -338,11 +345,28 @@ fn download_artifact(
     progress.set_message(format!("Downloading {}", artifact.relative_path));
 
     let tmp = temp_download_path(dest)?;
-    let result = download_to_file(artifact, &tmp, model_name, &progress);
-
-    if let Err(error) = result {
-        progress.abandon_with_message(format!("Failed {}", artifact.relative_path));
-        return Err(error);
+    let mut attempt = 1;
+    loop {
+        match download_to_file(artifact, &tmp, model_name, &progress) {
+            Ok(()) => break,
+            Err(error) if error.is_retryable() && attempt < DOWNLOAD_MAX_ATTEMPTS => {
+                let delay = download_retry_delay(attempt);
+                warn!(
+                    "Download attempt {attempt}/{DOWNLOAD_MAX_ATTEMPTS} failed for {}: {}. Retrying in {} ms.",
+                    artifact.relative_path,
+                    error.model_error(),
+                    delay.as_millis()
+                );
+                if !delay.is_zero() {
+                    thread::sleep(delay);
+                }
+                attempt += 1;
+            }
+            Err(error) => {
+                progress.abandon_with_message(format!("Failed {}", artifact.relative_path));
+                return Err(error.into_model_error());
+            }
+        }
     }
 
     progress.finish_with_message(format!("Downloaded {}", artifact.relative_path));
@@ -379,15 +403,17 @@ fn download_to_file(
     path: &Path,
     model_name: &str,
     progress: &ProgressBar,
-) -> Result<(), ModelError> {
+) -> Result<(), DownloadAttemptError> {
     let client = reqwest::blocking::Client::builder()
         .connect_timeout(DOWNLOAD_CONNECT_TIMEOUT)
         .timeout(DOWNLOAD_REQUEST_TIMEOUT)
         .user_agent(DOWNLOAD_USER_AGENT)
         .build()
-        .map_err(|e: reqwest::Error| ModelError::DownloadFailed {
-            name: model_name.to_string(),
-            reason: e.to_string(),
+        .map_err(|e: reqwest::Error| {
+            DownloadAttemptError::Terminal(ModelError::DownloadFailed {
+                name: model_name.to_string(),
+                reason: e.to_string(),
+            })
         })?;
     let mut response = open_download_stream(&client, artifact, path, model_name, progress)?;
     let mut file = open_download_file(path, response.mode)?;
@@ -398,14 +424,14 @@ fn download_to_file(
         progress,
         artifact.relative_path.as_str(),
     )?;
-    file.flush()?;
+    file.flush().map_err(ModelError::from)?;
     drop(file);
 
     match &artifact.checksum {
         Checksum::Sha256(expected) => {
             if let Err(error) = verify_sha256_uncached(path, expected, model_name) {
                 let _ = fs::remove_file(path);
-                return Err(error);
+                return Err(DownloadAttemptError::Terminal(error));
             }
         }
         Checksum::Pending { reason } => {
@@ -430,13 +456,42 @@ struct DownloadResponse {
     mode: DownloadMode,
 }
 
+enum DownloadAttemptError {
+    Retryable(ModelError),
+    Terminal(ModelError),
+}
+
+impl DownloadAttemptError {
+    fn is_retryable(&self) -> bool {
+        matches!(self, Self::Retryable(_))
+    }
+
+    fn model_error(&self) -> &ModelError {
+        match self {
+            Self::Retryable(error) | Self::Terminal(error) => error,
+        }
+    }
+
+    fn into_model_error(self) -> ModelError {
+        match self {
+            Self::Retryable(error) | Self::Terminal(error) => error,
+        }
+    }
+}
+
+impl From<ModelError> for DownloadAttemptError {
+    fn from(error: ModelError) -> Self {
+        Self::Terminal(error)
+    }
+}
+
 fn open_download_stream(
     client: &reqwest::blocking::Client,
     artifact: &ModelArtifact,
     path: &Path,
     model_name: &str,
     progress: &ProgressBar,
-) -> Result<DownloadResponse, ModelError> {
+) -> Result<DownloadResponse, DownloadAttemptError> {
     let partial_len = partial_download_len(path)?;
     if partial_len > 0 {
         info!(
@@ -499,8 +554,11 @@ fn fresh_download_stream(
     artifact: &ModelArtifact,
     model_name: &str,
     progress: &ProgressBar,
-) -> Result<DownloadResponse, ModelError> {
+) -> Result<DownloadResponse, DownloadAttemptError> {
     let response = send_download_request(client.get(&artifact.download_url), model_name)?;
+    if !response.status().is_success() {
+        return Err(download_status_error(response, model_name));
+    }
     set_progress_bounds(progress, 0, response.content_length());
     Ok(DownloadResponse {
         inner: response,
@@ -511,18 +569,28 @@ fn fresh_download_stream(
 fn send_download_request(
     request: reqwest::blocking::RequestBuilder,
     model_name: &str,
-) -> Result<reqwest::blocking::Response, ModelError> {
-    request.send().map_err(|e| ModelError::DownloadFailed {
-        name: model_name.to_string(),
-        reason: e.to_string(),
+) -> Result<reqwest::blocking::Response, DownloadAttemptError> {
+    request.send().map_err(|e| {
+        DownloadAttemptError::Retryable(ModelError::DownloadFailed {
+            name: model_name.to_string(),
+            reason: e.to_string(),
+        })
     })
 }
 
-fn download_status_error(response: reqwest::blocking::Response, model_name: &str) -> ModelError {
+fn download_status_error(
+    response: reqwest::blocking::Response,
+    model_name: &str,
+) -> DownloadAttemptError {
     let status = response.status();
-    ModelError::DownloadFailed {
+    let error = ModelError::DownloadFailed {
         name: model_name.to_string(),
         reason: format!("HTTP {status} while downloading artifact"),
+    };
+    if is_retryable_status(status) {
+        DownloadAttemptError::Retryable(error)
+    } else {
+        DownloadAttemptError::Terminal(error)
     }
 }
 
@@ -542,26 +610,47 @@ fn stream_response_to_file(
     model_name: &str,
     progress: &ProgressBar,
     artifact_name: &str,
-) -> Result<(), ModelError> {
+) -> Result<(), DownloadAttemptError> {
     let mut buffer = [0_u8; 64 * 1024];
 
     loop {
-        let read = response
-            .read(&mut buffer)
-            .map_err(|e| ModelError::DownloadFailed {
+        let read = response.read(&mut buffer).map_err(|e| {
+            DownloadAttemptError::Retryable(ModelError::DownloadFailed {
                 name: model_name.to_string(),
                 reason: format!("failed to read {artifact_name}: {e}"),
-            })?;
+            })
+        })?;
 
         if read == 0 {
             break;
         }
 
-        file.write_all(&buffer[..read])?;
+        file.write_all(&buffer[..read]).map_err(ModelError::from)?;
         progress.inc(read as u64);
     }
 
     Ok(())
+}
+
+fn is_retryable_status(status: reqwest::StatusCode) -> bool {
+    status.is_server_error()
+        || matches!(
+            status,
+            reqwest::StatusCode::REQUEST_TIMEOUT | reqwest::StatusCode::TOO_MANY_REQUESTS
+        )
+}
+
+fn download_retry_delay(attempt: usize) -> Duration {
+    let base_ms = DOWNLOAD_RETRY_BACKOFF_BASE.as_millis() as u64;
+    if base_ms == 0 {
+        return Duration::ZERO;
+    }
+
+    let exponent = attempt.saturating_sub(1).min(8) as u32;
+    let backoff_ms = base_ms
+        .saturating_mul(1_u64 << exponent)
+        .min(DOWNLOAD_RETRY_BACKOFF_CAP.as_millis() as u64);
+    Duration::from_millis(backoff_ms)
 }
 
 fn partial_download_len(path: &Path) -> Result<u64, ModelError> {
@@ -916,6 +1005,15 @@ mod tests {
             }
         }
 
+        fn status(status_code: u16, body: Vec<u8>) -> Self {
+            Self {
+                status_code,
+                body,
+                content_range: None,
+                cut_after: None,
+            }
+        }
+
         fn interrupted(body: Vec<u8>, cut_after: usize) -> Self {
             Self {
                 status_code: 200,
@@ -1220,21 +1318,13 @@ mod tests {
             checksum: Checksum::Sha256(expected_checksum),
         };
 
-        let first = download_artifact("test-model", &artifact, &dest);
-        assert!(matches!(first, Err(ModelError::DownloadFailed { .. })));
-
-        let temp_path = temp_download_path(&dest).unwrap();
-        let partial_len = fs::metadata(&temp_path).unwrap().len();
-        assert!(partial_len >= cut_after as u64);
-        assert!(partial_len < content.len() as u64);
-
         download_artifact("test-model", &artifact, &dest).unwrap();
 
         assert_eq!(fs::read(&dest).unwrap(), content);
         let requests = server.requests();
         assert_eq!(requests.len(), 2);
         assert_eq!(requests[0].range, None);
-        assert_eq!(requests[1].range, Some(format!("bytes={partial_len}-")));
+        assert_eq!(requests[1].range, Some(format!("bytes={cut_after}-")));
     }
 
     #[test]
@@ -1281,21 +1371,73 @@ mod tests {
             checksum: Checksum::Sha256(expected_checksum),
         };
 
-        let first = download_artifact("test-model", &artifact, &dest);
-        assert!(matches!(first, Err(ModelError::DownloadFailed { .. })));
-
-        let temp_path = temp_download_path(&dest).unwrap();
-        let partial_len = fs::metadata(&temp_path).unwrap().len();
-        assert!(partial_len >= cut_after as u64);
-
         download_artifact("test-model", &artifact, &dest).unwrap();
 
+        let temp_path = temp_download_path(&dest).unwrap();
         assert_eq!(fs::read(&dest).unwrap(), content);
         assert!(!temp_path.exists());
 
         let requests = server.requests();
         assert_eq!(requests.len(), 2);
         assert_eq!(requests[0].range, None);
-        assert_eq!(requests[1].range, Some(format!("bytes={partial_len}-")));
+        assert_eq!(requests[1].range, Some(format!("bytes={cut_after}-")));
+    }
+
+    #[test]
+    fn test_download_artifact_retries_transient_http_failures() {
+        let dir = tempdir().unwrap();
+        let dest = dir.path().join("bundle/model.onnx");
+        fs::create_dir_all(dest.parent().unwrap()).unwrap();
+
+        let content = b"recovered after retry".to_vec();
+        let expected_checksum = hex::encode(Sha256::digest(&content));
+        let server = TestServer::spawn(vec![
+            ResponseScenario::status(503, b"temporary failure".to_vec()),
+            ResponseScenario::ok(content.clone()),
+        ]);
+
+        let artifact = ModelArtifact {
+            relative_path: "bundle/model.onnx".to_string(),
+            download_url: server.url("/model.onnx"),
+            checksum: Checksum::Sha256(expected_checksum),
+        };
+
+        download_artifact("test-model", &artifact, &dest).unwrap();
+
+        assert_eq!(fs::read(&dest).unwrap(), content);
+        let requests = server.requests();
+        assert_eq!(requests.len(), 2);
+        assert_eq!(requests[0].range, None);
+        assert_eq!(requests[1].range, None);
+    }
+
+    #[test]
+    fn test_download_artifact_stops_after_retry_budget() {
+        let dir = tempdir().unwrap();
+        let dest = dir.path().join("bundle/model.onnx");
+        fs::create_dir_all(dest.parent().unwrap()).unwrap();
+        let server = TestServer::spawn(vec![
+            ResponseScenario::status(
+                503,
+                b"temporary failure".to_vec()
+            );
+            DOWNLOAD_MAX_ATTEMPTS
+        ]);
+
+        let artifact = ModelArtifact {
+            relative_path: "bundle/model.onnx".to_string(),
+            download_url: server.url("/model.onnx"),
+            checksum: Checksum::Pending {
+                reason: "test".to_string(),
+            },
+        };
+
+        let error = download_artifact("test-model", &artifact, &dest).unwrap_err();
+        assert!(matches!(
+            error,
+            ModelError::DownloadFailed { ref reason, .. }
+            if reason.contains("HTTP 503")
+        ));
+        assert_eq!(server.requests().len(), DOWNLOAD_MAX_ATTEMPTS);
     }
 }

@@ -47,11 +47,7 @@ pub fn run(args: DriftArgs) -> Result<(), Error> {
     );
 
     // Scan checkpoint directory for ONNX files
-    let mut ckpt_paths: Vec<PathBuf> = std::fs::read_dir(&args.checkpoints)?
-        .filter_map(|e| e.ok())
-        .map(|e| e.path())
-        .filter(|p| p.extension().and_then(|e| e.to_str()) == Some("onnx"))
-        .collect();
+    let mut ckpt_paths = checkpoint_paths(&args.checkpoints)?;
 
     if ckpt_paths.is_empty() {
         let report = DriftReport::new(
@@ -321,6 +317,18 @@ struct DriftSample {
     embedding: ndarray::Array1<f32>,
 }
 
+fn checkpoint_paths(dir: &Path) -> Result<Vec<PathBuf>, Error> {
+    let mut paths = Vec::new();
+    for entry in std::fs::read_dir(dir)? {
+        let entry = entry?;
+        let path = entry.path();
+        if path.extension().and_then(|ext| ext.to_str()) == Some("onnx") {
+            paths.push(path);
+        }
+    }
+    Ok(paths)
+}
+
 fn checkpoint_name(path: &Path) -> String {
     path.file_stem()
         .and_then(|stem| stem.to_str())
@@ -406,6 +414,24 @@ fn trim_leading_zeroes(bytes: &[u8]) -> &[u8] {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tempfile::tempdir;
+
+    #[test]
+    fn checkpoint_paths_only_collects_onnx_files() {
+        let dir = tempdir().unwrap();
+        std::fs::write(dir.path().join("step-2.onnx"), b"a").unwrap();
+        std::fs::write(dir.path().join("step-1.onnx"), b"b").unwrap();
+        std::fs::write(dir.path().join("notes.txt"), b"ignore").unwrap();
+
+        let mut paths = checkpoint_paths(dir.path()).unwrap();
+        paths.sort_by(|left, right| natural_checkpoint_cmp(left, right));
+
+        let names = paths
+            .iter()
+            .map(|path| checkpoint_name(path))
+            .collect::<Vec<_>>();
+        assert_eq!(names, vec!["step-1", "step-2"]);
+    }
 
     #[test]
     fn numeric_checkpoint_sort_is_natural() {

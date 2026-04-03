@@ -64,7 +64,11 @@ pub fn per_head_gini(weights: &Array4<f32>) -> Result<Array1<f32>, AnalysisError
 /// Mean Gini coefficient across all heads, patches, and layers.
 pub fn mean_gini(weights: &Array4<f32>) -> Result<f32, AnalysisError> {
     let per_head = per_head_gini(weights)?;
-    Ok(per_head.mean().unwrap_or(0.0))
+    per_head.mean().ok_or_else(|| {
+        AnalysisError::InsufficientData(
+            "attention weights must include at least one head to compute mean Gini".into(),
+        )
+    })
 }
 
 #[cfg(test)]
@@ -109,5 +113,14 @@ mod tests {
         let error = per_head_gini(&weights).unwrap_err();
 
         assert!(matches!(error, AnalysisError::NonFiniteValues { .. }));
+    }
+
+    #[test]
+    fn test_mean_gini_rejects_zero_head_attention() {
+        let weights = Array4::zeros((1, 0, 2, 2));
+
+        let error = mean_gini(&weights).unwrap_err();
+
+        assert!(matches!(error, AnalysisError::InsufficientData(_)));
     }
 }

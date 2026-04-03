@@ -3,16 +3,10 @@
 use crate::errors::Error;
 use crate::tui;
 use crate::tui::app::App;
+use crate::{analysis, extract, models};
 use clap::Args;
 use std::path::PathBuf;
 use tracing::info;
-
-#[cfg(feature = "onnx-inference")]
-use crate::analysis::{compute_metrics, variance_spectrum};
-#[cfg(feature = "onnx-inference")]
-use crate::extract::ExtractedFeatures;
-#[cfg(feature = "onnx-inference")]
-use crate::models::ModelSession;
 
 /// Launch the interactive terminal UI.
 #[derive(Args, Debug)]
@@ -30,53 +24,36 @@ pub fn run(args: TuiArgs) -> Result<(), Error> {
     let app = if let Some(ref path) = args.image {
         build_app_with_image(path, args.models)?
     } else {
-        info!("No image provided — launching with demo data");
+        info!("No image provided; launching the TUI with demo data");
         App::demo()
     };
     tui::run(app).map_err(Error::Io)
 }
 
-/// When ONNX inference is NOT compiled, use demo metrics but show the real image.
-#[cfg(not(feature = "onnx-inference"))]
 fn build_app_with_image(
     path: &std::path::Path,
-    _models: Option<Vec<String>>,
+    selected_models: Option<Vec<String>>,
 ) -> Result<App, Error> {
-    info!("ONNX inference not available — showing demo metrics with image preview");
-    let mut app = App::demo();
-    app.image_path = Some(path.to_path_buf());
-    if let Ok(img) = image::open(path) {
-        app.image_thumbnail = Some(
-            img.resize(400, 400, image::imageops::FilterType::Triangle)
-                .to_rgb8(),
-        );
-    }
-    Ok(app)
-}
-
-/// When ONNX inference IS compiled, run real analysis.
-#[cfg(feature = "onnx-inference")]
-fn build_app_with_image(path: &std::path::Path, models: Option<Vec<String>>) -> Result<App, Error> {
-    info!("Loading image: {:?}", path);
+    info!("Loading image for live TUI analysis: {:?}", path);
     let img = image::open(path)?;
     let thumbnail = img
         .resize(400, 400, image::imageops::FilterType::Triangle)
         .to_rgb8();
 
-    let model_names = models.unwrap_or_else(crate::models::registry::ready_model_names);
+    let model_names = selected_models.unwrap_or_else(models::registry::ready_model_names);
 
     let mut all_metrics = Vec::new();
-    let mut all_features: Vec<(String, ExtractedFeatures)> = Vec::new();
+    let mut all_features: Vec<(String, extract::ExtractedFeatures)> = Vec::new();
     let mut all_spectra = Vec::new();
 
     for name in &model_names {
         info!("Loading model: {}", name);
-        let mut session = ModelSession::load(name)?;
+        let mut session = models::ModelSession::load(name)?;
         let output = session.infer(&img)?;
-        let features = ExtractedFeatures::from_output(output)?;
-        let metrics = compute_metrics(&features, name)?;
+        let features = extract::ExtractedFeatures::from_output(output)?;
+        let metrics = analysis::compute_metrics(&features, name)?;
         let spectrum =
-            variance_spectrum(&features.patch_tokens, crate::analysis::TUI_PCA_COMPONENTS)?;
+            analysis::variance_spectrum(&features.patch_tokens, analysis::TUI_PCA_COMPONENTS)?;
         all_metrics.push(metrics);
         all_spectra.push((name.clone(), spectrum));
         all_features.push((name.clone(), features));
@@ -87,7 +64,7 @@ fn build_app_with_image(path: &std::path::Path, models: Option<Vec<String>>) -> 
         for j in (i + 1)..all_features.len() {
             let (na, fa) = &all_features[i];
             let (nb, fb) = &all_features[j];
-            all_comparisons.push(crate::analysis::compute_comparison(fa, fb, na, nb)?);
+            all_comparisons.push(analysis::compute_comparison(fa, fb, na, nb)?);
         }
     }
 

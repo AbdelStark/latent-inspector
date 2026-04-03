@@ -2,40 +2,50 @@
 # ────────────────────────────────────────────────────────────────
 
 CARGO       := cargo
-FEATURES    := --features onnx-inference
 RELEASE     := --release
 BIN         := target/release/latent-inspector
 MODELS      := dinov2-vit-l14,ijepa-vit-h14,vjepa2-vitl-fpc2-256,eupe-vit-b16
 SAMPLE_IMG  := docs/assets/img/samples/elephant_sample_image.jpg
 CACHE_DIR   := $(HOME)/.cache/latent-inspector
+COVERAGE_IGNORE := (^|/)src/tui/|(^|/)src/cli/tui.rs$$
+COVERAGE_LINE_MIN := 85
+COVERAGE_FUNCTION_MIN := 80
 
-.PHONY: build build-release build-stub check clippy fmt test clean \
-        tui tui-demo inspect compare models download-models help
+.PHONY: build build-release build-stub check clippy coverage coverage-ci fmt \
+        test clean tui tui-demo inspect compare models download-models help
 
 # ── Build targets ────────────────────────────────────────────────
 
-build:                ## Build debug with real ONNX inference
-	$(CARGO) build $(FEATURES)
+build:                ## Build the debug binary
+	$(CARGO) build
 
-build-release:        ## Build release with real ONNX inference
-	$(CARGO) build $(FEATURES) $(RELEASE)
+build-release:        ## Build the release binary
+	$(CARGO) build $(RELEASE)
 
-build-stub:           ## Build without ONNX (stub mode, fast)
+build-stub:           ## Build default binary; use LATENT_INSPECTOR_MODEL_BACKEND=stub at runtime
 	$(CARGO) build
 
 # ── Quality ──────────────────────────────────────────────────────
 
-check:                ## Type-check with ONNX feature
-	$(CARGO) check $(FEATURES)
+check:                ## Type-check the codebase
+	$(CARGO) check
 
 clippy:               ## Lint with clippy (warnings = errors)
-	$(CARGO) clippy $(FEATURES) -- -D warnings
+	$(CARGO) clippy --all-targets -- -D warnings
+
+coverage:             ## Coverage summary for the tested non-TUI surface (requires cargo-llvm-cov)
+	$(CARGO) llvm-cov --workspace --ignore-filename-regex '$(COVERAGE_IGNORE)' --summary-only
+
+coverage-ci:          ## Enforce repository coverage thresholds in CI (requires cargo-llvm-cov)
+	$(CARGO) llvm-cov --workspace --ignore-filename-regex '$(COVERAGE_IGNORE)' \
+		--fail-under-lines $(COVERAGE_LINE_MIN) --fail-under-functions $(COVERAGE_FUNCTION_MIN) \
+		--summary-only
 
 fmt:                  ## Format code
 	$(CARGO) fmt
 
 test:                 ## Run all tests
-	$(CARGO) test $(FEATURES)
+	$(CARGO) test
 
 # ── Run targets ──────────────────────────────────────────────────
 
