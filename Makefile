@@ -6,13 +6,14 @@ RELEASE     := --release
 BIN         := target/release/latent-inspector
 MODELS      := dinov2-vit-l14,ijepa-vit-h14,vjepa2-vitl-fpc2-256,eupe-vit-b16
 SAMPLE_IMG  := docs/assets/img/samples/elephant_sample_image.jpg
+SAMPLE_DATASET := docs/assets/img/samples
 CACHE_DIR   := $(HOME)/.cache/latent-inspector
 COVERAGE_IGNORE := (^|/)src/tui/|(^|/)src/cli/tui.rs$$
 COVERAGE_LINE_MIN := 85
 COVERAGE_FUNCTION_MIN := 80
 
 .PHONY: build build-release build-stub check clippy coverage coverage-ci fmt \
-        test clean tui tui-demo inspect compare models download-models help
+        test clean tui tui-demo inspect compare compare-dataset models download-models help
 
 # ── Build targets ────────────────────────────────────────────────
 
@@ -61,6 +62,13 @@ inspect: build-release ## Inspect sample image with DINOv2
 compare: build-release ## Compare models on sample image and write an HTML report
 	@outdir=./target/comparison-reports/$$(date +%Y%m%d-%H%M%S)/; \
 	$(BIN) compare $(SAMPLE_IMG) --models $(MODELS) --format html --output "$$outdir"
+
+compare-dataset: build-release ## Profile all configured models on the sample dataset and write HTML reports
+	@outdir=./target/profile-reports/$$(date +%Y%m%d-%H%M%S)/; \
+	for model in $$(printf '%s' "$(MODELS)" | tr ',' ' '); do \
+		echo "Profiling $$model on $(SAMPLE_DATASET) -> $$outdir/$$model"; \
+		$(BIN) profile --model "$$model" --dataset "$(SAMPLE_DATASET)" --format html --output "$$outdir/$$model"; \
+	done
 
 models: build-release ## List registered models and their status
 	$(BIN) models
