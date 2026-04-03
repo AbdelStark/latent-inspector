@@ -97,7 +97,11 @@ fn test_registry_has_all_models() {
     let ready = latent_inspector::models::registry::ready_model_names();
     assert_eq!(
         ready,
-        vec!["dinov2-vit-l14".to_string(), "ijepa-vit-h14".to_string(),]
+        vec![
+            "dinov2-vit-l14".to_string(),
+            "ijepa-vit-h14".to_string(),
+            "vjepa2-vitl-fpc2-256".to_string(),
+        ]
     );
 }
 

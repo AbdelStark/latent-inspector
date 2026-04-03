@@ -2732,7 +2732,7 @@ mod tests {
         // DINOv2 has ONNX-backed evidence (approved); I-JEPA is ready but
         // its reference was stub-generated so evidence is stale, not approved.
         assert_eq!(report.summary.evidence.approved, 1);
-        assert_eq!(report.summary.evidence.unverified, 5);
+        assert_eq!(report.summary.evidence.unverified, 4);
         assert!(html.contains("Registered models"));
         assert!(html.contains("Ready to run"));
         assert!(html.contains("Readiness summary:"));

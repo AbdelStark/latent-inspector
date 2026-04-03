@@ -557,32 +557,29 @@ pub fn registry() -> Vec<RegistryEntry> {
                 input_size: 256,
                 params_m: 304,
             },
-            availability: Availability::planned(
-                "Phase 2",
-                "V-JEPA 2 ONNX export verified in Python but requires ort crate upgrade for Rust loading. See CHANGELOG for details.",
+            availability: Availability::ready(
+                "V-JEPA 2 ViT-L encoder exported to ONNX with 2-frame video input for single-image latent inspection.",
             ),
             artifacts: vec![
                 ModelArtifact {
                     relative_path: "vjepa2-vitl-fpc2-256/model.onnx".to_string(),
                     download_url:
-                        "https://huggingface.co/AbdelStark/vjepa2-vitl-fpc2-256-onnx/resolve/main/model.onnx"
+                        "https://huggingface.co/abdelstark/vjepa2-vitl-fpc2-256-onnx/resolve/main/model.onnx"
                             .to_string(),
-                    checksum: Checksum::Pending {
-                        reason:
-                            "SHA-256 will be pinned after the ONNX artifact is uploaded to HuggingFace Hub."
-                                .to_string(),
-                    },
+                    checksum: Checksum::Sha256(
+                        "942f72f0f1afe2bea855160c8f11080cd4d322b54a04e5e671fb96beb8ce6537"
+                            .to_string(),
+                    ),
                 },
                 ModelArtifact {
                     relative_path: "vjepa2-vitl-fpc2-256/model.onnx_data".to_string(),
                     download_url:
-                        "https://huggingface.co/AbdelStark/vjepa2-vitl-fpc2-256-onnx/resolve/main/model.onnx_data"
+                        "https://huggingface.co/abdelstark/vjepa2-vitl-fpc2-256-onnx/resolve/main/model.onnx_data"
                             .to_string(),
-                    checksum: Checksum::Pending {
-                        reason:
-                            "SHA-256 will be pinned after the ONNX artifact is uploaded to HuggingFace Hub."
-                                .to_string(),
-                    },
+                    checksum: Checksum::Sha256(
+                        "3a82e4d3cb3eaf1c13209daa08bb8ad7a408a4cc8bff3bee48978a8bfd34e640"
+                            .to_string(),
+                    ),
                 },
             ],
             norm_mean: [0.485, 0.456, 0.406],
@@ -711,7 +708,11 @@ mod tests {
         let ready = ready_model_names();
         assert_eq!(
             ready,
-            vec!["dinov2-vit-l14".to_string(), "ijepa-vit-h14".to_string(),]
+            vec![
+                "dinov2-vit-l14".to_string(),
+                "ijepa-vit-h14".to_string(),
+                "vjepa2-vitl-fpc2-256".to_string(),
+            ]
         );
     }
 
