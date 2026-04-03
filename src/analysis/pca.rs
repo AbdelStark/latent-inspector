@@ -34,7 +34,7 @@ pub fn pca(data: &Array2<f32>, k: usize, max_iter: usize) -> Result<PcaResult, A
     // Centre the data — safe: n >= 2 from guard above
     let mean = data
         .mean_axis(Axis(0))
-        .expect("pca: data must have at least one row");
+        .ok_or_else(|| AnalysisError::EmptyInput("PCA input cannot be empty".into()))?;
     let mut centred = data.to_owned();
     for mut row in centred.rows_mut() {
         row -= &mean;

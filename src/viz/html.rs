@@ -2132,7 +2132,30 @@ mod tests {
         SimilarityMetricValue, SimilarityReport, VarianceSpectrumReport,
     };
     use crate::viz::OutputFormat;
+    use crate::TEST_PROCESS_ENV_LOCK;
+    use std::ffi::OsString;
     use tempfile::tempdir;
+
+    struct CacheDirEnvGuard {
+        previous: Option<OsString>,
+    }
+
+    impl CacheDirEnvGuard {
+        fn set(path: &std::path::Path) -> Self {
+            let previous = std::env::var_os("LATENT_INSPECTOR_CACHE_DIR");
+            std::env::set_var("LATENT_INSPECTOR_CACHE_DIR", path);
+            Self { previous }
+        }
+    }
+
+    impl Drop for CacheDirEnvGuard {
+        fn drop(&mut self) {
+            match &self.previous {
+                Some(path) => std::env::set_var("LATENT_INSPECTOR_CACHE_DIR", path),
+                None => std::env::remove_var("LATENT_INSPECTOR_CACHE_DIR"),
+            }
+        }
+    }
 
     fn validation_summary(model: &str) -> ModelValidationSummary {
         ModelValidationSummary::from_checks(
@@ -2233,6 +2256,11 @@ mod tests {
     }
 
     fn model_catalog_report() -> ModelCatalogReport {
+        let _lock = TEST_PROCESS_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let cache_dir = tempdir().unwrap();
+        let _guard = CacheDirEnvGuard::set(cache_dir.path());
         build_model_catalog(None)
     }
 

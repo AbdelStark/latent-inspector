@@ -91,7 +91,7 @@ pub fn partition_isotropy(embeddings: &Array2<f32>) -> Result<f32, AnalysisError
     // Center the data
     let mean = embeddings
         .mean_axis(Axis(0))
-        .expect("isotropy: embeddings must have at least one row");
+        .ok_or_else(|| AnalysisError::EmptyInput("isotropy input cannot be empty".into()))?;
     let mut centered = embeddings.to_owned();
     for mut row in centered.rows_mut() {
         row -= &mean;

@@ -77,6 +77,12 @@ enum SessionInner {
     Stub(StubConfig),
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SequenceOutputLayout {
+    ContractDriven,
+    PatchOnly,
+}
+
 impl SessionInner {
     fn backend(&self) -> InferenceBackend {
         match self {
@@ -198,12 +204,99 @@ impl ModelSession {
         Ok(())
     }
 
+    fn output_from_hidden(
+        entry: &RegistryEntry,
+        input_shape: Vec<usize>,
+        output_shape: Vec<usize>,
+        hidden_array: ndarray::ArrayView3<'_, f32>,
+        layout: SequenceOutputLayout,
+    ) -> Result<ModelOutput, ModelError> {
+        let info = &entry.info;
+        let contract = &entry.validation.tensor;
+
+        if hidden_array.shape()[0] != contract.batch_size {
+            return Err(ModelError::InferenceFailed(format!(
+                "Expected batch dimension {} for '{}', got {:?}",
+                contract.batch_size, entry.output_name, output_shape
+            )));
+        }
+
+        let observed_dim = hidden_array.shape()[2];
+        if observed_dim != contract.embedding_dim {
+            return Err(ModelError::InferenceFailed(format!(
+                "Expected embed dim {} for '{}', got {:?}",
+                contract.embedding_dim, entry.output_name, output_shape
+            )));
+        }
+
+        let seq_len = hidden_array.shape()[1];
+        let (sequence_has_cls, patch_start) = match layout {
+            SequenceOutputLayout::ContractDriven => {
+                let expected_patches = contract.patch_count;
+                let expected_with_cls = expected_patches + 1;
+                let has_cls = contract.cls_expected && seq_len == expected_with_cls;
+
+                if seq_len != expected_patches && seq_len != expected_with_cls {
+                    return Err(ModelError::InferenceFailed(format!(
+                        "Expected {} or {} tokens for '{}', got {}",
+                        expected_patches, expected_with_cls, info.name, seq_len
+                    )));
+                }
+
+                if contract.cls_expected && !has_cls {
+                    return Err(ModelError::InferenceFailed(format!(
+                        "Contract for '{}' expects a CLS token (sequence length {}), \
+                         but got {} tokens (patches only)",
+                        info.name, expected_with_cls, seq_len
+                    )));
+                }
+
+                (has_cls, usize::from(has_cls))
+            }
+            SequenceOutputLayout::PatchOnly => {
+                if contract.cls_expected {
+                    return Err(ModelError::InferenceFailed(format!(
+                        "Patch-only output handling cannot satisfy the CLS-bearing contract for '{}'",
+                        info.name
+                    )));
+                }
+                if seq_len != contract.patch_count {
+                    return Err(ModelError::InferenceFailed(format!(
+                        "Expected {} patch tokens for '{}', got {}",
+                        contract.patch_count, info.name, seq_len
+                    )));
+                }
+
+                (false, 0)
+            }
+        };
+
+        let tokens = hidden_array.index_axis(Axis(0), 0);
+        let cls_token = sequence_has_cls.then(|| tokens.index_axis(Axis(0), 0).to_owned());
+        let patch_tokens = tokens.slice(ndarray::s![patch_start.., ..]).to_owned();
+        let observed_patch_count = patch_tokens.nrows();
+
+        Ok(ModelOutput {
+            cls_token,
+            patch_tokens,
+            attention_weights: None,
+            model_info: info.clone(),
+            tensor_metadata: OutputTensorMetadata {
+                input_name: entry.input_name.clone(),
+                input_shape,
+                output_name: entry.output_name.clone(),
+                output_shape,
+                sequence_has_cls,
+                observed_patch_count,
+                embedding_dim: observed_dim,
+            },
+        })
+    }
+
     /// Run inference on a preprocessed image tensor `[1, 3, H, W]`.
     pub fn run(&mut self, tensor: &Array4<f32>) -> Result<ModelOutput, ModelError> {
         let info = &self.entry.info;
         let contract = &self.entry.validation.tensor;
-        let expected_patches = contract.patch_count;
-        let expected_dim = contract.embedding_dim;
         let input_shape = tensor.shape().to_vec();
 
         match &mut self.inner {
@@ -250,67 +343,20 @@ impl ModelSession {
                         .map_err(|e| ModelError::InferenceFailed(e.to_string()))?
                         .into_dimensionality::<Ix3>()
                         .map_err(|e| ModelError::InferenceFailed(e.to_string()))?;
-
-                if hidden_array.shape()[0] != contract.batch_size {
-                    return Err(ModelError::InferenceFailed(format!(
-                        "Expected batch dimension {} for '{}', got {:?}",
-                        contract.batch_size, self.entry.output_name, output_shape
-                    )));
-                }
-
-                if hidden_array.shape()[2] != expected_dim {
-                    return Err(ModelError::InferenceFailed(format!(
-                        "Expected embed dim {} for '{}', got {:?}",
-                        expected_dim, self.entry.output_name, output_shape
-                    )));
-                }
-
-                let seq_len = hidden_array.shape()[1];
-                let expected_with_cls = expected_patches + 1;
-                let has_cls = contract.cls_expected && seq_len == expected_with_cls;
-
-                if seq_len != expected_patches && seq_len != expected_with_cls {
-                    return Err(ModelError::InferenceFailed(format!(
-                        "Expected {} or {} tokens for '{}', got {}",
-                        expected_patches, expected_with_cls, info.name, seq_len
-                    )));
-                }
-
-                // When the contract expects CLS but the model returned only
-                // patch tokens (no CLS prefix), reject rather than silently
-                // proceeding with cls_token = None.
-                if contract.cls_expected && !has_cls {
-                    return Err(ModelError::InferenceFailed(format!(
-                        "Contract for '{}' expects a CLS token (sequence length {}), \
-                         but got {} tokens (patches only)",
-                        info.name, expected_with_cls, seq_len
-                    )));
-                }
-
-                let tokens = hidden_array.index_axis(Axis(0), 0);
-                let cls_token = has_cls.then(|| tokens.index_axis(Axis(0), 0).to_owned());
-                let patch_start = usize::from(has_cls);
-                let patch_tokens = tokens.slice(ndarray::s![patch_start.., ..]).to_owned();
-
-                Ok(ModelOutput {
-                    cls_token,
-                    patch_tokens,
-                    attention_weights: None,
-                    model_info: info.clone(),
-                    tensor_metadata: OutputTensorMetadata {
-                        input_name: self.entry.input_name.clone(),
-                        input_shape,
-                        output_name: self.entry.output_name.clone(),
-                        output_shape,
-                        sequence_has_cls: has_cls,
-                        observed_patch_count: expected_patches,
-                        embedding_dim: expected_dim,
-                    },
-                })
+                Self::output_from_hidden(
+                    &self.entry,
+                    input_shape,
+                    output_shape,
+                    hidden_array,
+                    SequenceOutputLayout::ContractDriven,
+                )
             }
             SessionInner::Stub(config) => {
                 let (cls_token, patch_tokens, attention_weights) =
                     seeded_stub_features(*config, tensor, contract, info.num_heads as usize);
+                let sequence_has_cls = cls_token.is_some();
+                let observed_patch_count = patch_tokens.nrows();
+                let embedding_dim = patch_tokens.ncols();
 
                 Ok(ModelOutput {
                     cls_token,
@@ -321,10 +367,14 @@ impl ModelSession {
                         input_name: self.entry.input_name.clone(),
                         input_shape,
                         output_name: self.entry.output_name.clone(),
-                        output_shape: contract.expected_shape(),
-                        sequence_has_cls: contract.cls_expected,
-                        observed_patch_count: expected_patches,
-                        embedding_dim: expected_dim,
+                        output_shape: vec![
+                            contract.batch_size,
+                            observed_patch_count + usize::from(sequence_has_cls),
+                            embedding_dim,
+                        ],
+                        sequence_has_cls,
+                        observed_patch_count,
+                        embedding_dim,
                     },
                 })
             }
@@ -358,8 +408,6 @@ impl ModelSession {
     /// Run inference with a 5D video tensor `[1, F, 3, H, W]`.
     fn run_video(&mut self, tensor: &ndarray::Array5<f32>) -> Result<ModelOutput, ModelError> {
         let info = &self.entry.info;
-        let contract = &self.entry.validation.tensor;
-        let expected_dim = contract.embedding_dim;
         let input_shape = tensor.shape().to_vec();
 
         match &mut self.inner {
@@ -406,26 +454,13 @@ impl ModelSession {
                         .map_err(|e| ModelError::InferenceFailed(e.to_string()))?
                         .into_dimensionality::<Ix3>()
                         .map_err(|e| ModelError::InferenceFailed(e.to_string()))?;
-
-                let seq_len = hidden_array.shape()[1];
-                let tokens = hidden_array.index_axis(Axis(0), 0);
-                let patch_tokens = tokens.to_owned();
-
-                Ok(ModelOutput {
-                    cls_token: None,
-                    patch_tokens,
-                    attention_weights: None,
-                    model_info: info.clone(),
-                    tensor_metadata: OutputTensorMetadata {
-                        input_name: self.entry.input_name.clone(),
-                        input_shape,
-                        output_name: self.entry.output_name.clone(),
-                        output_shape,
-                        sequence_has_cls: false,
-                        observed_patch_count: seq_len,
-                        embedding_dim: expected_dim,
-                    },
-                })
+                Self::output_from_hidden(
+                    &self.entry,
+                    input_shape,
+                    output_shape,
+                    hidden_array,
+                    SequenceOutputLayout::PatchOnly,
+                )
             }
             SessionInner::Stub(_) => {
                 // For stub mode, generate features from the first frame
@@ -928,6 +963,8 @@ mod tests {
     use crate::analysis::linear_cka;
     use crate::extract::ExtractedFeatures;
     use crate::models::registry::{Checksum, ModelArtifact};
+    use crate::TEST_PROCESS_ENV_LOCK;
+    use std::ffi::OsString;
     use std::fs;
     use tempfile::tempdir;
 
@@ -938,6 +975,80 @@ mod tests {
                 entry,
             }
         }
+    }
+
+    struct ModelBackendEnvGuard {
+        previous: Option<OsString>,
+    }
+
+    impl ModelBackendEnvGuard {
+        fn set(value: &str) -> Self {
+            let previous = std::env::var_os("LATENT_INSPECTOR_MODEL_BACKEND");
+            std::env::set_var("LATENT_INSPECTOR_MODEL_BACKEND", value);
+            Self { previous }
+        }
+    }
+
+    impl Drop for ModelBackendEnvGuard {
+        fn drop(&mut self) {
+            match &self.previous {
+                Some(value) => std::env::set_var("LATENT_INSPECTOR_MODEL_BACKEND", value),
+                None => std::env::remove_var("LATENT_INSPECTOR_MODEL_BACKEND"),
+            }
+        }
+    }
+
+    #[test]
+    fn test_patch_only_output_records_observed_metadata() {
+        let entry = registry::find("vjepa2-vitl-fpc2-256").unwrap();
+        let session = ModelSession::stubbed(entry.clone());
+        let hidden = ndarray::Array3::<f32>::zeros((
+            entry.validation.tensor.batch_size,
+            entry.validation.tensor.patch_count,
+            entry.validation.tensor.embedding_dim,
+        ));
+
+        let output = ModelSession::output_from_hidden(
+            &session.entry,
+            vec![1, 2, 3, 224, 224],
+            hidden.shape().to_vec(),
+            hidden.view(),
+            SequenceOutputLayout::PatchOnly,
+        )
+        .unwrap();
+
+        assert!(output.cls_token.is_none());
+        assert!(!output.tensor_metadata.sequence_has_cls);
+        assert_eq!(
+            output.tensor_metadata.observed_patch_count,
+            entry.validation.tensor.patch_count
+        );
+        assert_eq!(
+            output.tensor_metadata.embedding_dim,
+            entry.validation.tensor.embedding_dim
+        );
+    }
+
+    #[test]
+    fn test_patch_only_output_rejects_unexpected_sequence_length() {
+        let entry = registry::find("vjepa2-vitl-fpc2-256").unwrap();
+        let session = ModelSession::stubbed(entry.clone());
+        let hidden = ndarray::Array3::<f32>::zeros((
+            entry.validation.tensor.batch_size,
+            entry.validation.tensor.patch_count + 1,
+            entry.validation.tensor.embedding_dim,
+        ));
+
+        let error = ModelSession::output_from_hidden(
+            &session.entry,
+            vec![1, 2, 3, 224, 224],
+            hidden.shape().to_vec(),
+            hidden.view(),
+            SequenceOutputLayout::PatchOnly,
+        )
+        .unwrap_err();
+
+        assert!(matches!(error, ModelError::InferenceFailed(_)));
     }
 
     #[test]
@@ -978,14 +1089,15 @@ mod tests {
 
     #[test]
     fn test_load_for_analysis_allows_planned_models_in_stub_mode() {
-        std::env::set_var("LATENT_INSPECTOR_MODEL_BACKEND", "stub");
+        let _lock = TEST_PROCESS_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let _guard = ModelBackendEnvGuard::set("stub");
 
         let mut session = ModelSession::load_for_analysis("clip-vit-l14").unwrap();
         let output = session
             .infer(&image::DynamicImage::new_rgb8(224, 224))
             .unwrap();
-
-        std::env::remove_var("LATENT_INSPECTOR_MODEL_BACKEND");
 
         assert_eq!(session.info().name, "clip-vit-l14");
         assert_eq!(output.patch_tokens.shape(), &[256, 1024]);
@@ -1000,7 +1112,10 @@ mod tests {
         fs::write(&first_path, b"stub checkpoint").unwrap();
         fs::write(&second_path, b"stub checkpoint").unwrap();
 
-        std::env::set_var("LATENT_INSPECTOR_MODEL_BACKEND", "stub");
+        let _lock = TEST_PROCESS_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let _guard = ModelBackendEnvGuard::set("stub");
 
         let mut first = ModelSession::load_checkpoint("dinov2-vit-l14", &first_path).unwrap();
         let mut second = ModelSession::load_checkpoint("dinov2-vit-l14", &second_path).unwrap();
@@ -1008,8 +1123,6 @@ mod tests {
 
         let first_output = first.infer(&img).unwrap();
         let second_output = second.infer(&img).unwrap();
-
-        std::env::remove_var("LATENT_INSPECTOR_MODEL_BACKEND");
 
         assert_ne!(
             first_output.patch_tokens[[0, 0]],
@@ -1037,7 +1150,10 @@ mod tests {
         fs::write(&second_path, b"stub checkpoint").unwrap();
         fs::write(&third_path, b"stub checkpoint").unwrap();
 
-        std::env::set_var("LATENT_INSPECTOR_MODEL_BACKEND", "stub");
+        let _lock = TEST_PROCESS_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let _guard = ModelBackendEnvGuard::set("stub");
 
         let mut first = ModelSession::load_checkpoint("dinov2-vit-l14", &first_path).unwrap();
         let mut second = ModelSession::load_checkpoint("dinov2-vit-l14", &second_path).unwrap();
@@ -1058,8 +1174,6 @@ mod tests {
         let first_matrix = checkpoint_embedding_matrix(&mut first, &images);
         let second_matrix = checkpoint_embedding_matrix(&mut second, &images);
         let third_matrix = checkpoint_embedding_matrix(&mut third, &images);
-
-        std::env::remove_var("LATENT_INSPECTOR_MODEL_BACKEND");
 
         let cka_12 = linear_cka(&first_matrix, &second_matrix).unwrap();
         let cka_2_10 = linear_cka(&second_matrix, &third_matrix).unwrap();

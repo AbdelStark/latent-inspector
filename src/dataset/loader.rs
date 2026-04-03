@@ -293,12 +293,12 @@ fn dataset_progress_bar(len: usize, show_progress: bool) -> Option<ProgressBar> 
     }
 
     let pb = ProgressBar::new(len as u64);
-    pb.set_style(
-        ProgressStyle::default_bar()
-            .template("{msg} [{bar:40.cyan/blue}] {pos}/{len}")
-            .unwrap()
-            .progress_chars("=> "),
-    );
+    let style =
+        match ProgressStyle::default_bar().template("{msg} [{bar:40.cyan/blue}] {pos}/{len}") {
+            Ok(style) => style.progress_chars("=> "),
+            Err(_) => ProgressStyle::default_bar().progress_chars("=> "),
+        };
+    pb.set_style(style);
     pb.set_message("Loading images");
     Some(pb)
 }

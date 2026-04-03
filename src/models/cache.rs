@@ -5,11 +5,16 @@ use reqwest::header::{CONTENT_RANGE, RANGE};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::fs;
-use std::io::{Read, Write};
+use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
+use std::time::{Duration, UNIX_EPOCH};
 use tracing::{debug, info, warn};
 
 const CACHE_DIR_ENV: &str = "LATENT_INSPECTOR_CACHE_DIR";
+const DOWNLOAD_CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
+const DOWNLOAD_REQUEST_TIMEOUT: Duration = Duration::from_secs(30 * 60);
+const DOWNLOAD_USER_AGENT: &str = concat!("latent-inspector/", env!("CARGO_PKG_VERSION"));
+const VERIFICATION_CACHE_SUFFIX: &str = ".sha256-cache.json";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -167,6 +172,39 @@ impl CacheInspection {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+struct VerificationCacheRecord {
+    expected_sha256: String,
+    file_size: u64,
+    modified_unix_secs: u64,
+    modified_subsec_nanos: u32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct FileFingerprint {
+    file_size: u64,
+    modified_unix_secs: u64,
+    modified_subsec_nanos: u32,
+}
+
+impl FileFingerprint {
+    fn from_path(path: &Path) -> Result<Self, ModelError> {
+        let metadata = fs::metadata(path)?;
+        let modified = metadata
+            .modified()
+            .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))?;
+        let modified = modified
+            .duration_since(UNIX_EPOCH)
+            .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))?;
+
+        Ok(Self {
+            file_size: metadata.len(),
+            modified_unix_secs: modified.as_secs(),
+            modified_subsec_nanos: modified.subsec_nanos(),
+        })
+    }
+}
+
 /// Returns the cache directory: `~/.cache/latent-inspector/`.
 pub fn cache_dir() -> Result<PathBuf, ModelError> {
     let dir = std::env::var_os(CACHE_DIR_ENV)
@@ -312,6 +350,9 @@ fn download_artifact(
         fs::remove_file(dest)?;
     }
     fs::rename(&tmp, dest)?;
+    if let Checksum::Sha256(expected) = &artifact.checksum {
+        persist_verification_cache(dest, expected);
+    }
     info!(
         "Model artifact {} saved to {}",
         artifact.relative_path,
@@ -339,7 +380,15 @@ fn download_to_file(
     model_name: &str,
     progress: &ProgressBar,
 ) -> Result<(), ModelError> {
-    let client = reqwest::blocking::Client::new();
+    let client = reqwest::blocking::Client::builder()
+        .connect_timeout(DOWNLOAD_CONNECT_TIMEOUT)
+        .timeout(DOWNLOAD_REQUEST_TIMEOUT)
+        .user_agent(DOWNLOAD_USER_AGENT)
+        .build()
+        .map_err(|e: reqwest::Error| ModelError::DownloadFailed {
+            name: model_name.to_string(),
+            reason: e.to_string(),
+        })?;
     let mut response = open_download_stream(&client, artifact, path, model_name, progress)?;
     let mut file = open_download_file(path, response.mode)?;
     stream_response_to_file(
@@ -354,7 +403,7 @@ fn download_to_file(
 
     match &artifact.checksum {
         Checksum::Sha256(expected) => {
-            if let Err(error) = verify_sha256(path, expected, model_name) {
+            if let Err(error) = verify_sha256_uncached(path, expected, model_name) {
                 let _ = fs::remove_file(path);
                 return Err(error);
             }
@@ -614,7 +663,7 @@ fn inspect_artifact(
         ArtifactCacheState::Invalid("file is empty".to_string())
     } else {
         match &artifact.checksum {
-            Checksum::Sha256(expected) => match verify_sha256(&path, expected, model_name) {
+            Checksum::Sha256(expected) => match verify_sha256_cached(&path, expected, model_name) {
                 Ok(()) => ArtifactCacheState::PresentVerified,
                 Err(ModelError::VerificationFailed {
                     expected, actual, ..
@@ -649,9 +698,129 @@ fn temp_download_path(dest: &Path) -> Result<PathBuf, ModelError> {
 
 /// Verify the SHA-256 hash of a file.
 pub fn verify_sha256(path: &Path, expected: &str, model_name: &str) -> Result<(), ModelError> {
+    let result = verify_sha256_uncached(path, expected, model_name);
+    match &result {
+        Ok(()) => persist_verification_cache(path, expected),
+        Err(_) => clear_verification_cache(path),
+    }
+    result
+}
+
+fn verify_sha256_cached(path: &Path, expected: &str, model_name: &str) -> Result<(), ModelError> {
+    if verification_cache_matches(path, expected) {
+        debug!("Reusing cached SHA-256 verification for {}", path.display());
+        return Ok(());
+    }
+
+    verify_sha256(path, expected, model_name)
+}
+
+fn verify_sha256_uncached(path: &Path, expected: &str, model_name: &str) -> Result<(), ModelError> {
     debug!("Verifying SHA-256 for {}", path.display());
     let actual = digest_file(path)?;
     verify_sha256_digest(expected, &actual, model_name)
+}
+
+fn verification_cache_matches(path: &Path, expected: &str) -> bool {
+    try_verification_cache_matches(path, expected).unwrap_or_else(|err| {
+        warn!(
+            "Ignoring SHA-256 cache metadata for {}: {}",
+            path.display(),
+            err
+        );
+        false
+    })
+}
+
+fn try_verification_cache_matches(path: &Path, expected: &str) -> Result<bool, ModelError> {
+    let cache_path = verification_cache_path(path)?;
+    let payload = match fs::read_to_string(&cache_path) {
+        Ok(payload) => payload,
+        Err(err) if err.kind() == io::ErrorKind::NotFound => return Ok(false),
+        Err(err) => return Err(err.into()),
+    };
+    let record: VerificationCacheRecord = serde_json::from_str(&payload).map_err(|err| {
+        ModelError::Io(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!(
+                "invalid verification cache metadata at {}: {err}",
+                cache_path.display()
+            ),
+        ))
+    })?;
+    if record.expected_sha256 != expected {
+        return Ok(false);
+    }
+
+    let fingerprint = FileFingerprint::from_path(path)?;
+    Ok(record.file_size == fingerprint.file_size
+        && record.modified_unix_secs == fingerprint.modified_unix_secs
+        && record.modified_subsec_nanos == fingerprint.modified_subsec_nanos)
+}
+
+fn persist_verification_cache(path: &Path, expected: &str) {
+    if let Err(err) = try_persist_verification_cache(path, expected) {
+        warn!(
+            "Failed to persist SHA-256 cache metadata for {}: {}",
+            path.display(),
+            err
+        );
+    }
+}
+
+fn try_persist_verification_cache(path: &Path, expected: &str) -> Result<(), ModelError> {
+    let fingerprint = FileFingerprint::from_path(path)?;
+    let record = VerificationCacheRecord {
+        expected_sha256: expected.to_string(),
+        file_size: fingerprint.file_size,
+        modified_unix_secs: fingerprint.modified_unix_secs,
+        modified_subsec_nanos: fingerprint.modified_subsec_nanos,
+    };
+    let payload = serde_json::to_vec(&record).map_err(|err| {
+        ModelError::Io(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("failed to serialize verification cache metadata: {err}"),
+        ))
+    })?;
+    fs::write(verification_cache_path(path)?, payload)?;
+    Ok(())
+}
+
+fn clear_verification_cache(path: &Path) {
+    let cache_path = match verification_cache_path(path) {
+        Ok(path) => path,
+        Err(err) => {
+            warn!(
+                "Failed to resolve SHA-256 cache metadata path for {}: {}",
+                path.display(),
+                err
+            );
+            return;
+        }
+    };
+
+    match fs::remove_file(&cache_path) {
+        Ok(()) => {}
+        Err(err) if err.kind() == io::ErrorKind::NotFound => {}
+        Err(err) => warn!(
+            "Failed to remove stale SHA-256 cache metadata at {}: {}",
+            cache_path.display(),
+            err
+        ),
+    }
+}
+
+fn verification_cache_path(path: &Path) -> Result<PathBuf, ModelError> {
+    let file_name = path
+        .file_name()
+        .ok_or_else(|| ModelError::InvalidArtifactPath {
+            name: "cache".to_string(),
+            path: path.display().to_string(),
+            reason: "artifact path has no file name".to_string(),
+        })?;
+    let mut cache_name = file_name.to_os_string();
+    cache_name.push(VERIFICATION_CACHE_SUFFIX);
+    Ok(path.with_file_name(cache_name))
 }
 
 fn digest_file(path: &Path) -> Result<String, ModelError> {
@@ -685,14 +854,13 @@ fn verify_sha256_digest(expected: &str, actual: &str, model_name: &str) -> Resul
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::TEST_PROCESS_ENV_LOCK;
     use std::ffi::OsString;
     use std::io::{BufRead, BufReader};
     use std::net::TcpListener;
-    use std::sync::{Arc, LazyLock, Mutex};
+    use std::sync::{Arc, Mutex};
     use std::thread;
     use tempfile::tempdir;
-
-    static CACHE_ENV_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
     struct CacheDirEnvGuard {
         previous: Option<OsString>,
@@ -855,21 +1023,27 @@ mod tests {
 
     #[test]
     fn test_cache_dir_created() {
-        let _lock = CACHE_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _lock = TEST_PROCESS_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let result = cache_dir();
         assert!(result.is_ok());
     }
 
     #[test]
     fn test_model_path_format() {
-        let _lock = CACHE_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _lock = TEST_PROCESS_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let path = model_path("dinov2-vit-l14").unwrap();
         assert!(path.to_str().unwrap().ends_with("dinov2-vit-l14.onnx"));
     }
 
     #[test]
     fn test_external_data_model_path_format() {
-        let _lock = CACHE_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _lock = TEST_PROCESS_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let path = model_path("ijepa-vit-h14").unwrap();
         assert!(path.to_str().unwrap().ends_with("ijepa-vit-h14/model.onnx"));
     }
@@ -896,8 +1070,27 @@ mod tests {
     }
 
     #[test]
+    fn test_sha256_verification_cache_tracks_file_fingerprint() {
+        let dir = tempdir().unwrap();
+        let file = dir.path().join("test.bin");
+        fs::write(&file, b"hello world").unwrap();
+
+        let expected = "b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9";
+        verify_sha256(&file, expected, "test").unwrap();
+
+        let cache_path = verification_cache_path(&file).unwrap();
+        assert!(cache_path.is_file());
+        assert!(verification_cache_matches(&file, expected));
+
+        fs::write(&file, b"changed content with a different size").unwrap();
+        assert!(!verification_cache_matches(&file, expected));
+    }
+
+    #[test]
     fn test_cache_dir_uses_env_override() {
-        let _lock = CACHE_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _lock = TEST_PROCESS_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let dir = tempdir().unwrap();
         let _guard = CacheDirEnvGuard::set(dir.path());
 
@@ -907,7 +1100,9 @@ mod tests {
 
     #[test]
     fn test_is_cached_requires_complete_artifact_bundle() {
-        let _lock = CACHE_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _lock = TEST_PROCESS_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let dir = tempdir().unwrap();
         let _guard = CacheDirEnvGuard::set(dir.path());
 
@@ -937,7 +1132,9 @@ mod tests {
 
     #[test]
     fn test_is_cached_rejects_empty_artifact_files() {
-        let _lock = CACHE_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _lock = TEST_PROCESS_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let dir = tempdir().unwrap();
         let _guard = CacheDirEnvGuard::set(dir.path());
 
@@ -970,7 +1167,9 @@ mod tests {
 
     #[test]
     fn test_inspect_artifact_detects_checksum_mismatch() {
-        let _lock = CACHE_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _lock = TEST_PROCESS_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let dir = tempdir().unwrap();
         let _guard = CacheDirEnvGuard::set(dir.path());
 
@@ -1036,6 +1235,28 @@ mod tests {
         assert_eq!(requests.len(), 2);
         assert_eq!(requests[0].range, None);
         assert_eq!(requests[1].range, Some(format!("bytes={partial_len}-")));
+    }
+
+    #[test]
+    fn test_download_artifact_persists_verification_cache_after_success() {
+        let dir = tempdir().unwrap();
+        let dest = dir.path().join("bundle/model.onnx");
+        fs::create_dir_all(dest.parent().unwrap()).unwrap();
+
+        let content = b"verified artifact".to_vec();
+        let expected_checksum = hex::encode(Sha256::digest(&content));
+        let server = TestServer::spawn(vec![ResponseScenario::ok(content)]);
+
+        let artifact = ModelArtifact {
+            relative_path: "bundle/model.onnx".to_string(),
+            download_url: server.url("/model.onnx"),
+            checksum: Checksum::Sha256(expected_checksum.clone()),
+        };
+
+        download_artifact("test-model", &artifact, &dest).unwrap();
+
+        assert!(verification_cache_path(&dest).unwrap().is_file());
+        assert!(verification_cache_matches(&dest, &expected_checksum));
     }
 
     #[test]

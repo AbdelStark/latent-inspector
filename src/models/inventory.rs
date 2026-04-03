@@ -918,10 +918,42 @@ fn item_label(count: usize, singular: &'static str, plural: &'static str) -> &'s
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::TEST_PROCESS_ENV_LOCK;
     use serde_json::Value;
+    use std::ffi::OsString;
     use std::fs;
     use std::path::{Path, PathBuf};
     use tempfile::tempdir;
+
+    struct CacheDirEnvGuard {
+        previous: Option<OsString>,
+    }
+
+    impl CacheDirEnvGuard {
+        fn set(path: &Path) -> Self {
+            let previous = std::env::var_os("LATENT_INSPECTOR_CACHE_DIR");
+            std::env::set_var("LATENT_INSPECTOR_CACHE_DIR", path);
+            Self { previous }
+        }
+    }
+
+    impl Drop for CacheDirEnvGuard {
+        fn drop(&mut self) {
+            match &self.previous {
+                Some(path) => std::env::set_var("LATENT_INSPECTOR_CACHE_DIR", path),
+                None => std::env::remove_var("LATENT_INSPECTOR_CACHE_DIR"),
+            }
+        }
+    }
+
+    fn build_catalog_with_isolated_cache(selection: Option<&str>) -> ModelCatalogReport {
+        let _lock = TEST_PROCESS_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let cache_dir = tempdir().unwrap();
+        let _guard = CacheDirEnvGuard::set(cache_dir.path());
+        build_model_catalog(selection)
+    }
 
     fn fixture_root() -> PathBuf {
         PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -949,7 +981,7 @@ mod tests {
 
     #[test]
     fn ready_model_has_approved_evidence_in_default_catalog() {
-        let report = build_model_catalog(None);
+        let report = build_catalog_with_isolated_cache(None);
         let dinov2 = report
             .entries
             .iter()
@@ -987,7 +1019,7 @@ mod tests {
 
     #[test]
     fn planned_models_remain_unverified_even_with_reference_artifacts() {
-        let report = build_model_catalog(None);
+        let report = build_catalog_with_isolated_cache(None);
         let planned = report
             .entries
             .iter()
@@ -1011,7 +1043,7 @@ mod tests {
         .unwrap();
 
         let manifest = fixtures.path().join("manifest.json");
-        let report = build_model_catalog(Some(manifest.to_str().unwrap()));
+        let report = build_catalog_with_isolated_cache(Some(manifest.to_str().unwrap()));
         let dinov2 = report
             .entries
             .iter()
@@ -1027,7 +1059,8 @@ mod tests {
 
     #[test]
     fn missing_fixture_manifest_marks_ready_model_as_missing() {
-        let report = build_model_catalog(Some("/tmp/latent-inspector-missing-manifest.json"));
+        let report =
+            build_catalog_with_isolated_cache(Some("/tmp/latent-inspector-missing-manifest.json"));
         let dinov2 = report
             .entries
             .iter()

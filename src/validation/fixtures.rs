@@ -103,7 +103,7 @@ impl LoadedFixtureSet {
     pub fn manifest_dir(&self) -> &Path {
         self.manifest_path
             .parent()
-            .expect("manifest path should always have a parent")
+            .unwrap_or(self.manifest_path.as_path())
     }
 
     pub fn materialize_fixtures(&self) -> Result<Vec<MaterializedFixture>, ValidationError> {

@@ -4,6 +4,9 @@ use latent_inspector::models::registry::{find, ModelInfo, SSLMethod};
 use latent_inspector::models::{ModelOutput, ModelSession, OutputTensorMetadata};
 use latent_inspector::validation::{fixtures::load_fixture_set, validate_model, ValidationStatus};
 use ndarray::{Array1, Array2};
+use std::sync::Mutex;
+
+static MODEL_BACKEND_ENV_LOCK: Mutex<()> = Mutex::new(());
 
 fn make_output(model_name: &str, n_patches: usize, embed_dim: usize) -> ModelOutput {
     ModelOutput {
@@ -125,6 +128,9 @@ fn test_validation_fixture_manifest_available() {
 
 #[test]
 fn test_validate_model_returns_structured_summary() {
+    let _lock = MODEL_BACKEND_ENV_LOCK
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
     // Safety: this test mutates the process environment. It is safe as long as
     // no other test in this binary reads LATENT_INSPECTOR_MODEL_BACKEND
     // concurrently. The guard struct ensures cleanup even on panic.
