@@ -36,6 +36,7 @@ fn main() {
         cli::Commands::Compare(a) => cli::compare::run(a),
         cli::Commands::Inspect(a) => cli::inspect::run(a),
         cli::Commands::Neighbors(a) => cli::neighbors::run(a),
+        cli::Commands::Profile(a) => cli::profile::run(a),
         cli::Commands::Similarity(a) => cli::similarity::run(a),
         cli::Commands::Drift(a) => cli::drift::run(a),
         cli::Commands::Models(a) => cli::models::run(a),

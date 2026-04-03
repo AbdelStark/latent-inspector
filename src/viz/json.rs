@@ -3,7 +3,7 @@ use crate::errors::VizError;
 use crate::models::{ModelCatalogReport, ModelDownloadReport};
 use crate::validation::report::ModelValidationSummary;
 use crate::viz::report::{
-    CompareReport, DriftReport, InspectReport, NeighborsReport, SimilarityReport,
+    CompareReport, DriftReport, InspectReport, NeighborsReport, ProfileReport, SimilarityReport,
 };
 use serde::Serialize;
 use std::path::Path;
@@ -85,6 +85,14 @@ pub fn write_model_download_report(
     report: &ModelDownloadReport,
     path: &Path,
 ) -> Result<(), VizError> {
+    write_value(report, path)
+}
+
+pub fn print_profile_report(report: &ProfileReport) -> Result<(), VizError> {
+    print_value(report)
+}
+
+pub fn write_profile_report(report: &ProfileReport, path: &Path) -> Result<(), VizError> {
     write_value(report, path)
 }
 

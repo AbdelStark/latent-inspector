@@ -6,7 +6,7 @@ use crate::models::{ModelCatalogReport, ModelDownloadReport, ModelReadinessStatu
 use crate::validation::report::ModelValidationSummary;
 use crate::viz::report::{
     CompareOverview, DriftReport, NeighborsReport, PairwiseMatrix, PairwiseMetricSupport,
-    SimilarityReport,
+    ProfileReport, SimilarityReport,
 };
 use ndarray::Array2;
 use std::io::IsTerminal;
@@ -854,6 +854,65 @@ pub fn print_drift_summary(
     }
 
     println!("{}", heavy_rule(84));
+}
+
+pub fn print_profile_report(report: &ProfileReport) {
+    println!();
+    println!("Representation Profile: {}", report.model);
+    println!(
+        "Dataset: {} ({} images)",
+        report.dataset, report.sample_count
+    );
+    println!("Embedding dimension: {}", report.embed_dim);
+    println!("Embedding basis: {}", report.embedding_basis.label());
+    println!("{}", heavy_rule(68));
+
+    println!();
+    println!("Space-Level Metrics");
+    println!("{}", light_rule(68));
+    println!(
+        "  {:<32} {:.4}",
+        "Isotropy (cosine):", report.space_metrics.isotropy_cosine
+    );
+    println!(
+        "  {:<32} {:.4}",
+        "Isotropy (partition):", report.space_metrics.isotropy_partition
+    );
+    println!(
+        "  {:<32} {:.4}",
+        "Uniformity:", report.space_metrics.uniformity
+    );
+    println!(
+        "  {:<32} {:.1}",
+        "Intrinsic dimensionality:", report.space_metrics.intrinsic_dimensionality
+    );
+
+    if !report.aggregate_metrics.is_empty() {
+        println!();
+        println!(
+            "Per-Image Metric Aggregates ({} images)",
+            report.sample_count
+        );
+        println!("{}", light_rule(68));
+        println!(
+            "  {:<28} {:>8} {:>8} {:>8} {:>8}",
+            "Metric", "Mean", "Std", "Min", "Max"
+        );
+        println!("  {}", light_rule(64));
+        for agg in &report.aggregate_metrics {
+            println!(
+                "  {:<28} {:>8.3} {:>8.3} {:>8.3} {:>8.3}",
+                truncate(&format!("{}:", agg.label), 27),
+                agg.mean,
+                agg.std,
+                agg.min,
+                agg.max
+            );
+        }
+    }
+
+    print_dataset_processing_summary(&report.dataset_summary);
+    print_validation_summaries(std::slice::from_ref(&report.validation));
 }
 
 fn truncate(s: &str, max: usize) -> String {

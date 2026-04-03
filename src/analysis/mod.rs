@@ -3,9 +3,12 @@ pub mod cka;
 pub mod correspondence;
 pub mod entropy;
 pub(crate) mod finite;
+pub mod intrinsic_dim;
+pub mod isotropy;
 pub mod knn;
 pub mod pca;
 pub mod rank;
+pub mod uniformity;
 pub mod variance;
 
 pub use attention::{gini, mean_gini, per_head_gini};
@@ -13,9 +16,12 @@ pub use cka::{cls_cosine_similarity, linear_cka};
 pub use correspondence::{patch_correspondence, patch_cosine_similarity, CorrespondenceResult};
 pub use entropy::{patch_entropy, patch_norm_stats, shannon_entropy, NormStats};
 pub use finite::square_grid_side;
+pub use intrinsic_dim::{intrinsic_dimensionality, intrinsic_dimensionality_default};
+pub use isotropy::{isotropy_score, partition_isotropy};
 pub use knn::{cosine_similarity_matrix, knn_overlap, top_k_neighbors};
 pub use pca::{pca, transform, PcaResult};
 pub use rank::{dead_dimensions, effective_rank};
+pub use uniformity::uniformity;
 pub use variance::{variance_spectrum, VarianceSpectrum};
 
 use crate::errors::AnalysisError;

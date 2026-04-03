@@ -8,7 +8,7 @@ use crate::validation::report::ModelValidationSummary;
 use crate::viz::manifest::{ArtifactKind, OutputArtifactManifest};
 use crate::viz::report::{
     build_compare_overview, CompareOverview, DriftReport, InspectReport, NeighborsReport,
-    PairwiseMatrix, PairwiseMetricSupport, SimilarityReport,
+    PairwiseMatrix, PairwiseMetricSupport, ProfileReport, SimilarityReport,
 };
 use std::path::Path;
 
@@ -214,6 +214,30 @@ pub fn write_drift_report_with_assets_and_bundle(
     output_path: &Path,
 ) -> Result<(), VizError> {
     let html = render_drift_html_with_bundle(report, assets, bundle);
+    std::fs::write(output_path, &html)
+        .map_err(|e| VizError::Html(format!("Failed to write {}: {e}", output_path.display())))?;
+    Ok(())
+}
+
+pub fn write_profile_report(report: &ProfileReport, output_path: &Path) -> Result<(), VizError> {
+    write_profile_report_with_assets(report, &GalleryAssets::default(), output_path)
+}
+
+pub fn write_profile_report_with_assets(
+    report: &ProfileReport,
+    assets: &GalleryAssets,
+    output_path: &Path,
+) -> Result<(), VizError> {
+    write_profile_report_with_assets_and_bundle(report, assets, None, output_path)
+}
+
+pub fn write_profile_report_with_assets_and_bundle(
+    report: &ProfileReport,
+    assets: &GalleryAssets,
+    bundle: Option<&OutputArtifactManifest>,
+    output_path: &Path,
+) -> Result<(), VizError> {
+    let html = render_profile_html_with_bundle(report, assets, bundle);
     std::fs::write(output_path, &html)
         .map_err(|e| VizError::Html(format!("Failed to write {}: {e}", output_path.display())))?;
     Ok(())
@@ -1650,6 +1674,99 @@ fn render_matrix_table(matrix: &PairwiseMatrix) -> String {
     format!(
         "<table><thead><tr><th></th>{}</tr></thead><tbody>{}</tbody></table>",
         header, rows
+    )
+}
+
+fn render_profile_html_with_bundle(
+    report: &ProfileReport,
+    assets: &GalleryAssets,
+    bundle: Option<&OutputArtifactManifest>,
+) -> String {
+    let space_rows = format!(
+        concat!(
+            "<tr><td>Isotropy (cosine)</td><td>{:.4}</td><td>1 - avg pairwise cosine similarity. Higher = more uniform spread.</td></tr>\n",
+            "<tr><td>Isotropy (partition)</td><td>{:.4}</td><td>Singular-value uniformity. Higher = less dominated by top components.</td></tr>\n",
+            "<tr><td>Uniformity</td><td>{:.4}</td><td>Wang &amp; Isola (2020). More negative = better spread on hypersphere.</td></tr>\n",
+            "<tr><td>Intrinsic dimensionality</td><td>{:.1}</td><td>MLE estimate (Levina &amp; Bickel 2004) of manifold dimension.</td></tr>",
+        ),
+        report.space_metrics.isotropy_cosine,
+        report.space_metrics.isotropy_partition,
+        report.space_metrics.uniformity,
+        report.space_metrics.intrinsic_dimensionality,
+    );
+    let space_table = format!(
+        "<table><thead><tr><th>Metric</th><th>Value</th><th>Interpretation</th></tr></thead><tbody>{space_rows}</tbody></table>"
+    );
+
+    let aggregate_table = if report.aggregate_metrics.is_empty() {
+        "<p class=\"empty-state\">No per-image metrics were collected.</p>".to_string()
+    } else {
+        let rows = report
+            .aggregate_metrics
+            .iter()
+            .map(|agg| {
+                format!(
+                    "<tr><td>{}</td><td>{:.3}</td><td>{:.3}</td><td>{:.3}</td><td>{:.3}</td></tr>",
+                    escape_html(&agg.label),
+                    agg.mean,
+                    agg.std,
+                    agg.min,
+                    agg.max,
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        format!(
+            "<table><thead><tr><th>Metric</th><th>Mean</th><th>Std</th><th>Min</th><th>Max</th></tr></thead><tbody>{rows}</tbody></table>"
+        )
+    };
+
+    let mut sections = vec![
+        ("Space-Level Metrics", space_table),
+        ("Per-Image Metric Aggregates", aggregate_table),
+    ];
+    if !assets.is_empty() {
+        sections.push((
+            "Visual Artefacts",
+            render_gallery_assets(assets, "No charts were generated for this report."),
+        ));
+    }
+    sections.push((
+        "Dataset Processing",
+        render_dataset_summary_html(&report.dataset_summary),
+    ));
+    sections.push((
+        "Validation Summary",
+        render_validation_section_body(
+            std::slice::from_ref(&report.validation),
+            "No validation evidence was attached to this report.",
+        ),
+    ));
+
+    render_secondary_html(
+        "Representation Profile",
+        &format!(
+            "Model <code>{}</code> profiled across {} images from <code>{}</code>. Global embeddings use <strong>{}</strong>.",
+            escape_html(&report.model),
+            report.sample_count,
+            escape_html(&report.dataset),
+            escape_html(report.embedding_basis.label()),
+        ),
+        &[
+            ("Model", report.model.clone()),
+            ("Images", report.sample_count.to_string()),
+            ("Embedding dim", report.embed_dim.to_string()),
+            (
+                "Embedding basis",
+                report.embedding_basis.label().to_string(),
+            ),
+            (
+                "Intrinsic dim",
+                format!("{:.1}", report.space_metrics.intrinsic_dimensionality),
+            ),
+        ],
+        &sections,
+        bundle,
     )
 }
 
