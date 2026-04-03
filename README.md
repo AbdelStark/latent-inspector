@@ -1,7 +1,14 @@
+<div align="center">
+
 # latent-inspector
 
-A fast Rust CLI for inspecting and comparing learned representations across self-supervised vision models. Feed it an image, get a structured comparison of how DINOv2, I-JEPA, V-JEPA 2, and others see the world — with real numbers, not vibes.
+Inspect and compare self-supervised vision model representations from the terminal.
 
+[![Crates.io](https://img.shields.io/crates/v/latent-inspector.svg)](https://crates.io/crates/latent-inspector)
+[![License](https://img.shields.io/crates/l/latent-inspector.svg)](https://crates.io/crates/latent-inspector)
+[![Rust 1.75+](https://img.shields.io/badge/rust-1.75%2B-000000?logo=rust)](https://www.rust-lang.org)
+
+</div>
 <table>
 <tr>
 <td width="50%"><img src="docs/assets/img/screenshots/tui-1.png" alt="Dashboard"/><br/><sub>Dashboard — model registry, image preview, architecture comparison</sub></td>
@@ -13,15 +20,23 @@ A fast Rust CLI for inspecting and comparing learned representations across self
 </tr>
 </table>
 
-## Status
+## PCA examples across the ready models
 
-> As of 2026-04-03, this project is **alpha**. It is suitable for local CLI-driven inspection, comparison, validation, and report generation for the four ready models (`dinov2-vit-l14`, `ijepa-vit-h14`, `vjepa2-vitl-fpc2-256`, `eupe-vit-b16`). It is **not yet suitable** as a stable library API, unattended production batch infrastructure, or `cargo install` from crates.io. Known limitations: planned models are still stub-only for development flows, first-use downloads are large, and the internal Rust/TUI surfaces may still change before `1.0`. The machine-readable report bundle surface for the ready-model commands is now treated as additive-only; see [docs/REPORT-SCHEMA.md](docs/REPORT-SCHEMA.md).
+These PCA RGB maps come from the checked-in example outputs in `docs/assets/img/examples/`. Each pixel block is a patch token projected onto the top three principal components, so contiguous color regions mean the model is grouping those patches into a similar representation neighborhood.
 
-## Project docs
+<table>
+<tr>
+<td width="50%"><img src="docs/assets/img/examples/dinov2-vit-l14_pca.png" alt="DINOv2 PCA representation"/><br/><sub><strong>DINOv2</strong> — large contiguous regions show a segmentation-like representation: similar colors mean the model has grouped semantically related elephant and background patches together.</sub></td>
+<td width="50%"><img src="docs/assets/img/examples/ijepa-vit-h14_pca.png" alt="I-JEPA PCA representation"/><br/><sub><strong>I-JEPA</strong> — finer local variation reflects its latent-prediction objective: the PCA map suggests patches carry more context-specific information instead of collapsing into broad semantic zones.</sub></td>
+</tr>
+<tr>
+<td width="50%"><img src="docs/assets/img/examples/vjepa2-vitl-fpc2-256_pca.png" alt="V-JEPA 2 PCA representation"/><br/><sub><strong>V-JEPA 2</strong> — structured but less static-looking regions hint at a motion-aware prior: the PCA layout suggests the encoder organizes the image as something that could evolve over time, not just a frozen scene.</sub></td>
+<td width="50%"><img src="docs/assets/img/examples/eupe-vit-b16_pca.png" alt="EUPE PCA representation"/><br/><sub><strong>EUPE</strong> — the more compressed, high-contrast partitioning matches its multi-teacher distillation setup: the PCA view suggests a compact representation that prioritizes strong task-relevant separations.</sub></td>
+</tr>
+</table>
 
-- [Architecture and runbook](docs/ARCHITECTURE.md)
-- [Report schema contract](docs/REPORT-SCHEMA.md)
-- [Contributing guide](CONTRIBUTING.md)
+<details>
+
 
 ## Quick start
 
@@ -80,22 +95,6 @@ These different training objectives create different internal "world models." la
 
 Models download automatically on first use (~1-2 GB each) and are cached locally. All downloads are SHA-256 verified and now retry bounded transient HTTP/read failures before surfacing an error. Override the cache location with `LATENT_INSPECTOR_CACHE_DIR`.
 
-## PCA examples across the ready models
-
-These PCA RGB maps come from the checked-in example outputs in `docs/assets/img/examples/`. Each pixel block is a patch token projected onto the top three principal components, so contiguous color regions mean the model is grouping those patches into a similar representation neighborhood.
-
-<table>
-<tr>
-<td width="50%"><img src="docs/assets/img/examples/dinov2-vit-l14_pca.png" alt="DINOv2 PCA representation"/><br/><sub><strong>DINOv2</strong> — large contiguous regions show a segmentation-like representation: similar colors mean the model has grouped semantically related elephant and background patches together.</sub></td>
-<td width="50%"><img src="docs/assets/img/examples/ijepa-vit-h14_pca.png" alt="I-JEPA PCA representation"/><br/><sub><strong>I-JEPA</strong> — finer local variation reflects its latent-prediction objective: the PCA map suggests patches carry more context-specific information instead of collapsing into broad semantic zones.</sub></td>
-</tr>
-<tr>
-<td width="50%"><img src="docs/assets/img/examples/vjepa2-vitl-fpc2-256_pca.png" alt="V-JEPA 2 PCA representation"/><br/><sub><strong>V-JEPA 2</strong> — structured but less static-looking regions hint at a motion-aware prior: the PCA layout suggests the encoder organizes the image as something that could evolve over time, not just a frozen scene.</sub></td>
-<td width="50%"><img src="docs/assets/img/examples/eupe-vit-b16_pca.png" alt="EUPE PCA representation"/><br/><sub><strong>EUPE</strong> — the more compressed, high-contrast partitioning matches its multi-teacher distillation setup: the PCA view suggests a compact representation that prioritizes strong task-relevant separations.</sub></td>
-</tr>
-</table>
-
-<details>
 <summary><strong>Model provenance and ONNX artifacts</strong></summary>
 
 Every model runs through ONNX Runtime. The ONNX artifacts are sourced as follows:
