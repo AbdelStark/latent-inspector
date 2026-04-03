@@ -57,7 +57,16 @@ pub fn save_attention_overlay(
     Ok(())
 }
 
+/// Minimum output dimension for PCA RGB images. Each patch is upscaled so the
+/// final image is at least this many pixels on each side.
+const PCA_MIN_OUTPUT_SIZE: u32 = 448;
+
 /// Save PCA 3-component projection as an RGB image.
+///
+/// Each patch's top-3 PCA components are mapped to RGB channels and painted
+/// over its spatial region, producing a full-resolution visualization where
+/// same-color regions have similar representations. This is the standard
+/// ViT patch embedding visualization used in DINOv2 and related papers.
 ///
 /// `projections`: `[N_patches, 3]` — first 3 PCA components per patch.
 /// `grid_size`: number of patches along each axis (assumes square grid).
@@ -94,9 +103,19 @@ pub fn save_pca_rgb(
     let g_ch = make_channel(1);
     let b_ch = make_channel(2.min(projections.shape()[1] - 1));
 
-    let mut img: RgbImage = ImageBuffer::new(grid_size as u32, grid_size as u32);
-    for (i, pixel) in img.pixels_mut().enumerate() {
-        *pixel = Rgb([r_ch[i], g_ch[i], b_ch[i]]);
+    // Upscale: each patch covers (scale x scale) pixels so the output is
+    // at least PCA_MIN_OUTPUT_SIZE on each side.
+    let scale = (PCA_MIN_OUTPUT_SIZE as usize / grid_size).max(1);
+    let out_size = (grid_size * scale) as u32;
+
+    let mut img: RgbImage = ImageBuffer::new(out_size, out_size);
+    for py in 0..out_size {
+        for px in 0..out_size {
+            let gx = (px as usize / scale).min(grid_size - 1);
+            let gy = (py as usize / scale).min(grid_size - 1);
+            let idx = gy * grid_size + gx;
+            img.put_pixel(px, py, Rgb([r_ch[idx], g_ch[idx], b_ch[idx]]));
+        }
     }
 
     img.save(output_path)

@@ -48,6 +48,10 @@
     "vjepa2-vitl-fpc2-256": {
       "contract": "vjepa2-vitl-fpc2-256.contract.json",
       "reference": "vjepa2-vitl-fpc2-256.reference.json"
+    },
+    "eupe-vit-b16": {
+      "contract": "eupe-vit-b16.contract.json",
+      "reference": "eupe-vit-b16.reference.json"
     }
   }
 }

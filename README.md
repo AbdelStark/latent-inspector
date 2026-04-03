@@ -38,6 +38,7 @@ Self-supervised learning (SSL) models learn to represent images without labels, 
 - **DINOv2** learns patch-level features via self-distillation. Its representations naturally segment objects — patches on the elephant cluster together, patches on the background cluster together — without ever seeing a segmentation label.
 - **I-JEPA** predicts missing patches in latent space (not pixel space). It learns to fill in what's "probably there" based on context, favoring abstract structure over texture.
 - **V-JEPA 2** extends JEPA to video, learning spatiotemporal structure from internet-scale video data. Even on static images, its representations carry an implicit prior about how the world moves.
+- **EUPE** distills multiple specialist teachers (DINOv2, depth estimators, segmenters) into a single compact encoder. Its representation is a learned compromise — strong on classification, segmentation, and depth simultaneously.
 - **MAE** reconstructs masked pixel regions. It must encode enough detail to literally redraw the masked patches.
 - **CLIP** aligns images with text descriptions. Its representation is shaped by language, not just visual similarity.
 
@@ -50,6 +51,7 @@ These different training objectives create different internal "world models." la
 | **DINOv2** | ViT-L/14 | 304M | Self-distillation + centering | **Ready** |
 | **I-JEPA** | ViT-H/14 | 632M | Joint embedding predictive | **Ready** |
 | **V-JEPA 2** | ViT-L/16 | 304M | Video joint embedding predictive | **Ready** |
+| **EUPE** | ViT-B/16 | 86M | Multi-teacher distillation | **Ready** |
 | DINOv3 | ViT-L/14 | 304M | Self-distillation + Gram anchoring | Planned |
 | MAE | ViT-L/16 | 304M | Masked autoencoder | Planned |
 | CLIP | ViT-L/14 | 304M | Contrastive image-text | Planned |
@@ -67,8 +69,11 @@ Every model runs through ONNX Runtime. The ONNX artifacts are sourced as follows
 | `dinov2-vit-l14` | [`facebook/dinov2-large`](https://huggingface.co/facebook/dinov2-large) | [`onnx-community/dinov2-large`](https://huggingface.co/onnx-community/dinov2-large) — community export | [Oquab et al. 2024](https://arxiv.org/abs/2304.07193) |
 | `ijepa-vit-h14` | [`facebook/ijepa_vith14_1k`](https://huggingface.co/facebook/ijepa_vith14_1k) | [`onnx-community/ijepa_vith14_1k`](https://huggingface.co/onnx-community/ijepa_vith14_1k) — community export | [Assran et al. 2023](https://arxiv.org/abs/2301.08243) |
 | `vjepa2-vitl-fpc2-256` | [`facebook/vjepa2-vitl-fpc64-256`](https://huggingface.co/facebook/vjepa2-vitl-fpc64-256) | [`abdelstark/vjepa2-vitl-fpc2-256-onnx`](https://huggingface.co/abdelstark/vjepa2-vitl-fpc2-256-onnx) — custom export | [Bardes et al. 2024](https://arxiv.org/abs/2506.09985) |
+| `eupe-vit-b16` | [`facebook/EUPE-ViT-B`](https://huggingface.co/facebook/EUPE-ViT-B) | [`abdelstark/eupe-vit-b16-onnx`](https://huggingface.co/abdelstark/eupe-vit-b16-onnx) — custom export | [Zhu et al. 2026](https://arxiv.org/abs/2603.22387) |
 
 **V-JEPA 2 ONNX export:** V-JEPA 2 is a video model (`facebook/vjepa2-vitl-fpc64-256`) trained on internet-scale video. Since latent-inspector analyzes single images, we exported only the encoder (stripping the predictor head), with a fixed 2-frame input — the single image is duplicated to satisfy the model's temporal tubelet requirement (`tubelet_size=2`). This produces 256 spatial patch tokens of dimension 1024, identical in shape to DINOv2, enabling direct cross-model comparison. The export was done using PyTorch's TorchScript ONNX exporter at opset 14, simplified with [onnxsim](https://github.com/daquexian/onnx-simplifier), and verified against the PyTorch reference (max diff < 0.003). The artifact is hosted at [`abdelstark/vjepa2-vitl-fpc2-256-onnx`](https://huggingface.co/abdelstark/vjepa2-vitl-fpc2-256-onnx) for convenience.
+
+**EUPE ONNX export:** EUPE (`facebook/EUPE-ViT-B`) is a compact ViT-B/16 distilled from multiple domain-expert teachers. The `forward_features()` method returns normalized CLS and patch tokens as separate dict entries; we wrapped it to concatenate them into a single `[1, 197, 768]` tensor (CLS at index 0). RoPE position encoding was cast from BFloat16 to Float32 for export compatibility. The export uses TorchScript at opset 14 + onnxsim (834 nodes, max diff 0.0003 vs PyTorch). Hosted at [`abdelstark/eupe-vit-b16-onnx`](https://huggingface.co/abdelstark/eupe-vit-b16-onnx).
 
 To convert other HuggingFace models to ONNX, use the [ONNX Community Converter](https://huggingface.co/spaces/onnx-community/convert-to-onnx).
 

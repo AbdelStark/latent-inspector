@@ -8,6 +8,7 @@ pub enum SSLMethod {
     MAE,
     IJEPA,
     VJEPA2,
+    EUPE,
     CLIP,
     SigLIP,
 }
@@ -19,6 +20,7 @@ impl std::fmt::Display for SSLMethod {
             SSLMethod::MAE => write!(f, "MAE"),
             SSLMethod::IJEPA => write!(f, "I-JEPA"),
             SSLMethod::VJEPA2 => write!(f, "V-JEPA 2"),
+            SSLMethod::EUPE => write!(f, "EUPE"),
             SSLMethod::CLIP => write!(f, "CLIP"),
             SSLMethod::SigLIP => write!(f, "SigLIP"),
         }
@@ -641,6 +643,77 @@ pub fn registry() -> Vec<RegistryEntry> {
                 },
             ),
         },
+        // ── EUPE ViT-B/16 ──────────────────────────────────────────────
+        // Paper: "Efficient Universal Perception Encoder"
+        //        Zhu et al. 2026  — https://arxiv.org/abs/2603.22387
+        // Source: facebook/EUPE-ViT-B (HuggingFace)
+        // ONNX:   abdelstark/eupe-vit-b16-onnx (custom export)
+        //
+        // Export method: forward_features() wrapper concatenating CLS + patches,
+        // TorchScript ONNX at opset 14, simplified with onnxsim, fp32 RoPE.
+        // Distilled from multiple domain-expert teachers (DINOv2, depth, segmentation).
+        RegistryEntry {
+            info: ModelInfo {
+                name: "eupe-vit-b16".to_string(),
+                architecture: "ViT-B/16".to_string(),
+                patch_size: 16,
+                embed_dim: 768,
+                num_layers: 12,
+                num_heads: 12,
+                method: SSLMethod::EUPE,
+                input_size: 224,
+                params_m: 86,
+            },
+            availability: Availability::ready(
+                "EUPE ViT-B/16 distilled from multiple domain-expert teachers into a compact efficient encoder.",
+            ),
+            artifacts: vec![
+                ModelArtifact {
+                    relative_path: "eupe-vit-b16/model.onnx".to_string(),
+                    download_url:
+                        "https://huggingface.co/abdelstark/eupe-vit-b16-onnx/resolve/main/model.onnx"
+                            .to_string(),
+                    checksum: Checksum::Sha256(
+                        "01e5483095a6e3e171394e00436c0ca1b38e9d6b478cdb2266df9fbf4f068c8d"
+                            .to_string(),
+                    ),
+                },
+                ModelArtifact {
+                    relative_path: "eupe-vit-b16/model.onnx_data".to_string(),
+                    download_url:
+                        "https://huggingface.co/abdelstark/eupe-vit-b16-onnx/resolve/main/model.onnx_data"
+                            .to_string(),
+                    checksum: Checksum::Sha256(
+                        "10a459ecc03a82fd48a54dae62f019d591d09b2dbb0c48fe765aef8534842749"
+                            .to_string(),
+                    ),
+                },
+            ],
+            norm_mean: [0.485, 0.456, 0.406],
+            norm_std: [0.229, 0.224, 0.225],
+            input_name: "pixel_values".to_string(),
+            output_name: "last_hidden_state".to_string(),
+            video_frames: None,
+            validation: default_validation_profile(
+                "facebookresearch/eupe",
+                PreprocessContract {
+                    input_size: 224,
+                    resize_filter: "lanczos3".to_string(),
+                    color_space: "rgb".to_string(),
+                    layout: "nchw".to_string(),
+                    mean: [0.485, 0.456, 0.406],
+                    std: [0.229, 0.224, 0.225],
+                },
+                TensorContract {
+                    name: "last_hidden_state".to_string(),
+                    role: TensorRole::PatchAndClsSequence,
+                    cls_expected: true,
+                    batch_size: 1,
+                    patch_count: 196,
+                    embedding_dim: 768,
+                },
+            ),
+        },
         RegistryEntry {
             info: ModelInfo {
                 name: "siglip-so400m".to_string(),
@@ -727,13 +800,14 @@ mod tests {
     #[test]
     fn test_registry_contains_current_and_planned_models() {
         let names = model_names();
-        assert_eq!(names.len(), 7);
+        assert_eq!(names.len(), 8);
         assert!(names.contains(&"dinov2-vit-l14".to_string()));
         assert!(names.contains(&"dinov3-vit-l14".to_string()));
         assert!(names.contains(&"mae-vit-l16".to_string()));
         assert!(names.contains(&"clip-vit-l14".to_string()));
         assert!(names.contains(&"ijepa-vit-h14".to_string()));
         assert!(names.contains(&"vjepa2-vitl-fpc2-256".to_string()));
+        assert!(names.contains(&"eupe-vit-b16".to_string()));
         assert!(names.contains(&"siglip-so400m".to_string()));
     }
 
@@ -746,6 +820,7 @@ mod tests {
                 "dinov2-vit-l14".to_string(),
                 "ijepa-vit-h14".to_string(),
                 "vjepa2-vitl-fpc2-256".to_string(),
+                "eupe-vit-b16".to_string(),
             ]
         );
     }
