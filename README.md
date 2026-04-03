@@ -354,7 +354,7 @@ Force ASCII output in non-Unicode terminals: `LATENT_INSPECTOR_FORCE_ASCII=1`.
 | **Linear CKA** | Geometric similarity between two representations | 0 to 1 | 1 = identical geometry; 0 = unrelated |
 | **k-NN overlap** | Neighborhood agreement between two models | 0 to 1 | 1 = same neighbors; 0 = completely different |
 | **Patch correspondence** | Optimal assignment similarity (Hungarian matching) | 0 to 1 | How well patches can be aligned across models |
-| **Isotropy (cosine)** | Spread of embeddings in the representation space | 0 to ~2 | Higher = more uniform; near 0 = vectors clustered in a cone |
+| **Isotropy (cosine)** | Spread of embeddings in the representation space | 0 to 1 | Higher = more uniform; near 0 = vectors clustered in a cone |
 | **Isotropy (partition)** | Singular value uniformity (Mu et al. 2018) | 0 to 1 | Higher = eigenvalues more uniform; 0 = dominated by top components |
 | **Uniformity** | Embedding spread on the unit hypersphere (Wang & Isola 2020) | -inf to 0 | More negative = better spread; 0 = all vectors identical |
 | **Intrinsic dimensionality** | True manifold dimension (Levina & Bickel 2004 MLE) | 1+ | Lower than ambient dim = representations lie on a low-dim manifold |

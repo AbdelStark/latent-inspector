@@ -47,10 +47,10 @@ pub fn uniformity_with_temperature(embeddings: &Array2<f32>, t: f32) -> Result<f
     // L2-normalize all embeddings
     let normalized = l2_normalize_rows(embeddings);
 
-    // Compute log-mean-exp of negative squared distances
-    // Use the log-sum-exp trick for numerical stability
-    let mut sum_exp = 0.0_f64;
-    let mut pair_count = 0_u64;
+    // Collect exponent values: -t * ||f(x) - f(y)||^2 for all pairs.
+    // We then use log-sum-exp for numerical stability:
+    //   log(mean(exp(x_i))) = max_x + log(mean(exp(x_i - max_x)))
+    let mut exponents = Vec::with_capacity(n * (n - 1) / 2);
 
     for i in 0..n {
         let row_i = normalized.row(i);
@@ -61,19 +61,22 @@ pub fn uniformity_with_temperature(embeddings: &Array2<f32>, t: f32) -> Result<f
                 .zip(row_j.iter())
                 .map(|(a, b)| (a - b).powi(2))
                 .sum();
-            sum_exp += (-t * sq_dist).exp() as f64;
-            pair_count += 1;
+            exponents.push((-t * sq_dist) as f64);
         }
     }
 
-    if pair_count == 0 {
+    if exponents.is_empty() {
         return Err(AnalysisError::InsufficientData(
             "No valid pairs for uniformity computation".into(),
         ));
     }
 
-    let mean_exp = sum_exp / pair_count as f64;
-    Ok((mean_exp.ln()) as f32)
+    // Log-sum-exp trick: shift by max to prevent overflow/underflow
+    let max_exp = exponents.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+    let sum_shifted: f64 = exponents.iter().map(|&x| (x - max_exp).exp()).sum();
+    let log_mean = max_exp + (sum_shifted / exponents.len() as f64).ln();
+
+    Ok(log_mean as f32)
 }
 
 /// L2-normalize each row of the input matrix.

@@ -12,8 +12,13 @@ use ndarray::{Array2, Axis};
 /// Compute the isotropy score of a set of embeddings.
 ///
 /// Isotropy is defined as 1 minus the average pairwise cosine similarity
-/// between all embedding pairs. A perfectly isotropic space has score 1.0
-/// (all vectors orthogonal), while a collapsed space has score near 0.0.
+/// between all embedding pairs. The result is clamped to `[0, 1]`:
+///
+/// - **0.0** — all vectors point in the same direction (collapsed)
+/// - **~1.0** — vectors are uniformly spread (orthogonal on average)
+///
+/// Values above 1.0 (anti-correlated embeddings where average cosine < 0)
+/// are clamped to 1.0 since they indicate maximum dispersion.
 ///
 /// Input: `embeddings` of shape `[N, D]` where N is the number of samples
 /// and D is the embedding dimension.
@@ -57,9 +62,9 @@ pub fn isotropy_score(embeddings: &Array2<f32>) -> Result<f32, AnalysisError> {
         0.0
     };
 
-    // Isotropy = 1 - avg_cosine_similarity
-    // Ranges from 0 (all vectors identical direction) to ~1 (uniformly spread)
-    Ok((1.0 - avg_cosine).clamp(0.0, 2.0))
+    // Isotropy = 1 - avg_cosine_similarity, clamped to [0, 1].
+    // Anti-correlated embeddings (avg_cosine < 0) are clamped to 1.0.
+    Ok((1.0 - avg_cosine).clamp(0.0, 1.0))
 }
 
 /// Compute the partition function-based isotropy score (Mu et al., 2018).

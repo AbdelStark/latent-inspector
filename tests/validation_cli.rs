@@ -924,3 +924,127 @@ fn inspect_json_output_writes_structured_report() {
     );
     assert_eq!(manifest["validation"][0]["status"], "unverified");
 }
+
+#[test]
+fn inspect_terminal_shows_metrics_and_validation() {
+    let dir = tempdir().unwrap();
+    let image = write_test_image(dir.path());
+    let output = run(&[
+        "inspect",
+        image.to_str().unwrap(),
+        "--model",
+        "dinov2-vit-l14",
+    ]);
+
+    assert_eq!(output.status.code(), Some(0));
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    // Model identification
+    assert!(
+        stdout.contains("dinov2-vit-l14"),
+        "Expected model name in output"
+    );
+    // Core metrics
+    assert!(
+        stdout.contains("Effective rank"),
+        "Expected effective rank metric"
+    );
+    assert!(
+        stdout.contains("Dead dimensions"),
+        "Expected dead dimensions metric"
+    );
+    assert!(
+        stdout.contains("Patch entropy"),
+        "Expected patch entropy metric"
+    );
+    assert!(
+        stdout.contains("Top-10 var%"),
+        "Expected top-10 variance metric"
+    );
+    assert!(
+        stdout.contains("Components@90%"),
+        "Expected components at 90% metric"
+    );
+    // Variance spectrum
+    assert!(
+        stdout.contains("Variance spectrum"),
+        "Expected variance spectrum section"
+    );
+    assert!(
+        stdout.contains("PC01"),
+        "Expected first principal component"
+    );
+    // Validation summary
+    assert!(
+        stdout.contains("Validation Summary"),
+        "Expected validation summary section"
+    );
+    assert!(
+        stdout.contains("unverified"),
+        "Expected unverified status with stub backend"
+    );
+}
+
+#[test]
+fn compare_terminal_shows_metrics_table_and_matrices() {
+    let dir = tempdir().unwrap();
+    let image = write_test_image(dir.path());
+    let output = run(&[
+        "compare",
+        image.to_str().unwrap(),
+        "--models",
+        "dinov2-vit-l14,dinov2-vit-l14",
+    ]);
+
+    assert_eq!(output.status.code(), Some(0));
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    // Metrics table
+    assert!(
+        stdout.contains("Model Comparison"),
+        "Expected model comparison header"
+    );
+    assert!(
+        stdout.contains("Repr. rank"),
+        "Expected representation rank row"
+    );
+    assert!(
+        stdout.contains("Dead dimensions"),
+        "Expected dead dimensions row"
+    );
+    assert!(
+        stdout.contains("Patch entropy"),
+        "Expected patch entropy row"
+    );
+    assert!(
+        stdout.contains("Attention Gini"),
+        "Expected attention Gini row"
+    );
+    assert!(
+        stdout.contains("Top-10 var%"),
+        "Expected top-10 variance row"
+    );
+    assert!(
+        stdout.contains("Components@90%"),
+        "Expected components at 90% row"
+    );
+    // Pairwise matrices
+    assert!(
+        stdout.contains("CLS cosine similarity"),
+        "Expected CLS cosine similarity matrix"
+    );
+    assert!(stdout.contains("Linear CKA"), "Expected linear CKA matrix");
+    assert!(
+        stdout.contains("k-NN overlap"),
+        "Expected k-NN overlap matrix"
+    );
+    // Validation
+    assert!(
+        stdout.contains("Validation Summary"),
+        "Expected validation summary"
+    );
+    assert!(
+        stdout.contains("unverified"),
+        "Expected unverified status with stub backend"
+    );
+}
