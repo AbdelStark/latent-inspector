@@ -250,6 +250,18 @@ pub fn print_metrics_table(metrics: &[ModelMetrics]) {
     }
     println!();
 
+    print!("{:<22}", "Patch isotropy");
+    for m in metrics {
+        print!("{:<16}", format!("{:.3}", m.patch_isotropy));
+    }
+    println!();
+
+    print!("{:<22}", "Patch uniformity");
+    for m in metrics {
+        print!("{:<16}", format!("{:.3}", m.patch_uniformity));
+    }
+    println!();
+
     println!("{}", heavy_rule(80));
 }
 

@@ -57,6 +57,8 @@ fn draw_metrics_table(frame: &mut Frame, area: Rect, app: &App) {
         "Patch norm μ±σ",
         "Top-10 var%",
         "Components@90%",
+        "Patch isotropy",
+        "Patch uniformity",
     ];
 
     let model_names: Vec<&str> = app.metrics.iter().map(|m| m.model_name.as_str()).collect();
@@ -86,6 +88,8 @@ fn draw_metrics_table(frame: &mut Frame, area: Rect, app: &App) {
                 4 => format!("{:.2} ± {:.2}", m.patch_norm_mean, m.patch_norm_std),
                 5 => format!("{:.1}%", m.top10_variance_pct),
                 6 => format!("{}", m.components_90pct),
+                7 => format!("{:.3}", m.patch_isotropy),
+                8 => format!("{:.2}", m.patch_uniformity),
                 _ => "—".into(),
             };
             cells.push(Cell::from(value).style(Style::new().fg(theme::model_color(i))));

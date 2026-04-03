@@ -431,6 +431,8 @@ fn inspect_json_includes_validation_summary() {
     assert_eq!(payload["validation"]["backend"]["kind"], "stub");
     assert!(payload["attention"]["mean_gini"].is_number());
     assert_eq!(payload["attention"]["map_basis"], "cls-to-patch");
+    assert!(payload["metrics"]["patch_isotropy"].is_number());
+    assert!(payload["metrics"]["patch_uniformity"].is_number());
 }
 
 #[test]
@@ -965,6 +967,14 @@ fn inspect_terminal_shows_metrics_and_validation() {
         stdout.contains("Components@90%"),
         "Expected components at 90% metric"
     );
+    assert!(
+        stdout.contains("Patch isotropy"),
+        "Expected patch isotropy metric"
+    );
+    assert!(
+        stdout.contains("Patch uniformity"),
+        "Expected patch uniformity metric"
+    );
     // Variance spectrum
     assert!(
         stdout.contains("Variance spectrum"),
@@ -1027,6 +1037,14 @@ fn compare_terminal_shows_metrics_table_and_matrices() {
     assert!(
         stdout.contains("Components@90%"),
         "Expected components at 90% row"
+    );
+    assert!(
+        stdout.contains("Patch isotropy"),
+        "Expected patch isotropy row"
+    );
+    assert!(
+        stdout.contains("Patch uniformity"),
+        "Expected patch uniformity row"
     );
     // Pairwise matrices
     assert!(

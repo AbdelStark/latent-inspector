@@ -51,6 +51,10 @@ pub struct ModelMetrics {
     pub patch_norm_std: f32,
     pub top10_variance_pct: f32,
     pub components_90pct: usize,
+    /// Isotropy of the patch embedding space (0 = collapsed, 1 = uniform).
+    pub patch_isotropy: f32,
+    /// Uniformity of the patch embeddings on the unit hypersphere (more negative = better spread).
+    pub patch_uniformity: f32,
 }
 
 /// Compute all per-model metrics for the given features.
@@ -91,6 +95,18 @@ pub fn model_metrics_from_spectrum(
         .transpose()?;
     let norm_stats = patch_norm_stats(&features.patch_tokens);
 
+    // Per-image patch space metrics (need >= 2 patches)
+    let iso = if features.n_patches >= 2 {
+        isotropy_score(&features.patch_tokens).unwrap_or(0.0)
+    } else {
+        0.0
+    };
+    let uni = if features.n_patches >= 2 {
+        uniformity(&features.patch_tokens).unwrap_or(0.0)
+    } else {
+        0.0
+    };
+
     Ok(ModelMetrics {
         model_name: model_name.to_string(),
         n_patches: features.n_patches,
@@ -104,6 +120,8 @@ pub fn model_metrics_from_spectrum(
         patch_norm_std: norm_stats.std,
         top10_variance_pct: spec.top10_concentration * 100.0,
         components_90pct: spec.components_90pct,
+        patch_isotropy: iso,
+        patch_uniformity: uni,
     })
 }
 

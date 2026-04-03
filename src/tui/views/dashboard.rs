@@ -293,6 +293,12 @@ fn draw_selected_model_detail(frame: &mut Frame, area: Rect, app: &App) {
             (m.patch_entropy / 3.0).min(1.0),
             true,
         ));
+        lines.push(metric_line(
+            "  Isotropy",
+            &format!("{:.3}", m.patch_isotropy),
+            m.patch_isotropy,
+            true,
+        ));
     }
 
     let paragraph = Paragraph::new(Text::from(lines)).style(Style::new().bg(theme::BG_DARK));

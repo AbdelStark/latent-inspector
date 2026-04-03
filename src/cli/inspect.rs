@@ -90,6 +90,8 @@ pub fn run(args: InspectArgs) -> Result<(), Error> {
                 report.metrics.top10_variance_pct
             );
             println!("  Components@90%:   {}", report.metrics.components_90pct);
+            println!("  Patch isotropy:   {:.3}", report.metrics.patch_isotropy);
+            println!("  Patch uniformity: {:.3}", report.metrics.patch_uniformity);
             if let Some(attention) = &report.attention {
                 println!(
                     "  Attention source: {} ({} layers x {} heads)",

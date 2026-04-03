@@ -681,6 +681,8 @@ mod tests {
                 patch_norm_std: 0.4,
                 top10_variance_pct: 25.0,
                 components_90pct: 64,
+                patch_isotropy: 0.65,
+                patch_uniformity: -2.1,
             },
             ModelMetrics {
                 model_name: "clip".into(),
@@ -695,6 +697,8 @@ mod tests {
                 patch_norm_std: 0.4,
                 top10_variance_pct: 41.0,
                 components_90pct: 52,
+                patch_isotropy: 0.65,
+                patch_uniformity: -2.1,
             },
         ]
     }
@@ -814,6 +818,8 @@ mod tests {
                 patch_norm_std: 0.4,
                 top10_variance_pct: 25.0,
                 components_90pct: 64,
+                patch_isotropy: 0.65,
+                patch_uniformity: -2.1,
             },
             ModelMetrics {
                 model_name: "mae".into(),
@@ -828,6 +834,8 @@ mod tests {
                 patch_norm_std: 0.4,
                 top10_variance_pct: 41.0,
                 components_90pct: 52,
+                patch_isotropy: 0.65,
+                patch_uniformity: -2.1,
             },
         ];
         let comparisons = vec![ComparisonMetrics {
