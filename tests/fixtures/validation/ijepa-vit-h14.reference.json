@@ -4,7 +4,7 @@
   "evidence_timestamp": "2026-03-27T12:00:00Z",
   "artifact_id": "ijepa-vit-h14:standard:2026-03-27T12:00:00Z",
   "source": "facebookresearch/ijepa",
-  "backend": "stub",
+  "backend": "onnx-runtime",
   "tolerances": {
     "patch_count_abs": 0,
     "embedding_dim_abs": 0,
@@ -17,12 +17,67 @@
   },
   "observed": {
     "tensor_name": "last_hidden_state",
-    "output_shape": [1, 257, 1280],
-    "cls_present": true,
+    "output_shape": [
+      1,
+      256,
+      1280
+    ],
+    "cls_present": false,
     "patch_count": 256,
     "embedding_dim": 1280,
-    "patch_mean": 0.1,
-    "patch_std": 0.0,
-    "cls_l2_norm": 3.5777087
+    "patch_mean": 0.023834907,
+    "patch_std": 1.0156765,
+    "patch_rms": 1.0159736,
+    "cls_l2_norm": null,
+    "fixtures": [
+      {
+        "id": "gradient-224",
+        "patch_mean": 0.031155515,
+        "patch_std": 0.9663867,
+        "patch_rms": 0.96688706,
+        "patch_signature": [
+          0.0395166,
+          -0.373306,
+          0.14308028,
+          -0.45428786,
+          -0.13171276,
+          -0.022956984,
+          -0.022203498,
+          1.6506103
+        ]
+      },
+      {
+        "id": "checkerboard-224",
+        "patch_mean": 0.02367983,
+        "patch_std": 1.0409781,
+        "patch_rms": 1.0412419,
+        "patch_signature": [
+          -0.041172143,
+          -0.21679106,
+          0.0029018368,
+          -1.735613,
+          0.23082106,
+          0.11778229,
+          -0.011715184,
+          2.5091686
+        ]
+      },
+      {
+        "id": "center-square-224",
+        "patch_mean": 0.016669372,
+        "patch_std": 1.0396647,
+        "patch_rms": 1.0397918,
+        "patch_signature": [
+          -0.041012835,
+          -0.48953673,
+          0.019793997,
+          -1.0718151,
+          -0.11784856,
+          0.20572767,
+          -0.033704095,
+          1.3779979
+        ]
+      }
+    ]
   }
 }

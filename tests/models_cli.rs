@@ -82,7 +82,7 @@ fn models_json_output_writes_structured_catalog() {
     let payload = read_json(&outdir.path().join("models.json"));
     assert_eq!(payload["summary"]["total_models"], 7);
     assert_eq!(payload["summary"]["ready_models"], 3);
-    assert_eq!(payload["summary"]["evidence"]["approved"], 1);
+    assert_eq!(payload["summary"]["evidence"]["approved"], 3);
     assert_eq!(payload["summary"]["artifacts"]["total"], 8);
     assert_eq!(payload["summary"]["artifacts"]["usable"], 0);
     assert_eq!(payload["summary"]["readiness"]["ready"], 0);

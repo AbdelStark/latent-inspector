@@ -1,0 +1,83 @@
+{
+  "model": "vjepa2-vitl-fpc2-256",
+  "fixture_set": "standard",
+  "evidence_timestamp": "2026-03-27T12:00:00Z",
+  "artifact_id": "vjepa2-vitl-fpc2-256:standard:2026-03-27T12:00:00Z",
+  "source": "facebookresearch/vjepa2",
+  "backend": "onnx-runtime",
+  "tolerances": {
+    "patch_count_abs": 0,
+    "embedding_dim_abs": 0,
+    "patch_mean_abs": 0.001,
+    "patch_std_abs": 0.001,
+    "cls_l2_abs": 0.001,
+    "patch_rms_abs": 0.001,
+    "patch_signature_abs": 0.001,
+    "cls_signature_abs": 0.001
+  },
+  "observed": {
+    "tensor_name": "last_hidden_state",
+    "output_shape": [
+      1,
+      256,
+      1024
+    ],
+    "cls_present": false,
+    "patch_count": 256,
+    "embedding_dim": 1024,
+    "patch_mean": 0.03135867,
+    "patch_std": 3.053055,
+    "patch_rms": 3.0532732,
+    "cls_l2_norm": null,
+    "fixtures": [
+      {
+        "id": "gradient-224",
+        "patch_mean": 0.03718826,
+        "patch_std": 3.0537736,
+        "patch_rms": 3.054016,
+        "patch_signature": [
+          -0.97714573,
+          9.193755,
+          -0.24280602,
+          -0.8883128,
+          0.39686537,
+          4.4405265,
+          -0.21785924,
+          0.30502793
+        ]
+      },
+      {
+        "id": "checkerboard-224",
+        "patch_mean": 0.008696773,
+        "patch_std": 3.0516388,
+        "patch_rms": 3.0516593,
+        "patch_signature": [
+          0.9917725,
+          13.419127,
+          0.22820117,
+          -2.993205,
+          -0.48075882,
+          -2.2289805,
+          2.446416,
+          -0.70772856
+        ]
+      },
+      {
+        "id": "center-square-224",
+        "patch_mean": 0.04819098,
+        "patch_std": 3.053753,
+        "patch_rms": 3.0541441,
+        "patch_signature": [
+          -1.6082104,
+          9.970845,
+          -0.74124724,
+          -3.131545,
+          -0.24152572,
+          0.38339946,
+          -0.17733455,
+          -0.23793124
+        ]
+      }
+    ]
+  }
+}

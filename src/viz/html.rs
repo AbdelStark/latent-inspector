@@ -2729,9 +2729,8 @@ mod tests {
         let report = model_catalog_report();
         let html = render_model_catalog_html(&report);
 
-        // DINOv2 has ONNX-backed evidence (approved); I-JEPA is ready but
-        // its reference was stub-generated so evidence is stale, not approved.
-        assert_eq!(report.summary.evidence.approved, 1);
+        // All three ready models have ONNX-backed evidence.
+        assert_eq!(report.summary.evidence.approved, 3);
         assert_eq!(report.summary.evidence.unverified, 4);
         assert!(html.contains("Registered models"));
         assert!(html.contains("Ready to run"));
