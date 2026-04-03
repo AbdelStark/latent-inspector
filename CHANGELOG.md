@@ -7,10 +7,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- Per-image patch isotropy and uniformity in ModelMetrics: every `inspect` and `compare` output now shows how uniformly patch embeddings spread (isotropy) and distribute on the unit hypersphere (uniformity)
 - Representation space profiling: `profile` subcommand computes dataset-level metrics (isotropy, uniformity, intrinsic dimensionality) and per-image metric aggregates
 - Isotropy analysis: cosine-based isotropy score and partition function isotropy (Mu et al. 2018)
 - Uniformity metric: Wang & Isola (2020) measure of embedding spread on the unit hypersphere
 - Intrinsic dimensionality estimation: MLE method (Levina & Bickel 2004) for manifold dimension
+- TUI help: metric reference entries for isotropy, uniformity, and intrinsic dimensionality
+- TUI help: file browser keyboard shortcuts documentation
 - Interactive terminal UI with ratatui (dashboard, inspector, compare, spectrum views)
 - I-JEPA ViT-H/14 model registration with verified SHA-256 hashes (reference evidence currently stub-backed, pending ONNX refresh)
 - Validation workflow: preprocessing contract, tensor semantics, and reference parity checks
@@ -21,6 +24,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - LICENSE-MIT and LICENSE-APACHE files
 
 ### Fixed
+- Uniformity metric numerical stability: replaced naive exp sum with proper log-sum-exp trick to prevent overflow/underflow on large embedding matrices
+- Isotropy score clamp range: corrected from (0, 2) to (0, 1) matching documented semantics (anti-correlated embeddings now clamp to 1.0)
 - Silent CLS-token validation bug: model returning wrong token count now errors instead of proceeding with missing CLS data
 - NaN propagation through CKA denominator now guarded with finite checks
 - Correspondence module silent fallback on matrix construction replaced with explicit invariant check

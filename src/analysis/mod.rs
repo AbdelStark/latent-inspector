@@ -389,5 +389,33 @@ mod tests {
             epsilon = 1e-4
         );
         assert_eq!(reused.components_90pct, direct.components_90pct);
+        approx::assert_relative_eq!(reused.patch_isotropy, direct.patch_isotropy, epsilon = 1e-4);
+        approx::assert_relative_eq!(
+            reused.patch_uniformity,
+            direct.patch_uniformity,
+            epsilon = 1e-4
+        );
+    }
+
+    #[test]
+    fn compute_metrics_includes_finite_isotropy_and_uniformity() {
+        let feat = features("dinov2-vit-l14", 64, 32);
+        let metrics = compute_metrics(&feat, "dinov2-vit-l14").unwrap();
+
+        assert!(metrics.patch_isotropy.is_finite());
+        assert!(metrics.patch_isotropy >= 0.0);
+        assert!(metrics.patch_isotropy <= 1.0);
+        assert!(metrics.patch_uniformity.is_finite());
+        assert!(metrics.patch_uniformity <= 0.0);
+    }
+
+    #[test]
+    fn compute_metrics_handles_two_patches() {
+        // Minimal viable patch count — isotropy/uniformity should compute
+        let feat = features("dinov2-vit-l14", 2, 32);
+        let metrics = compute_metrics(&feat, "dinov2-vit-l14").unwrap();
+
+        assert!(metrics.patch_isotropy.is_finite());
+        assert!(metrics.patch_uniformity.is_finite());
     }
 }

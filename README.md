@@ -87,6 +87,8 @@ Patch entropy         2.52            2.89
 CLS L2 norm           46.3            N/A
 Top-10 var%           66.8%           72.7%
 Components@90%        31              22
+Patch isotropy        0.712           0.834
+Patch uniformity      -2.891          -3.247
 ================================================================================
 ```
 
@@ -101,6 +103,10 @@ Components@90%        31              22
 **Top-10 variance** (66.8% vs 72.7%): What fraction of total information is captured by the first 10 principal components. I-JEPA concentrates more variance into fewer dimensions — its representation is more "top-heavy." DINOv2 spreads information more evenly.
 
 **Components@90%** (31 vs 22): How many PCA components are needed to explain 90% of the variance. I-JEPA needs only 22 components; DINOv2 needs 31. This confirms I-JEPA's representation is lower-dimensional in practice, despite having a wider embedding space (1280 vs 1024).
+
+**Patch isotropy** (0.712 vs 0.834): How uniformly patch embeddings spread across the representation space, measured as 1 minus average pairwise cosine similarity. I-JEPA's higher isotropy (0.834) means its patches are more directionally diverse — each patch points in a more distinct direction. DINOv2's patches are slightly more aligned (0.712), reflecting its self-distillation objective which encourages consistent features.
+
+**Patch uniformity** (-2.891 vs -3.247): Wang & Isola (2020) metric measuring how evenly patches spread on the unit hypersphere. More negative means better spread. I-JEPA (-3.247) distributes patches more uniformly than DINOv2 (-2.891), consistent with I-JEPA's prediction-in-latent-space objective that naturally prevents representational collapse.
 
 ### Step 2: Cross-model similarity
 
@@ -208,7 +214,8 @@ DINOv2 and I-JEPA both produce rich representations of the elephant, but they or
 | Effective rank | 60/1024 | 44/1280 | DINOv2 uses more dimensions |
 | Variance concentration | 66.8% in top 10 | 72.7% in top 10 | I-JEPA is more concentrated |
 | Patch entropy | 2.52 | 2.89 | I-JEPA differentiates patches more |
-| Patch norm std | 1.41 | 6.14 | DINOv2 is more uniform |
+| Patch isotropy | 0.712 | 0.834 | I-JEPA spreads more uniformly |
+| Patch uniformity | -2.891 | -3.247 | I-JEPA avoids collapse better |
 | CLS token | Yes (46.3 norm) | No | Different architectures |
 
 The low CKA (0.329) and low k-NN overlap (0.278) confirm these are genuinely different world models — not just rescaled versions of the same representation.
