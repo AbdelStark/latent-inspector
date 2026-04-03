@@ -50,6 +50,7 @@ pub struct InspectHtmlAssets {
     pub pca_image: Option<VisualAsset>,
     pub variance_image: Option<VisualAsset>,
     pub attention_image: Option<VisualAsset>,
+    pub similarity_heatmap: Option<VisualAsset>,
 }
 
 impl InspectHtmlAssets {
@@ -58,6 +59,7 @@ impl InspectHtmlAssets {
             && self.pca_image.is_none()
             && self.variance_image.is_none()
             && self.attention_image.is_none()
+            && self.similarity_heatmap.is_none()
     }
 }
 
@@ -1005,6 +1007,9 @@ fn render_inspect_asset_gallery(assets: &InspectHtmlAssets) -> String {
         visuals.push(asset.clone());
     }
     if let Some(asset) = &assets.attention_image {
+        visuals.push(asset.clone());
+    }
+    if let Some(asset) = &assets.similarity_heatmap {
         visuals.push(asset.clone());
     }
 
@@ -2486,6 +2491,12 @@ mod tests {
                 alt: "Inspect attention overlay".into(),
                 description: "Attention projected back onto the input image.".into(),
             }),
+            similarity_heatmap: Some(VisualAsset {
+                title: "Patch Self-Similarity".into(),
+                path: "dinov2-vit-l14_similarity.png".into(),
+                alt: "Patch self-similarity heatmap".into(),
+                description: "Cosine similarity between all patch pairs.".into(),
+            }),
         };
         let html = render_inspect_html(&report, &assets);
 
@@ -2498,6 +2509,7 @@ mod tests {
         assert!(html.contains("input_image.png"));
         assert!(html.contains("dinov2-vit-l14_pca.png"));
         assert!(html.contains("dinov2-vit-l14_attention.png"));
+        assert!(html.contains("dinov2-vit-l14_similarity.png"));
         assert!(html.contains("Validation Summary"));
         assert!(html.contains("dinov2-vit-l14"));
     }
@@ -2573,6 +2585,12 @@ mod tests {
                 path: "dinov2-vit-l14_attention.png".into(),
                 alt: "Inspect attention overlay".into(),
                 description: "Attention projected back onto the input image.".into(),
+            }),
+            similarity_heatmap: Some(VisualAsset {
+                title: "Patch Self-Similarity".into(),
+                path: "dinov2-vit-l14_similarity.png".into(),
+                alt: "Patch self-similarity heatmap".into(),
+                description: "Cosine similarity between all patch pairs.".into(),
             }),
         };
 

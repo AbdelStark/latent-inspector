@@ -206,6 +206,7 @@ fn write_inspect_visual_artifacts(
     let pca_filename = format!("{prefix}_pca.png");
     let variance_filename = format!("{prefix}_variance.png");
     let attention_filename = format!("{prefix}_attention.png");
+    let similarity_filename = format!("{prefix}_similarity.png");
     let pca_result = pca(&features.patch_tokens, 3, 300)?;
     let projected = transform(&features.patch_tokens, &pca_result);
     let grid = patch_grid_side(
@@ -238,6 +239,19 @@ fn write_inspect_visual_artifacts(
             None
         };
 
+    // Patch self-similarity heatmap (cosine similarity between all patch pairs)
+    let similarity_heatmap = if features.n_patches >= 2 {
+        let sim_matrix = crate::analysis::cosine_similarity_matrix(&features.patch_tokens);
+        crate::viz::png::save_similarity_heatmap(&sim_matrix, &outdir.join(&similarity_filename))?;
+        Some(assets::visual_asset(
+            similarity_filename,
+            "Patch Self-Similarity",
+            "Cosine similarity between all patch pairs. Bright regions indicate patches with similar representations.",
+        ))
+    } else {
+        None
+    };
+
     Ok(crate::viz::html::InspectHtmlAssets {
         source_image: source_image
             .map(|image| {
@@ -261,6 +275,7 @@ fn write_inspect_visual_artifacts(
             "Component-wise variance concentration across the inspected representation.",
         )),
         attention_image,
+        similarity_heatmap,
     })
 }
 
@@ -306,6 +321,13 @@ fn build_inspect_manifest(
                 attention_image.path.clone(),
                 ArtifactKind::Png,
                 attention_image.description.clone(),
+            );
+        }
+        if let Some(similarity_heatmap) = &assets.similarity_heatmap {
+            manifest = manifest.add_artifact(
+                similarity_heatmap.path.clone(),
+                ArtifactKind::Png,
+                similarity_heatmap.description.clone(),
             );
         }
     }

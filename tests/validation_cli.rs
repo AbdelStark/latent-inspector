@@ -476,6 +476,14 @@ fn inspect_html_includes_variance_spectrum_and_validation_summary() {
     assert!(output_dir.join("dinov2-vit-l14_attention.png").exists());
     assert!(output_dir.join("dinov2-vit-l14_pca.png").exists());
     assert!(output_dir.join("dinov2-vit-l14_variance.png").exists());
+    assert!(
+        output_dir.join("dinov2-vit-l14_similarity.png").exists(),
+        "Expected patch self-similarity heatmap in HTML output"
+    );
+    assert!(
+        html.contains("dinov2-vit-l14_similarity.png"),
+        "Expected similarity heatmap referenced in HTML"
+    );
     let manifest = read_artifact_manifest(&output_dir);
     assert_eq!(manifest["command"], "inspect");
     assert_eq!(manifest["format"], "html");
@@ -856,6 +864,10 @@ fn inspect_png_writes_variance_chart() {
     assert!(output_dir.join("dinov2-vit-l14_pca.png").exists());
     assert!(output_dir.join("dinov2-vit-l14_variance.png").exists());
     assert!(output_dir.join("dinov2-vit-l14_attention.png").exists());
+    assert!(
+        output_dir.join("dinov2-vit-l14_similarity.png").exists(),
+        "Expected patch self-similarity heatmap"
+    );
     let manifest = read_artifact_manifest(&output_dir);
     assert_eq!(manifest["command"], "inspect");
     assert_eq!(manifest["format"], "png");
@@ -877,6 +889,11 @@ fn inspect_png_writes_variance_chart() {
         .unwrap()
         .iter()
         .any(|artifact| artifact["path"] == "dinov2-vit-l14_variance.png"));
+    assert!(manifest["artifacts"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|artifact| artifact["path"] == "dinov2-vit-l14_similarity.png"));
 }
 
 #[test]
