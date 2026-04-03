@@ -55,13 +55,25 @@ These different training objectives create different internal "world models." la
 |-------|-------------|--------|--------|--------|
 | **DINOv2** | ViT-L/14 | 304M | Self-distillation + centering | **Ready** |
 | **I-JEPA** | ViT-H/14 | 632M | Joint embedding predictive | **Ready** |
+| **V-JEPA 2** | ViT-L/16 | 304M | Video joint embedding predictive | **Ready** |
 | DINOv3 | ViT-L/14 | 304M | Self-distillation + Gram anchoring | Planned |
 | MAE | ViT-L/16 | 304M | Masked autoencoder | Planned |
 | CLIP | ViT-L/14 | 304M | Contrastive image-text | Planned |
-| V-JEPA 2 | ViT-L/16 | 304M | Video joint embedding predictive | Planned |
 | SigLIP | ViT-SO400M/14 | 400M | Sigmoid contrastive image-text | Planned |
 
 Models download automatically on first use (~1-2 GB each) and are cached in `~/.cache/latent-inspector/`. Downloads resume from partial transfers when possible. Override the cache location with `LATENT_INSPECTOR_CACHE_DIR`.
+
+### Model provenance and ONNX artifacts
+
+Every model runs through ONNX Runtime. The ONNX artifacts are sourced as follows:
+
+| CLI name | Original checkpoint | ONNX source | Paper |
+|----------|-------------------|-------------|-------|
+| `dinov2-vit-l14` | [`facebook/dinov2-large`](https://huggingface.co/facebook/dinov2-large) | [`onnx-community/dinov2-large`](https://huggingface.co/onnx-community/dinov2-large) — community ONNX export | [Oquab et al. 2024](https://arxiv.org/abs/2304.07193) |
+| `ijepa-vit-h14` | [`facebook/ijepa_vith14_1k`](https://huggingface.co/facebook/ijepa_vith14_1k) | [`onnx-community/ijepa_vith14_1k`](https://huggingface.co/onnx-community/ijepa_vith14_1k) — community ONNX export | [Assran et al. 2023](https://arxiv.org/abs/2301.08243) |
+| `vjepa2-vitl-fpc2-256` | [`facebook/vjepa2-vitl-fpc64-256`](https://huggingface.co/facebook/vjepa2-vitl-fpc64-256) | [`abdelstark/vjepa2-vitl-fpc2-256-onnx`](https://huggingface.co/abdelstark/vjepa2-vitl-fpc2-256-onnx) — custom export (see below) | [Bardes et al. 2024](https://arxiv.org/abs/2506.09985) |
+
+**V-JEPA 2 ONNX export details:** V-JEPA 2 is a video model (`facebook/vjepa2-vitl-fpc64-256`) trained on internet-scale video data. Since latent-inspector analyzes single images, we exported only the encoder (stripping the predictor head), with a fixed 2-frame input — the single image is duplicated to satisfy the model's temporal tubelet requirement (`tubelet_size=2`). This produces 256 spatial patch tokens of dimension 1024, identical in shape to DINOv2, enabling direct cross-model comparison. The export was performed using PyTorch's TorchScript ONNX exporter at opset 14, simplified with [onnxsim](https://github.com/daquexian/onnx-simplifier), and verified against the PyTorch reference (max numerical diff < 0.003). The ONNX artifact is hosted at [`abdelstark/vjepa2-vitl-fpc2-256-onnx`](https://huggingface.co/abdelstark/vjepa2-vitl-fpc2-256-onnx) for convenience. All artifact downloads are SHA-256 verified.
 
 ---
 

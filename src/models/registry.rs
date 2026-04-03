@@ -295,11 +295,28 @@ fn default_validation_profile(
 }
 
 /// Returns the full model registry.
+///
+/// # Model provenance
+///
+/// | CLI name              | Original checkpoint                    | ONNX artifact source                       |
+/// |-----------------------|----------------------------------------|--------------------------------------------|
+/// | `dinov2-vit-l14`      | `facebook/dinov2-large`                | `onnx-community/dinov2-large`              |
+/// | `ijepa-vit-h14`       | `facebook/ijepa_vith14_1k`             | `onnx-community/ijepa_vith14_1k`           |
+/// | `vjepa2-vitl-fpc2-256`| `facebook/vjepa2-vitl-fpc64-256`       | `abdelstark/vjepa2-vitl-fpc2-256-onnx` (*) |
+///
+/// (*) Custom encoder-only export: the V-JEPA 2 predictor is stripped and
+///     the input is fixed to 2 frames (duplicated from a single image) so
+///     that a video-backbone model produces comparable patch embeddings.
 pub fn registry() -> Vec<RegistryEntry> {
     let phase_three_note =
         "Reserved for the multi-model milestone once ONNX output mapping and validation are in place.";
 
     vec![
+        // ── DINOv2 ViT-L/14 ────────────────────────────────────────────
+        // Paper: "DINOv2: Learning Robust Visual Features without Supervision"
+        //        Oquab et al. 2024  — https://arxiv.org/abs/2304.07193
+        // Source: facebook/dinov2-large (HuggingFace)
+        // ONNX:   onnx-community/dinov2-large (community export)
         RegistryEntry {
             info: ModelInfo {
                 name: "dinov2-vit-l14".to_string(),
@@ -485,6 +502,12 @@ pub fn registry() -> Vec<RegistryEntry> {
                 },
             ),
         },
+        // ── I-JEPA ViT-H/14 ────────────────────────────────────────────
+        // Paper: "Self-Supervised Learning from Images with a Joint-Embedding
+        //         Predictive Architecture"
+        //        Assran et al. 2023  — https://arxiv.org/abs/2301.08243
+        // Source: facebook/ijepa_vith14_1k (HuggingFace)
+        // ONNX:   onnx-community/ijepa_vith14_1k (community export)
         RegistryEntry {
             info: ModelInfo {
                 name: "ijepa-vit-h14".to_string(),
@@ -545,6 +568,17 @@ pub fn registry() -> Vec<RegistryEntry> {
                 },
             ),
         },
+        // ── V-JEPA 2 ViT-L/16 ───────────────────────────────────────────
+        // Paper: "V-JEPA 2: Self-Supervised Video Models Enable Understanding
+        //         of Complex Real-World Interactions"
+        //        Bardes et al. 2024  — https://arxiv.org/abs/2506.09985
+        // Source: facebook/vjepa2-vitl-fpc64-256 (HuggingFace)
+        // ONNX:   abdelstark/vjepa2-vitl-fpc2-256-onnx (custom export)
+        //
+        // Export method: encoder-only (predictor stripped), TorchScript ONNX
+        // exporter at opset 14, simplified with onnxsim, 2-frame input (single
+        // image duplicated to satisfy tubelet_size=2). Produces 256 spatial
+        // patches × 1024 embed dim — same shape as DINOv2.
         RegistryEntry {
             info: ModelInfo {
                 name: "vjepa2-vitl-fpc2-256".to_string(),
