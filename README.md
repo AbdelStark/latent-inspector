@@ -22,9 +22,6 @@ A fast Rust CLI for inspecting and comparing learned representations across self
 - [Architecture and runbook](docs/ARCHITECTURE.md)
 - [Report schema contract](docs/REPORT-SCHEMA.md)
 - [Contributing guide](CONTRIBUTING.md)
-- [Changelog](CHANGELOG.md)
-- [Agent context](AGENTS.md)
-- [Example case study](docs/latent-inspector-demo-case-study.md)
 
 ## Quick start
 
@@ -478,32 +475,6 @@ The stub backend (`LATENT_INSPECTOR_MODEL_BACKEND=stub`) produces deterministic 
 
 </details>
 
-## Known limitations
-
-- Only four models are ready for live ONNX-backed analysis today. Planned models remain in the registry for roadmap visibility and stub-backed development flows.
-- The project is a CLI/TUI application first. The internal Rust modules are reusable, but the crate does not yet promise a stable public library API.
-- Model downloads are large and happen lazily on first use. Cache state is machine-local and validated with SHA-256 checksums.
-- Validation goldens are checked into the repository and must only be refreshed after a verified model artifact or contract change.
-- Coverage enforcement currently excludes `src/tui/` and `src/cli/tui.rs` until the interactive surface has dedicated tests.
-
-## Roadmap
-
-1. **Expand automated coverage**: add dedicated tests for the interactive TUI paths and tighten the coverage gate once that surface is exercised.
-2. **Harden batch workflows further**: improve dataset-scale ergonomics, cache prewarming, and operational guidance for longer-running comparison/profile jobs.
-3. **Promote planned models to ready**: wire real ONNX inference, validation contracts, and parity evidence for DINOv3, MAE, CLIP, and SigLIP.
-
-## Contributing
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, verification commands, validation-golden rules, and the contribution checklist. Autonomous contributors should also read [AGENTS.md](AGENTS.md) before making changes.
-
-## Help
-
-Use the GitHub issue tracker at <https://github.com/AbdelStark/latent-inspector/issues> for bugs, documentation gaps, and model-integration requests.
-
-## Changelog
-
-See [CHANGELOG.md](CHANGELOG.md) for user-visible changes.
-
 ## License
 
-MIT OR Apache-2.0
+[MIT](./LICENSE-MIT) OR [Apache-2.0](./LICENSE-APACHE)
