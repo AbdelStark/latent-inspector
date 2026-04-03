@@ -59,6 +59,21 @@ These different training objectives create different internal "world models." la
 
 Models download automatically on first use (~1-2 GB each) and are cached locally. All downloads are SHA-256 verified. Override the cache location with `LATENT_INSPECTOR_CACHE_DIR`.
 
+## PCA examples across the ready models
+
+These PCA RGB maps come from the checked-in example outputs in `docs/assets/img/examples/`. Each pixel block is a patch token projected onto the top three principal components, so contiguous color regions mean the model is grouping those patches into a similar representation neighborhood.
+
+<table>
+<tr>
+<td width="50%"><img src="docs/assets/img/examples/dinov2-vit-l14_pca.png" alt="DINOv2 PCA representation"/><br/><sub><strong>DINOv2</strong> — large contiguous regions show a segmentation-like representation: similar colors mean the model has grouped semantically related elephant and background patches together.</sub></td>
+<td width="50%"><img src="docs/assets/img/examples/ijepa-vit-h14_pca.png" alt="I-JEPA PCA representation"/><br/><sub><strong>I-JEPA</strong> — finer local variation reflects its latent-prediction objective: the PCA map suggests patches carry more context-specific information instead of collapsing into broad semantic zones.</sub></td>
+</tr>
+<tr>
+<td width="50%"><img src="docs/assets/img/examples/vjepa2-vitl-fpc2-256_pca.png" alt="V-JEPA 2 PCA representation"/><br/><sub><strong>V-JEPA 2</strong> — structured but less static-looking regions hint at a motion-aware prior: the PCA layout suggests the encoder organizes the image as something that could evolve over time, not just a frozen scene.</sub></td>
+<td width="50%"><img src="docs/assets/img/examples/eupe-vit-b16_pca.png" alt="EUPE PCA representation"/><br/><sub><strong>EUPE</strong> — the more compressed, high-contrast partitioning matches its multi-teacher distillation setup: the PCA view suggests a compact representation that prioritizes strong task-relevant separations.</sub></td>
+</tr>
+</table>
+
 <details>
 <summary><strong>Model provenance and ONNX artifacts</strong></summary>
 
