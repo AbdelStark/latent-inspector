@@ -10,18 +10,16 @@ fn linear_kernel(x: &Array2<f32>) -> Array2<f32> {
 }
 
 /// Centre a kernel matrix: K_c = H * K * H, where H = I - (1/n)*11^T.
-/// Centre a kernel matrix: K_c = H * K * H, where H = I - (1/n)*11^T.
 ///
 /// Caller must ensure `k` has at least 1 row/column (guaranteed by the
 /// `nx >= 2` check in `linear_cka`).
-fn centre_kernel(k: &Array2<f32>) -> Array2<f32> {
-    // safe: k has ≥2 rows from caller's guard
+fn centre_kernel(k: &Array2<f32>) -> Result<Array2<f32>, AnalysisError> {
     let row_mean = k
         .mean_axis(ndarray::Axis(0))
-        .expect("centre_kernel: k must be non-empty");
+        .ok_or_else(|| AnalysisError::EmptyInput("CKA kernel must be non-empty".into()))?;
     let grand_mean = row_mean
         .mean()
-        .expect("centre_kernel: row_mean must be non-empty");
+        .ok_or_else(|| AnalysisError::EmptyInput("CKA kernel mean must be non-empty".into()))?;
 
     let mut kc = k.clone();
     for mut row in kc.rows_mut() {
@@ -31,7 +29,7 @@ fn centre_kernel(k: &Array2<f32>) -> Array2<f32> {
         col -= &(ndarray::Array1::from_elem(col.len(), row_mean[j]));
     }
     kc += grand_mean;
-    kc
+    Ok(kc)
 }
 
 /// HSIC (Hilbert-Schmidt Independence Criterion): trace(Kc * Lc) / (n-1)^2.
@@ -69,8 +67,8 @@ pub fn linear_cka(x: &Array2<f32>, y: &Array2<f32>) -> Result<f32, AnalysisError
     let kx = linear_kernel(x);
     let ky = linear_kernel(y);
 
-    let kxc = centre_kernel(&kx);
-    let kyc = centre_kernel(&ky);
+    let kxc = centre_kernel(&kx)?;
+    let kyc = centre_kernel(&ky)?;
 
     let hsic_xy = hsic(&kxc, &kyc);
     let hsic_xx = hsic(&kxc, &kxc);

@@ -19,10 +19,10 @@ pub use finite::square_grid_side;
 pub use intrinsic_dim::{intrinsic_dimensionality, intrinsic_dimensionality_default};
 pub use isotropy::{isotropy_score, partition_isotropy};
 pub use knn::{cosine_similarity_matrix, knn_overlap, top_k_neighbors};
-pub use pca::{pca, transform, PcaResult};
+pub use pca::{pca, transform, transform_top_k, PcaResult};
 pub use rank::{dead_dimensions, effective_rank};
 pub use uniformity::uniformity;
-pub use variance::{variance_spectrum, VarianceSpectrum};
+pub use variance::{variance_spectrum, variance_spectrum_from_pca_result, VarianceSpectrum};
 
 use crate::errors::AnalysisError;
 use crate::extract::ExtractedFeatures;

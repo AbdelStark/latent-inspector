@@ -1,4 +1,7 @@
-use crate::analysis::{compute_comparison, compute_metrics, ComparisonMetrics, ModelMetrics};
+use crate::analysis::{
+    compute_comparison, model_metrics_from_spectrum, pca, transform_top_k,
+    variance_spectrum_from_pca_result, ComparisonMetrics, ModelMetrics, MAX_PCA_COMPONENTS,
+};
 use crate::errors::Error;
 use crate::extract::ExtractedFeatures;
 use crate::models::ModelSession;
@@ -7,10 +10,12 @@ use crate::viz::assets;
 use crate::viz::manifest::{ArtifactKind, OutputArtifactManifest};
 use crate::viz::OutputFormat;
 use clap::Args;
+use ndarray::Array2;
 use rayon::prelude::*;
 use serde_json::json;
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::time::Instant;
 use tracing::info;
 
 #[derive(Args, Debug)]
@@ -31,16 +36,29 @@ pub struct CompareArgs {
     pub format: OutputFormat,
 }
 
+struct PcaProjectionArtifact {
+    model_name: String,
+    projections: Array2<f32>,
+    grid_size: usize,
+}
+
+struct CompareModelAnalysis {
+    metrics: ModelMetrics,
+    pca_projection: Option<PcaProjectionArtifact>,
+}
+
 /// Execute the `compare` subcommand: load models, extract features, compute
 /// cross-model metrics, and render the report in the requested format.
 pub fn run(args: CompareArgs) -> Result<(), Error> {
     info!("Comparing {} models on {:?}", args.models.len(), args.image);
+    let format = args.format.clone();
+    let include_pca_assets = format == OutputFormat::Html || format == OutputFormat::Png;
 
     // Load and preprocess image
     let img = image::open(&args.image)?;
     let display_labels = disambiguate_labels(&args.models);
 
-    // Load all model sessions (parallel)
+    // Load all model sessions.
     let mut sessions: Vec<(String, String, ModelSession)> = args
         .models
         .iter()
@@ -61,6 +79,7 @@ pub fn run(args: CompareArgs) -> Result<(), Error> {
         .collect::<Vec<_>>();
 
     // Run inference in parallel
+    let inference_started = Instant::now();
     let outputs: Vec<(String, ExtractedFeatures)> = sessions
         .par_iter_mut()
         .map(
@@ -72,23 +91,42 @@ pub fn run(args: CompareArgs) -> Result<(), Error> {
             },
         )
         .collect::<Result<Vec<_>, Error>>()?;
+    info!(elapsed = ?inference_started.elapsed(), "Finished inference stage");
 
     // Compute per-model metrics
-    let metrics: Vec<ModelMetrics> = outputs
+    info!("Computing per-model analysis for {} models", outputs.len());
+    let model_analysis_started = Instant::now();
+    let analyses: Vec<CompareModelAnalysis> = outputs
+        .par_iter()
+        .map(|(display_label, feat)| analyze_model_output(display_label, feat, include_pca_assets))
+        .collect::<Result<Vec<_>, Error>>()?;
+    info!(
+        elapsed = ?model_analysis_started.elapsed(),
+        "Finished per-model analysis stage"
+    );
+    let metrics: Vec<ModelMetrics> = analyses
         .iter()
-        .map(|(display_label, feat)| compute_metrics(feat, display_label))
-        .collect::<Result<Vec<_>, _>>()?;
+        .map(|analysis| analysis.metrics.clone())
+        .collect();
 
     // Compute pairwise comparisons
-    let mut comparisons: Vec<ComparisonMetrics> = Vec::new();
-    for i in 0..outputs.len() {
-        for j in (i + 1)..outputs.len() {
+    let pair_indices = (0..outputs.len())
+        .flat_map(|i| ((i + 1)..outputs.len()).map(move |j| (i, j)))
+        .collect::<Vec<_>>();
+    info!("Computing {} pairwise comparisons", pair_indices.len());
+    let comparisons_started = Instant::now();
+    let comparisons: Vec<ComparisonMetrics> = pair_indices
+        .par_iter()
+        .map(|&(i, j)| {
             let (name_a, feat_a) = &outputs[i];
             let (name_b, feat_b) = &outputs[j];
-            let cmp = compute_comparison(feat_a, feat_b, name_a, name_b)?;
-            comparisons.push(cmp);
-        }
-    }
+            Ok(compute_comparison(feat_a, feat_b, name_a, name_b)?)
+        })
+        .collect::<Result<Vec<_>, Error>>()?;
+    info!(
+        elapsed = ?comparisons_started.elapsed(),
+        "Finished pairwise comparison stage"
+    );
 
     let report = crate::viz::report::build_compare_report(
         args.image.display().to_string(),
@@ -99,7 +137,8 @@ pub fn run(args: CompareArgs) -> Result<(), Error> {
     );
 
     // Render output
-    match args.format {
+    let render_started = Instant::now();
+    match format {
         OutputFormat::Terminal => {
             crate::viz::terminal::print_metrics_table(&report.metrics);
             crate::viz::terminal::print_compare_overview(&report.overview);
@@ -129,7 +168,7 @@ pub fn run(args: CompareArgs) -> Result<(), Error> {
                 .clone()
                 .unwrap_or_else(|| PathBuf::from("compare_output"));
             std::fs::create_dir_all(&outdir)?;
-            let pca_artifacts = render_pca_artifacts(&outputs, &outdir)?;
+            let pca_artifacts = render_pca_artifacts(&analyses, &outdir)?;
             let heatmap_artifacts = render_pairwise_heatmap_artifacts(&report.overview, &outdir)?;
             let source_preview = assets::write_preview_image(
                 &img,
@@ -178,7 +217,7 @@ pub fn run(args: CompareArgs) -> Result<(), Error> {
                 .clone()
                 .unwrap_or_else(|| PathBuf::from("compare_output"));
             std::fs::create_dir_all(&outdir)?;
-            let pca_artifacts = render_pca_artifacts(&outputs, &outdir)?;
+            let pca_artifacts = render_pca_artifacts(&analyses, &outdir)?;
             let heatmap_artifacts = render_pairwise_heatmap_artifacts(&report.overview, &outdir)?;
             let mut manifest = OutputArtifactManifest::new("compare", OutputFormat::Png)
                 .with_context(compare_manifest_context(&args))
@@ -190,6 +229,7 @@ pub fn run(args: CompareArgs) -> Result<(), Error> {
             println!("PNG outputs saved to {}", outdir.display());
         }
     }
+    info!(elapsed = ?render_started.elapsed(), "Finished render stage");
 
     Ok(())
 }
@@ -216,23 +256,62 @@ fn disambiguate_labels(models: &[String]) -> Vec<String> {
         .collect()
 }
 
+fn analyze_model_output(
+    display_label: &str,
+    features: &ExtractedFeatures,
+    include_pca_projection: bool,
+) -> Result<CompareModelAnalysis, Error> {
+    let pca_result = pca(&features.patch_tokens, MAX_PCA_COMPONENTS, 500)?;
+    let spectrum = variance_spectrum_from_pca_result(&pca_result);
+    let metrics = model_metrics_from_spectrum(features, display_label, &spectrum)?;
+    let pca_projection = if include_pca_projection {
+        Some(build_pca_projection(display_label, features, &pca_result)?)
+    } else {
+        None
+    };
+
+    Ok(CompareModelAnalysis {
+        metrics,
+        pca_projection,
+    })
+}
+
+fn build_pca_projection(
+    name: &str,
+    features: &ExtractedFeatures,
+    pca_result: &crate::analysis::PcaResult,
+) -> Result<PcaProjectionArtifact, Error> {
+    let projections = transform_top_k(&features.patch_tokens, pca_result, 3);
+    let grid_size = patch_grid_side(features.n_patches, &format!("{name} PCA rendering"))?;
+    Ok(PcaProjectionArtifact {
+        model_name: name.to_string(),
+        projections,
+        grid_size,
+    })
+}
+
 fn render_pca_artifacts(
-    outputs: &[(String, ExtractedFeatures)],
+    analyses: &[CompareModelAnalysis],
     outdir: &std::path::Path,
 ) -> Result<Vec<crate::viz::html::VisualAsset>, Error> {
-    let mut artifacts = Vec::with_capacity(outputs.len());
-    for (name, feat) in outputs {
-        let pca_result = crate::analysis::pca(&feat.patch_tokens, 3, 300)?;
-        let projected = crate::analysis::transform(&feat.patch_tokens, &pca_result);
-        let grid = patch_grid_side(feat.n_patches, &format!("{name} PCA rendering"))?;
-        let filename = format!("{}_pca.png", assets::slugify_filename(name));
+    let mut artifacts = Vec::new();
+    for analysis in analyses {
+        let Some(projection) = &analysis.pca_projection else {
+            continue;
+        };
+
+        let filename = format!(
+            "{}_pca.png",
+            assets::slugify_filename(&projection.model_name)
+        );
         let path = outdir.join(&filename);
-        crate::viz::png::save_pca_rgb(&projected, grid, &path)?;
+        crate::viz::png::save_pca_rgb(&projection.projections, projection.grid_size, &path)?;
         artifacts.push(assets::visual_asset(
             filename,
-            format!("{name} PCA projection"),
+            format!("{} PCA projection", projection.model_name),
             format!(
-                "Patch-space RGB projection derived from the top three PCA components for {name}."
+                "Patch-space RGB projection derived from the top three PCA components for {}.",
+                projection.model_name
             ),
         ));
     }

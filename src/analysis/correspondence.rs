@@ -64,6 +64,11 @@ pub fn patch_correspondence(
 
     let na = a.shape()[0];
     let nb = b.shape()[0];
+    if na == 0 || nb == 0 {
+        return Err(AnalysisError::EmptyInput(
+            "Patch correspondence requires non-empty patch matrices".into(),
+        ));
+    }
 
     let sim = patch_cosine_similarity(a, b)?;
 
@@ -78,8 +83,9 @@ pub fn patch_correspondence(
             cost_flat.push(((1.0 - sim[[i, j]]) * scale as f32) as i64);
         }
     }
-    let cost_matrix =
-        Matrix::from_vec(n, n, cost_flat).expect("invariant: cost_flat has exactly n*n elements");
+    let cost_matrix = Matrix::from_vec(n, n, cost_flat).map_err(|err| {
+        AnalysisError::EmptyInput(format!("Failed to build correspondence cost matrix: {err}"))
+    })?;
 
     let (_total_cost, assignments): (i64, Vec<usize>) = kuhn_munkres_min(&cost_matrix);
 

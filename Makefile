@@ -4,6 +4,8 @@
 CARGO       := cargo
 FEATURES    := --features onnx-inference
 RELEASE     := --release
+BIN         := target/release/latent-inspector
+TUI_MODELS  := dinov2-vit-l14,ijepa-vit-h14
 SAMPLE_IMG  := docs/assets/img/samples/elephant_sample_image.jpg
 CACHE_DIR   := $(HOME)/.cache/latent-inspector
 
@@ -38,27 +40,27 @@ test:                 ## Run all tests
 # ── Run targets ──────────────────────────────────────────────────
 
 tui: build-release    ## Launch TUI with real ONNX inference on sample image
-	$(CARGO) run $(FEATURES) $(RELEASE) -- tui $(SAMPLE_IMG) -m dinov2-vit-l14,ijepa-vit-h14
+	$(BIN) tui $(SAMPLE_IMG) -m $(TUI_MODELS)
 
-tui-demo:             ## Launch TUI in demo mode (no ONNX needed)
-	$(CARGO) run -- tui
+tui-demo: build-release ## Launch TUI in demo mode with the release binary
+	$(BIN) tui
 
 inspect: build-release ## Inspect sample image with DINOv2
-	$(CARGO) run $(FEATURES) $(RELEASE) -- inspect $(SAMPLE_IMG) --model dinov2-vit-l14
+	$(BIN) inspect $(SAMPLE_IMG) --model dinov2-vit-l14
 
-compare: build-release ## Compare DINOv2 on sample image (only ready model in Phase 1)
-	$(CARGO) run $(FEATURES) $(RELEASE) -- compare $(SAMPLE_IMG) --models dinov2-vit-l14
+compare: build-release ## Compare models on sample image
+	$(BIN) compare $(SAMPLE_IMG) --models dinov2-vit-l14
 
-models:               ## List registered models and their status
-	$(CARGO) run $(FEATURES) -- models
+models: build-release ## List registered models and their status
+	$(BIN) models
 
-validate:             ## Validate DINOv2 preprocessing and tensor contracts
-	$(CARGO) run $(FEATURES) $(RELEASE) -- validate --model dinov2-vit-l14
+validate: build-release ## Validate DINOv2 preprocessing and tensor contracts
+	$(BIN) validate --model dinov2-vit-l14
 
 # ── Model management ─────────────────────────────────────────────
 
-download-models:      ## Pre-download the DINOv2 ONNX model (~1.1 GB)
-	$(CARGO) run $(FEATURES) -- models --download dinov2-vit-l14
+download-models: build-release ## Pre-download the DINOv2 ONNX model (~1.1 GB)
+	$(BIN) models --download dinov2-vit-l14
 
 cache-status:         ## Show cached model files
 	@echo "Cache directory: $(CACHE_DIR)"

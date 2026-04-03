@@ -138,9 +138,14 @@ impl ExtractedFeatures {
     ///
     /// Safe: `from_output` validates patch_tokens has at least one row.
     pub fn mean_patch(&self) -> Array1<f32> {
-        self.patch_tokens
-            .mean_axis(Axis(0))
-            .expect("ExtractedFeatures: patch_tokens must be non-empty")
+        if self.patch_tokens.nrows() == 0 {
+            return Array1::zeros(self.patch_tokens.ncols());
+        }
+
+        let mut mean = self.patch_tokens.sum_axis(Axis(0));
+        let denom = self.patch_tokens.nrows() as f32;
+        mean.mapv_inplace(|value| value / denom);
+        mean
     }
 
     /// Global embedding for the requested basis, when available.

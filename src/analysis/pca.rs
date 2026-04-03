@@ -2,7 +2,7 @@
 
 use crate::analysis::finite::ensure_finite_2d;
 use crate::errors::AnalysisError;
-use ndarray::{Array1, Array2, Axis};
+use ndarray::{s, Array1, Array2, Axis};
 
 /// Result of a PCA computation.
 #[derive(Debug, Clone)]
@@ -34,7 +34,7 @@ pub fn pca(data: &Array2<f32>, k: usize, max_iter: usize) -> Result<PcaResult, A
     // Centre the data — safe: n >= 2 from guard above
     let mean = data
         .mean_axis(Axis(0))
-        .expect("pca: data must have at least one row");
+        .ok_or_else(|| AnalysisError::EmptyInput("PCA input cannot be empty".into()))?;
     let mut centred = data.to_owned();
     for mut row in centred.rows_mut() {
         row -= &mean;
@@ -117,12 +117,18 @@ pub fn pca(data: &Array2<f32>, k: usize, max_iter: usize) -> Result<PcaResult, A
 
 /// Project `data` onto PCA components (after centering with `result.mean`).
 pub fn transform(data: &Array2<f32>, result: &PcaResult) -> Array2<f32> {
+    transform_top_k(data, result, result.components.nrows())
+}
+
+/// Project `data` onto the first `k` PCA components (after centering).
+pub fn transform_top_k(data: &Array2<f32>, result: &PcaResult, k: usize) -> Array2<f32> {
+    let k = k.max(1).min(result.components.nrows());
     let mut centred = data.to_owned();
     for mut row in centred.rows_mut() {
         row -= &result.mean;
     }
-    // [N, k] = [N, D] * [D, k]
-    centred.dot(&result.components.t())
+    let components = result.components.slice(s![..k, ..]);
+    centred.dot(&components.t())
 }
 
 fn norm(v: &Array1<f32>) -> f32 {
@@ -169,6 +175,15 @@ mod tests {
         let result = pca(&data, 3, 200).unwrap();
         let projected = transform(&data, &result);
         assert_eq!(projected.shape(), &[20, 3]);
+    }
+
+    #[test]
+    fn test_transform_top_k_truncates_projection_width() {
+        let data = Array2::from_shape_fn((20, 16), |(i, j)| (i * j) as f32 / 50.0);
+        let result = pca(&data, 4, 200).unwrap();
+        let projected = transform_top_k(&data, &result, 2);
+
+        assert_eq!(projected.shape(), &[20, 2]);
     }
 
     #[test]
