@@ -28,6 +28,9 @@ latent-inspector compare photo.jpg --models dinov2-vit-l14,ijepa-vit-h14
 # Deep-dive into a single model
 latent-inspector inspect photo.jpg --model dinov2-vit-l14
 
+# Profile a model's representation space over a dataset
+latent-inspector profile --model dinov2-vit-l14 --dataset images/
+
 # Interactive TUI
 latent-inspector tui photo.jpg -m dinov2-vit-l14,ijepa-vit-h14
 
@@ -84,6 +87,8 @@ Patch entropy         2.52            2.89
 CLS L2 norm           46.3            N/A
 Top-10 var%           66.8%           72.7%
 Components@90%        31              22
+Patch isotropy        0.712           0.834
+Patch uniformity      -2.891          -3.247
 ================================================================================
 ```
 
@@ -98,6 +103,10 @@ Components@90%        31              22
 **Top-10 variance** (66.8% vs 72.7%): What fraction of total information is captured by the first 10 principal components. I-JEPA concentrates more variance into fewer dimensions — its representation is more "top-heavy." DINOv2 spreads information more evenly.
 
 **Components@90%** (31 vs 22): How many PCA components are needed to explain 90% of the variance. I-JEPA needs only 22 components; DINOv2 needs 31. This confirms I-JEPA's representation is lower-dimensional in practice, despite having a wider embedding space (1280 vs 1024).
+
+**Patch isotropy** (0.712 vs 0.834): How uniformly patch embeddings spread across the representation space, measured as 1 minus average pairwise cosine similarity. I-JEPA's higher isotropy (0.834) means its patches are more directionally diverse — each patch points in a more distinct direction. DINOv2's patches are slightly more aligned (0.712), reflecting its self-distillation objective which encourages consistent features.
+
+**Patch uniformity** (-2.891 vs -3.247): Wang & Isola (2020) metric measuring how evenly patches spread on the unit hypersphere. More negative means better spread. I-JEPA (-3.247) distributes patches more uniformly than DINOv2 (-2.891), consistent with I-JEPA's prediction-in-latent-space objective that naturally prevents representational collapse.
 
 ### Step 2: Cross-model similarity
 
@@ -205,7 +214,8 @@ DINOv2 and I-JEPA both produce rich representations of the elephant, but they or
 | Effective rank | 60/1024 | 44/1280 | DINOv2 uses more dimensions |
 | Variance concentration | 66.8% in top 10 | 72.7% in top 10 | I-JEPA is more concentrated |
 | Patch entropy | 2.52 | 2.89 | I-JEPA differentiates patches more |
-| Patch norm std | 1.41 | 6.14 | DINOv2 is more uniform |
+| Patch isotropy | 0.712 | 0.834 | I-JEPA spreads more uniformly |
+| Patch uniformity | -2.891 | -3.247 | I-JEPA avoids collapse better |
 | CLS token | Yes (46.3 norm) | No | Different architectures |
 
 The low CKA (0.329) and low k-NN overlap (0.278) confirm these are genuinely different world models — not just rescaled versions of the same representation.
@@ -262,6 +272,23 @@ latent-inspector similarity --model-a <model> --model-b <model> --dataset <dir>
 ```
 
 Measures how similarly two models represent an entire dataset using linear CKA, mutual k-NN overlap, and (when both models expose CLS tokens) mean CLS cosine similarity. Runs inference in parallel across the dataset.
+
+### `profile` — Representation space profiling over a dataset
+
+```bash
+latent-inspector profile --model <model> --dataset <dir>
+  [--format terminal|json|html|png]
+  [--output <dir>]
+```
+
+Generates a comprehensive representation fingerprint by running the model on every image in a dataset and computing both per-image metric aggregates and dataset-level space metrics:
+
+- **Isotropy (cosine)** — How uniformly embeddings are spread in the representation space (1 - average pairwise cosine similarity)
+- **Isotropy (partition)** — Singular value uniformity of the embedding matrix (Mu et al. 2018)
+- **Uniformity** — Wang & Isola (2020) metric measuring spread on the unit hypersphere
+- **Intrinsic dimensionality** — MLE estimate (Levina & Bickel 2004) of the representation manifold dimension
+
+Per-image metrics (rank, entropy, Gini, variance concentration) are aggregated as mean/std/min/max across the dataset.
 
 ### `drift` — Track representation changes across checkpoints
 
@@ -334,6 +361,10 @@ Force ASCII output in non-Unicode terminals: `LATENT_INSPECTOR_FORCE_ASCII=1`.
 | **Linear CKA** | Geometric similarity between two representations | 0 to 1 | 1 = identical geometry; 0 = unrelated |
 | **k-NN overlap** | Neighborhood agreement between two models | 0 to 1 | 1 = same neighbors; 0 = completely different |
 | **Patch correspondence** | Optimal assignment similarity (Hungarian matching) | 0 to 1 | How well patches can be aligned across models |
+| **Isotropy (cosine)** | Spread of embeddings in the representation space | 0 to 1 | Higher = more uniform; near 0 = vectors clustered in a cone |
+| **Isotropy (partition)** | Singular value uniformity (Mu et al. 2018) | 0 to 1 | Higher = eigenvalues more uniform; 0 = dominated by top components |
+| **Uniformity** | Embedding spread on the unit hypersphere (Wang & Isola 2020) | -inf to 0 | More negative = better spread; 0 = all vectors identical |
+| **Intrinsic dimensionality** | True manifold dimension (Levina & Bickel 2004 MLE) | 1+ | Lower than ambient dim = representations lie on a low-dim manifold |
 
 ## Validation and trust
 

@@ -182,6 +182,51 @@ fn build_help_content() -> Vec<Line<'static>> {
         ],
     );
 
+    metric_entry(
+        &mut lines,
+        "Patch Isotropy",
+        &[
+            "How uniformly patch embeddings are spread in the representation",
+            "space, measured as 1 minus average pairwise cosine similarity.",
+            "",
+            "  1.0  → perfectly uniform spread (orthogonal patches)",
+            "  0.0  → collapsed, all patches identical",
+            "  >0.5 → healthy utilization of embedding space",
+            "  <0.2 → potential dimensional collapse",
+        ],
+    );
+
+    metric_entry(
+        &mut lines,
+        "Patch Uniformity",
+        &[
+            "Wang & Isola (2020) metric measuring spread on the unit",
+            "hypersphere. More negative values indicate better spread.",
+            "",
+            "  < -3.0  → excellent spread (well-distributed patches)",
+            "  -2 to -1 → moderate spread",
+            "  > -0.5  → poor spread (patches clustered together)",
+            "",
+            "Complements isotropy by measuring spread on the normalized",
+            "surface rather than in raw embedding space.",
+        ],
+    );
+
+    metric_entry(
+        &mut lines,
+        "Intrinsic Dimensionality",
+        &[
+            "MLE estimate (Levina & Bickel 2004) of the true manifold",
+            "dimension of the representation space via k-NN distance ratios.",
+            "",
+            "  High (>50)   → rich, high-dimensional manifold",
+            "  Low  (<10)   → representations live on a low-dim surface",
+            "",
+            "Available in the `profile` command (requires dataset).",
+            "Per-image isotropy/uniformity are shown in inspect/compare.",
+        ],
+    );
+
     // ── Cross-model metrics ─────────────────────────────────────────────
 
     section_header(&mut lines, "CROSS-MODEL COMPARISON METRICS");
@@ -271,6 +316,18 @@ fn build_help_content() -> Vec<Line<'static>> {
             ("↓ / j", "Scroll down"),
             ("g", "Scroll to top"),
             ("G", "Scroll to bottom"),
+        ],
+    );
+
+    shortcut_group(
+        &mut lines,
+        "File Browser",
+        &[
+            ("o", "Open file browser"),
+            ("Enter", "Open dir / load image"),
+            ("Backspace / h", "Go to parent directory"),
+            ("/", "Toggle path input"),
+            ("Esc / q", "Close file browser"),
         ],
     );
 

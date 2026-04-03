@@ -334,6 +334,89 @@ impl DriftReport {
     }
 }
 
+/// Per-image metrics collected during profiling.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProfileImageMetrics {
+    pub image: String,
+    pub effective_rank: usize,
+    pub dead_dimensions: usize,
+    pub patch_entropy: f32,
+    pub attention_gini: Option<f32>,
+    pub cls_l2_norm: Option<f32>,
+    pub patch_norm_mean: f32,
+    pub patch_norm_std: f32,
+    pub top10_variance_pct: f32,
+}
+
+/// Aggregate statistics for a single metric across all profiled images.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AggregateStatistic {
+    pub key: String,
+    pub label: String,
+    pub mean: f32,
+    pub std: f32,
+    pub min: f32,
+    pub max: f32,
+}
+
+/// Space-level metrics computed over the entire embedding matrix.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SpaceMetrics {
+    pub isotropy_cosine: f32,
+    pub isotropy_partition: f32,
+    pub uniformity: f32,
+    pub intrinsic_dimensionality: f32,
+}
+
+/// Comprehensive representation profile for a model over a dataset.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProfileReport {
+    pub model: String,
+    pub dataset: String,
+    pub embedding_basis: EmbeddingBasis,
+    pub sample_count: usize,
+    pub embed_dim: usize,
+    pub dataset_summary: DatasetProcessingSummary,
+    pub space_metrics: SpaceMetrics,
+    pub aggregate_metrics: Vec<AggregateStatistic>,
+    pub per_image_metrics: Vec<ProfileImageMetrics>,
+    pub validation: ModelValidationSummary,
+}
+
+impl ProfileReport {
+    /// Returns a flat list of the key space-level metric values for charting.
+    pub fn space_metric_series(&self) -> Vec<(&str, f32)> {
+        vec![
+            ("Isotropy (cosine)", self.space_metrics.isotropy_cosine),
+            (
+                "Isotropy (partition)",
+                self.space_metrics.isotropy_partition,
+            ),
+            ("Uniformity", self.space_metrics.uniformity),
+            ("Intrinsic dim", self.space_metrics.intrinsic_dimensionality),
+        ]
+    }
+}
+
+/// Build aggregate statistics from a list of per-image metric values.
+pub fn build_aggregate(key: &str, label: &str, values: &[f32]) -> AggregateStatistic {
+    let n = values.len() as f32;
+    let mean = values.iter().sum::<f32>() / n.max(1.0);
+    let variance = values.iter().map(|v| (v - mean).powi(2)).sum::<f32>() / (n - 1.0).max(1.0);
+    let std = variance.sqrt();
+    let min = values.iter().cloned().fold(f32::INFINITY, f32::min);
+    let max = values.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
+
+    AggregateStatistic {
+        key: key.to_string(),
+        label: label.to_string(),
+        mean,
+        std,
+        min,
+        max,
+    }
+}
+
 #[derive(Clone, Copy)]
 enum MetricKind {
     ClsCosine,
@@ -598,6 +681,8 @@ mod tests {
                 patch_norm_std: 0.4,
                 top10_variance_pct: 25.0,
                 components_90pct: 64,
+                patch_isotropy: 0.65,
+                patch_uniformity: -2.1,
             },
             ModelMetrics {
                 model_name: "clip".into(),
@@ -612,6 +697,8 @@ mod tests {
                 patch_norm_std: 0.4,
                 top10_variance_pct: 41.0,
                 components_90pct: 52,
+                patch_isotropy: 0.65,
+                patch_uniformity: -2.1,
             },
         ]
     }
@@ -731,6 +818,8 @@ mod tests {
                 patch_norm_std: 0.4,
                 top10_variance_pct: 25.0,
                 components_90pct: 64,
+                patch_isotropy: 0.65,
+                patch_uniformity: -2.1,
             },
             ModelMetrics {
                 model_name: "mae".into(),
@@ -745,6 +834,8 @@ mod tests {
                 patch_norm_std: 0.4,
                 top10_variance_pct: 41.0,
                 components_90pct: 52,
+                patch_isotropy: 0.65,
+                patch_uniformity: -2.1,
             },
         ];
         let comparisons = vec![ComparisonMetrics {

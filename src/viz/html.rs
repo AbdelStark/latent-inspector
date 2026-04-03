@@ -8,7 +8,7 @@ use crate::validation::report::ModelValidationSummary;
 use crate::viz::manifest::{ArtifactKind, OutputArtifactManifest};
 use crate::viz::report::{
     build_compare_overview, CompareOverview, DriftReport, InspectReport, NeighborsReport,
-    PairwiseMatrix, PairwiseMetricSupport, SimilarityReport,
+    PairwiseMatrix, PairwiseMetricSupport, ProfileReport, SimilarityReport,
 };
 use std::path::Path;
 
@@ -50,6 +50,7 @@ pub struct InspectHtmlAssets {
     pub pca_image: Option<VisualAsset>,
     pub variance_image: Option<VisualAsset>,
     pub attention_image: Option<VisualAsset>,
+    pub similarity_heatmap: Option<VisualAsset>,
 }
 
 impl InspectHtmlAssets {
@@ -58,6 +59,7 @@ impl InspectHtmlAssets {
             && self.pca_image.is_none()
             && self.variance_image.is_none()
             && self.attention_image.is_none()
+            && self.similarity_heatmap.is_none()
     }
 }
 
@@ -219,6 +221,30 @@ pub fn write_drift_report_with_assets_and_bundle(
     Ok(())
 }
 
+pub fn write_profile_report(report: &ProfileReport, output_path: &Path) -> Result<(), VizError> {
+    write_profile_report_with_assets(report, &GalleryAssets::default(), output_path)
+}
+
+pub fn write_profile_report_with_assets(
+    report: &ProfileReport,
+    assets: &GalleryAssets,
+    output_path: &Path,
+) -> Result<(), VizError> {
+    write_profile_report_with_assets_and_bundle(report, assets, None, output_path)
+}
+
+pub fn write_profile_report_with_assets_and_bundle(
+    report: &ProfileReport,
+    assets: &GalleryAssets,
+    bundle: Option<&OutputArtifactManifest>,
+    output_path: &Path,
+) -> Result<(), VizError> {
+    let html = render_profile_html_with_bundle(report, assets, bundle);
+    std::fs::write(output_path, &html)
+        .map_err(|e| VizError::Html(format!("Failed to write {}: {e}", output_path.display())))?;
+    Ok(())
+}
+
 pub fn write_model_catalog_report(
     report: &ModelCatalogReport,
     output_path: &Path,
@@ -327,7 +353,7 @@ fn render_html_with_bundle(
         .iter()
         .map(|metric| {
             format!(
-                "<tr><td>{}</td><td>{}/{}</td><td>{}</td><td>{:.2}</td><td>{}</td><td>{}</td><td>{:.1}%</td><td>{}</td></tr>",
+                "<tr><td>{}</td><td>{}/{}</td><td>{}</td><td>{:.2}</td><td>{}</td><td>{}</td><td>{:.1}%</td><td>{}</td><td>{:.3}</td><td>{:.2}</td></tr>",
                 escape_html(&metric.model_name),
                 metric.effective_rank,
                 metric.embed_dim,
@@ -343,6 +369,8 @@ fn render_html_with_bundle(
                     .unwrap_or_else(|| "N/A".to_string()),
                 metric.top10_variance_pct,
                 metric.components_90pct,
+                metric.patch_isotropy,
+                metric.patch_uniformity,
             )
         })
         .collect::<Vec<_>>()
@@ -458,6 +486,8 @@ fn render_html_with_bundle(
       <th>CLS L2 norm</th>
       <th>Top-10 var%</th>
       <th>Components@90%</th>
+      <th>Patch isotropy</th>
+      <th>Patch uniformity</th>
     </tr>
   </thead>
   <tbody>
@@ -872,6 +902,8 @@ fn render_inspect_html_with_bundle(
                  <tr><td>CLS L2 norm</td><td>{}</td></tr>\
                  <tr><td>Patch norm mean ± std</td><td>{:.2} ± {:.2}</td></tr>\
                  <tr><td>Top-10 variance concentration</td><td>{:.1}%</td></tr>\
+                 <tr><td>Patch isotropy</td><td>{:.3}</td></tr>\
+                 <tr><td>Patch uniformity</td><td>{:.2}</td></tr>\
                  </tbody></table>",
                 metrics.n_patches,
                 metrics.embed_dim,
@@ -890,6 +922,8 @@ fn render_inspect_html_with_bundle(
                 metrics.patch_norm_mean,
                 metrics.patch_norm_std,
                 metrics.top10_variance_pct,
+                metrics.patch_isotropy,
+                metrics.patch_uniformity,
             ),
         ),
         (
@@ -953,6 +987,7 @@ fn render_inspect_html_with_bundle(
             ("Patch tokens", metrics.n_patches.to_string()),
             ("Embed dim", metrics.embed_dim.to_string()),
             ("Effective rank", metrics.effective_rank.to_string()),
+            ("Patch isotropy", format!("{:.3}", metrics.patch_isotropy)),
         ],
         &sections,
         bundle,
@@ -972,6 +1007,9 @@ fn render_inspect_asset_gallery(assets: &InspectHtmlAssets) -> String {
         visuals.push(asset.clone());
     }
     if let Some(asset) = &assets.attention_image {
+        visuals.push(asset.clone());
+    }
+    if let Some(asset) = &assets.similarity_heatmap {
         visuals.push(asset.clone());
     }
 
@@ -1653,6 +1691,99 @@ fn render_matrix_table(matrix: &PairwiseMatrix) -> String {
     )
 }
 
+fn render_profile_html_with_bundle(
+    report: &ProfileReport,
+    assets: &GalleryAssets,
+    bundle: Option<&OutputArtifactManifest>,
+) -> String {
+    let space_rows = format!(
+        concat!(
+            "<tr><td>Isotropy (cosine)</td><td>{:.4}</td><td>1 - avg pairwise cosine similarity. Higher = more uniform spread.</td></tr>\n",
+            "<tr><td>Isotropy (partition)</td><td>{:.4}</td><td>Singular-value uniformity. Higher = less dominated by top components.</td></tr>\n",
+            "<tr><td>Uniformity</td><td>{:.4}</td><td>Wang &amp; Isola (2020). More negative = better spread on hypersphere.</td></tr>\n",
+            "<tr><td>Intrinsic dimensionality</td><td>{:.1}</td><td>MLE estimate (Levina &amp; Bickel 2004) of manifold dimension.</td></tr>",
+        ),
+        report.space_metrics.isotropy_cosine,
+        report.space_metrics.isotropy_partition,
+        report.space_metrics.uniformity,
+        report.space_metrics.intrinsic_dimensionality,
+    );
+    let space_table = format!(
+        "<table><thead><tr><th>Metric</th><th>Value</th><th>Interpretation</th></tr></thead><tbody>{space_rows}</tbody></table>"
+    );
+
+    let aggregate_table = if report.aggregate_metrics.is_empty() {
+        "<p class=\"empty-state\">No per-image metrics were collected.</p>".to_string()
+    } else {
+        let rows = report
+            .aggregate_metrics
+            .iter()
+            .map(|agg| {
+                format!(
+                    "<tr><td>{}</td><td>{:.3}</td><td>{:.3}</td><td>{:.3}</td><td>{:.3}</td></tr>",
+                    escape_html(&agg.label),
+                    agg.mean,
+                    agg.std,
+                    agg.min,
+                    agg.max,
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        format!(
+            "<table><thead><tr><th>Metric</th><th>Mean</th><th>Std</th><th>Min</th><th>Max</th></tr></thead><tbody>{rows}</tbody></table>"
+        )
+    };
+
+    let mut sections = vec![
+        ("Space-Level Metrics", space_table),
+        ("Per-Image Metric Aggregates", aggregate_table),
+    ];
+    if !assets.is_empty() {
+        sections.push((
+            "Visual Artefacts",
+            render_gallery_assets(assets, "No charts were generated for this report."),
+        ));
+    }
+    sections.push((
+        "Dataset Processing",
+        render_dataset_summary_html(&report.dataset_summary),
+    ));
+    sections.push((
+        "Validation Summary",
+        render_validation_section_body(
+            std::slice::from_ref(&report.validation),
+            "No validation evidence was attached to this report.",
+        ),
+    ));
+
+    render_secondary_html(
+        "Representation Profile",
+        &format!(
+            "Model <code>{}</code> profiled across {} images from <code>{}</code>. Global embeddings use <strong>{}</strong>.",
+            escape_html(&report.model),
+            report.sample_count,
+            escape_html(&report.dataset),
+            escape_html(report.embedding_basis.label()),
+        ),
+        &[
+            ("Model", report.model.clone()),
+            ("Images", report.sample_count.to_string()),
+            ("Embedding dim", report.embed_dim.to_string()),
+            (
+                "Embedding basis",
+                report.embedding_basis.label().to_string(),
+            ),
+            (
+                "Intrinsic dim",
+                format!("{:.1}", report.space_metrics.intrinsic_dimensionality),
+            ),
+        ],
+        &sections,
+        bundle,
+    )
+}
+
 fn render_secondary_html(
     title: &str,
     subtitle: &str,
@@ -2080,6 +2211,8 @@ mod tests {
                 patch_norm_std: 0.8,
                 top10_variance_pct: 28.5,
                 components_90pct: 41,
+                patch_isotropy: 0.65,
+                patch_uniformity: -2.1,
             },
             validation: validation_summary(model),
             variance_spectrum: VarianceSpectrumReport {
@@ -2141,6 +2274,8 @@ mod tests {
                 patch_norm_std: 1.0,
                 top10_variance_pct: 20.0,
                 components_90pct: 48,
+                patch_isotropy: 0.65,
+                patch_uniformity: -2.1,
             },
             ModelMetrics {
                 model_name: "clip".into(),
@@ -2155,6 +2290,8 @@ mod tests {
                 patch_norm_std: 1.1,
                 top10_variance_pct: 35.0,
                 components_90pct: 36,
+                patch_isotropy: 0.65,
+                patch_uniformity: -2.1,
             },
         ];
         let comparisons = vec![ComparisonMetrics {
@@ -2201,6 +2338,8 @@ mod tests {
                 patch_norm_std: 1.0,
                 top10_variance_pct: 20.0,
                 components_90pct: 48,
+                patch_isotropy: 0.65,
+                patch_uniformity: -2.1,
             },
             ModelMetrics {
                 model_name: "mae".into(),
@@ -2215,6 +2354,8 @@ mod tests {
                 patch_norm_std: 1.1,
                 top10_variance_pct: 35.0,
                 components_90pct: 36,
+                patch_isotropy: 0.65,
+                patch_uniformity: -2.1,
             },
         ];
         let comparisons = vec![ComparisonMetrics {
@@ -2350,6 +2491,12 @@ mod tests {
                 alt: "Inspect attention overlay".into(),
                 description: "Attention projected back onto the input image.".into(),
             }),
+            similarity_heatmap: Some(VisualAsset {
+                title: "Patch Self-Similarity".into(),
+                path: "dinov2-vit-l14_similarity.png".into(),
+                alt: "Patch self-similarity heatmap".into(),
+                description: "Cosine similarity between all patch pairs.".into(),
+            }),
         };
         let html = render_inspect_html(&report, &assets);
 
@@ -2362,6 +2509,7 @@ mod tests {
         assert!(html.contains("input_image.png"));
         assert!(html.contains("dinov2-vit-l14_pca.png"));
         assert!(html.contains("dinov2-vit-l14_attention.png"));
+        assert!(html.contains("dinov2-vit-l14_similarity.png"));
         assert!(html.contains("Validation Summary"));
         assert!(html.contains("dinov2-vit-l14"));
     }
@@ -2437,6 +2585,12 @@ mod tests {
                 path: "dinov2-vit-l14_attention.png".into(),
                 alt: "Inspect attention overlay".into(),
                 description: "Attention projected back onto the input image.".into(),
+            }),
+            similarity_heatmap: Some(VisualAsset {
+                title: "Patch Self-Similarity".into(),
+                path: "dinov2-vit-l14_similarity.png".into(),
+                alt: "Patch self-similarity heatmap".into(),
+                description: "Cosine similarity between all patch pairs.".into(),
             }),
         };
 

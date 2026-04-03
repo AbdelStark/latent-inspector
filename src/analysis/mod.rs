@@ -3,9 +3,12 @@ pub mod cka;
 pub mod correspondence;
 pub mod entropy;
 pub(crate) mod finite;
+pub mod intrinsic_dim;
+pub mod isotropy;
 pub mod knn;
 pub mod pca;
 pub mod rank;
+pub mod uniformity;
 pub mod variance;
 
 pub use attention::{gini, mean_gini, per_head_gini};
@@ -13,9 +16,12 @@ pub use cka::{cls_cosine_similarity, linear_cka};
 pub use correspondence::{patch_correspondence, patch_cosine_similarity, CorrespondenceResult};
 pub use entropy::{patch_entropy, patch_norm_stats, shannon_entropy, NormStats};
 pub use finite::square_grid_side;
+pub use intrinsic_dim::{intrinsic_dimensionality, intrinsic_dimensionality_default};
+pub use isotropy::{isotropy_score, partition_isotropy};
 pub use knn::{cosine_similarity_matrix, knn_overlap, top_k_neighbors};
 pub use pca::{pca, transform, PcaResult};
 pub use rank::{dead_dimensions, effective_rank};
+pub use uniformity::uniformity;
 pub use variance::{variance_spectrum, VarianceSpectrum};
 
 use crate::errors::AnalysisError;
@@ -45,6 +51,10 @@ pub struct ModelMetrics {
     pub patch_norm_std: f32,
     pub top10_variance_pct: f32,
     pub components_90pct: usize,
+    /// Isotropy of the patch embedding space (0 = collapsed, 1 = uniform).
+    pub patch_isotropy: f32,
+    /// Uniformity of the patch embeddings on the unit hypersphere (more negative = better spread).
+    pub patch_uniformity: f32,
 }
 
 /// Compute all per-model metrics for the given features.
@@ -85,6 +95,18 @@ pub fn model_metrics_from_spectrum(
         .transpose()?;
     let norm_stats = patch_norm_stats(&features.patch_tokens);
 
+    // Per-image patch space metrics (need >= 2 patches)
+    let iso = if features.n_patches >= 2 {
+        isotropy_score(&features.patch_tokens).unwrap_or(0.0)
+    } else {
+        0.0
+    };
+    let uni = if features.n_patches >= 2 {
+        uniformity(&features.patch_tokens).unwrap_or(0.0)
+    } else {
+        0.0
+    };
+
     Ok(ModelMetrics {
         model_name: model_name.to_string(),
         n_patches: features.n_patches,
@@ -98,6 +120,8 @@ pub fn model_metrics_from_spectrum(
         patch_norm_std: norm_stats.std,
         top10_variance_pct: spec.top10_concentration * 100.0,
         components_90pct: spec.components_90pct,
+        patch_isotropy: iso,
+        patch_uniformity: uni,
     })
 }
 
@@ -365,5 +389,33 @@ mod tests {
             epsilon = 1e-4
         );
         assert_eq!(reused.components_90pct, direct.components_90pct);
+        approx::assert_relative_eq!(reused.patch_isotropy, direct.patch_isotropy, epsilon = 1e-4);
+        approx::assert_relative_eq!(
+            reused.patch_uniformity,
+            direct.patch_uniformity,
+            epsilon = 1e-4
+        );
+    }
+
+    #[test]
+    fn compute_metrics_includes_finite_isotropy_and_uniformity() {
+        let feat = features("dinov2-vit-l14", 64, 32);
+        let metrics = compute_metrics(&feat, "dinov2-vit-l14").unwrap();
+
+        assert!(metrics.patch_isotropy.is_finite());
+        assert!(metrics.patch_isotropy >= 0.0);
+        assert!(metrics.patch_isotropy <= 1.0);
+        assert!(metrics.patch_uniformity.is_finite());
+        assert!(metrics.patch_uniformity <= 0.0);
+    }
+
+    #[test]
+    fn compute_metrics_handles_two_patches() {
+        // Minimal viable patch count — isotropy/uniformity should compute
+        let feat = features("dinov2-vit-l14", 2, 32);
+        let metrics = compute_metrics(&feat, "dinov2-vit-l14").unwrap();
+
+        assert!(metrics.patch_isotropy.is_finite());
+        assert!(metrics.patch_uniformity.is_finite());
     }
 }

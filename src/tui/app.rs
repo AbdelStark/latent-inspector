@@ -351,6 +351,8 @@ fn demo_metrics() -> Vec<ModelMetrics> {
             patch_norm_std: 1.13,
             top10_variance_pct: 62.3,
             components_90pct: 47,
+            patch_isotropy: 0.72,
+            patch_uniformity: -2.8,
         },
         ModelMetrics {
             model_name: "mae-vit-l16".into(),
@@ -365,6 +367,8 @@ fn demo_metrics() -> Vec<ModelMetrics> {
             patch_norm_std: 2.37,
             top10_variance_pct: 78.5,
             components_90pct: 31,
+            patch_isotropy: 0.45,
+            patch_uniformity: -1.3,
         },
         ModelMetrics {
             model_name: "clip-vit-l14".into(),
@@ -379,6 +383,8 @@ fn demo_metrics() -> Vec<ModelMetrics> {
             patch_norm_std: 1.44,
             top10_variance_pct: 71.2,
             components_90pct: 38,
+            patch_isotropy: 0.38,
+            patch_uniformity: -1.1,
         },
         ModelMetrics {
             model_name: "ijepa-vit-h14".into(),
@@ -393,6 +399,8 @@ fn demo_metrics() -> Vec<ModelMetrics> {
             patch_norm_std: 0.92,
             top10_variance_pct: 53.8,
             components_90pct: 67,
+            patch_isotropy: 0.81,
+            patch_uniformity: -3.2,
         },
         ModelMetrics {
             model_name: "siglip-so400m".into(),
@@ -407,6 +415,8 @@ fn demo_metrics() -> Vec<ModelMetrics> {
             patch_norm_std: 1.28,
             top10_variance_pct: 67.9,
             components_90pct: 43,
+            patch_isotropy: 0.52,
+            patch_uniformity: -1.8,
         },
     ]
 }

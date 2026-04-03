@@ -431,6 +431,8 @@ fn inspect_json_includes_validation_summary() {
     assert_eq!(payload["validation"]["backend"]["kind"], "stub");
     assert!(payload["attention"]["mean_gini"].is_number());
     assert_eq!(payload["attention"]["map_basis"], "cls-to-patch");
+    assert!(payload["metrics"]["patch_isotropy"].is_number());
+    assert!(payload["metrics"]["patch_uniformity"].is_number());
 }
 
 #[test]
@@ -474,6 +476,14 @@ fn inspect_html_includes_variance_spectrum_and_validation_summary() {
     assert!(output_dir.join("dinov2-vit-l14_attention.png").exists());
     assert!(output_dir.join("dinov2-vit-l14_pca.png").exists());
     assert!(output_dir.join("dinov2-vit-l14_variance.png").exists());
+    assert!(
+        output_dir.join("dinov2-vit-l14_similarity.png").exists(),
+        "Expected patch self-similarity heatmap in HTML output"
+    );
+    assert!(
+        html.contains("dinov2-vit-l14_similarity.png"),
+        "Expected similarity heatmap referenced in HTML"
+    );
     let manifest = read_artifact_manifest(&output_dir);
     assert_eq!(manifest["command"], "inspect");
     assert_eq!(manifest["format"], "html");
@@ -854,6 +864,10 @@ fn inspect_png_writes_variance_chart() {
     assert!(output_dir.join("dinov2-vit-l14_pca.png").exists());
     assert!(output_dir.join("dinov2-vit-l14_variance.png").exists());
     assert!(output_dir.join("dinov2-vit-l14_attention.png").exists());
+    assert!(
+        output_dir.join("dinov2-vit-l14_similarity.png").exists(),
+        "Expected patch self-similarity heatmap"
+    );
     let manifest = read_artifact_manifest(&output_dir);
     assert_eq!(manifest["command"], "inspect");
     assert_eq!(manifest["format"], "png");
@@ -875,6 +889,11 @@ fn inspect_png_writes_variance_chart() {
         .unwrap()
         .iter()
         .any(|artifact| artifact["path"] == "dinov2-vit-l14_variance.png"));
+    assert!(manifest["artifacts"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|artifact| artifact["path"] == "dinov2-vit-l14_similarity.png"));
 }
 
 #[test]
@@ -923,4 +942,144 @@ fn inspect_json_output_writes_structured_report() {
         "unverified"
     );
     assert_eq!(manifest["validation"][0]["status"], "unverified");
+}
+
+#[test]
+fn inspect_terminal_shows_metrics_and_validation() {
+    let dir = tempdir().unwrap();
+    let image = write_test_image(dir.path());
+    let output = run(&[
+        "inspect",
+        image.to_str().unwrap(),
+        "--model",
+        "dinov2-vit-l14",
+    ]);
+
+    assert_eq!(output.status.code(), Some(0));
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    // Model identification
+    assert!(
+        stdout.contains("dinov2-vit-l14"),
+        "Expected model name in output"
+    );
+    // Core metrics
+    assert!(
+        stdout.contains("Effective rank"),
+        "Expected effective rank metric"
+    );
+    assert!(
+        stdout.contains("Dead dimensions"),
+        "Expected dead dimensions metric"
+    );
+    assert!(
+        stdout.contains("Patch entropy"),
+        "Expected patch entropy metric"
+    );
+    assert!(
+        stdout.contains("Top-10 var%"),
+        "Expected top-10 variance metric"
+    );
+    assert!(
+        stdout.contains("Components@90%"),
+        "Expected components at 90% metric"
+    );
+    assert!(
+        stdout.contains("Patch isotropy"),
+        "Expected patch isotropy metric"
+    );
+    assert!(
+        stdout.contains("Patch uniformity"),
+        "Expected patch uniformity metric"
+    );
+    // Variance spectrum
+    assert!(
+        stdout.contains("Variance spectrum"),
+        "Expected variance spectrum section"
+    );
+    assert!(
+        stdout.contains("PC01"),
+        "Expected first principal component"
+    );
+    // Validation summary
+    assert!(
+        stdout.contains("Validation Summary"),
+        "Expected validation summary section"
+    );
+    assert!(
+        stdout.contains("unverified"),
+        "Expected unverified status with stub backend"
+    );
+}
+
+#[test]
+fn compare_terminal_shows_metrics_table_and_matrices() {
+    let dir = tempdir().unwrap();
+    let image = write_test_image(dir.path());
+    let output = run(&[
+        "compare",
+        image.to_str().unwrap(),
+        "--models",
+        "dinov2-vit-l14,dinov2-vit-l14",
+    ]);
+
+    assert_eq!(output.status.code(), Some(0));
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    // Metrics table
+    assert!(
+        stdout.contains("Model Comparison"),
+        "Expected model comparison header"
+    );
+    assert!(
+        stdout.contains("Repr. rank"),
+        "Expected representation rank row"
+    );
+    assert!(
+        stdout.contains("Dead dimensions"),
+        "Expected dead dimensions row"
+    );
+    assert!(
+        stdout.contains("Patch entropy"),
+        "Expected patch entropy row"
+    );
+    assert!(
+        stdout.contains("Attention Gini"),
+        "Expected attention Gini row"
+    );
+    assert!(
+        stdout.contains("Top-10 var%"),
+        "Expected top-10 variance row"
+    );
+    assert!(
+        stdout.contains("Components@90%"),
+        "Expected components at 90% row"
+    );
+    assert!(
+        stdout.contains("Patch isotropy"),
+        "Expected patch isotropy row"
+    );
+    assert!(
+        stdout.contains("Patch uniformity"),
+        "Expected patch uniformity row"
+    );
+    // Pairwise matrices
+    assert!(
+        stdout.contains("CLS cosine similarity"),
+        "Expected CLS cosine similarity matrix"
+    );
+    assert!(stdout.contains("Linear CKA"), "Expected linear CKA matrix");
+    assert!(
+        stdout.contains("k-NN overlap"),
+        "Expected k-NN overlap matrix"
+    );
+    // Validation
+    assert!(
+        stdout.contains("Validation Summary"),
+        "Expected validation summary"
+    );
+    assert!(
+        stdout.contains("unverified"),
+        "Expected unverified status with stub backend"
+    );
 }

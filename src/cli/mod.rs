@@ -5,6 +5,7 @@ pub mod drift;
 pub mod inspect;
 pub mod models;
 pub mod neighbors;
+pub mod profile;
 pub mod similarity;
 pub mod tui;
 pub mod validate;
@@ -34,6 +35,8 @@ pub enum Commands {
     Inspect(inspect::InspectArgs),
     /// Find nearest neighbors in a dataset for a query image.
     Neighbors(neighbors::NeighborsArgs),
+    /// Profile a model's representation space over a dataset.
+    Profile(profile::ProfileArgs),
     /// Measure representation similarity between two models across a dataset.
     Similarity(similarity::SimilarityArgs),
     /// Track representation changes across model checkpoints.

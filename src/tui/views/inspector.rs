@@ -130,6 +130,22 @@ fn draw_metrics_panel(frame: &mut Frame, area: Rect, m: &crate::analysis::ModelM
             true,
             "Higher → more dims needed → richer",
         ),
+        gauge_line(
+            "Patch isotropy",
+            &format!("{:.3}", m.patch_isotropy),
+            m.patch_isotropy,
+            gauge_width,
+            true,
+            "0=collapsed, 1=uniform spread",
+        ),
+        gauge_line(
+            "Patch uniformity",
+            &format!("{:.2}", m.patch_uniformity),
+            (-m.patch_uniformity / 4.0).clamp(0.0, 1.0),
+            gauge_width,
+            true,
+            "More negative → better spread",
+        ),
     ];
 
     let mut text_lines: Vec<Line> = Vec::new();

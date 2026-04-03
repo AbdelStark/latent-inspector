@@ -3,7 +3,7 @@ use crate::errors::VizError;
 use crate::models::{ModelCatalogReport, ModelDownloadReport};
 use crate::validation::report::ModelValidationSummary;
 use crate::viz::report::{
-    CompareReport, DriftReport, InspectReport, NeighborsReport, SimilarityReport,
+    CompareReport, DriftReport, InspectReport, NeighborsReport, ProfileReport, SimilarityReport,
 };
 use serde::Serialize;
 use std::path::Path;
@@ -88,6 +88,14 @@ pub fn write_model_download_report(
     write_value(report, path)
 }
 
+pub fn print_profile_report(report: &ProfileReport) -> Result<(), VizError> {
+    print_value(report)
+}
+
+pub fn write_profile_report(report: &ProfileReport, path: &Path) -> Result<(), VizError> {
+    write_value(report, path)
+}
+
 fn print_value<T: Serialize + ?Sized>(value: &T) -> Result<(), VizError> {
     let json = serialize_pretty(value)?;
     println!("{json}");
@@ -124,6 +132,8 @@ mod tests {
             patch_norm_std: 2.0,
             top10_variance_pct: 45.0,
             components_90pct: 32,
+            patch_isotropy: 0.65,
+            patch_uniformity: -2.1,
         }
     }
 
