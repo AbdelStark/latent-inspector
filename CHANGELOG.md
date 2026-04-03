@@ -7,6 +7,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- Representation space profiling: `profile` subcommand computes dataset-level metrics (isotropy, uniformity, intrinsic dimensionality) and per-image metric aggregates
+- Isotropy analysis: cosine-based isotropy score and partition function isotropy (Mu et al. 2018)
+- Uniformity metric: Wang & Isola (2020) measure of embedding spread on the unit hypersphere
+- Intrinsic dimensionality estimation: MLE method (Levina & Bickel 2004) for manifold dimension
 - Interactive terminal UI with ratatui (dashboard, inspector, compare, spectrum views)
 - I-JEPA ViT-H/14 model registration with verified SHA-256 hashes (reference evidence currently stub-backed, pending ONNX refresh)
 - Validation workflow: preprocessing contract, tensor semantics, and reference parity checks
