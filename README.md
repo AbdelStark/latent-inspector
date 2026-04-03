@@ -2,7 +2,7 @@
 
 # latent-inspector
 
-Inspect and compare self-supervised vision model representations from the terminal.
+Inspect and compare self-supervised vision model representations for DINOv2, I-JEPA, V-JEPA 2, EUPE.
 
 [![Crates.io](https://img.shields.io/crates/v/latent-inspector.svg)](https://crates.io/crates/latent-inspector)
 [![License](https://img.shields.io/crates/l/latent-inspector.svg)](https://crates.io/crates/latent-inspector)
@@ -11,27 +11,27 @@ Inspect and compare self-supervised vision model representations from the termin
 </div>
 <table>
 <tr>
-<td width="50%"><img src="docs/assets/img/screenshots/tui-1.png" alt="Dashboard"/><br/><sub>Dashboard — model registry, image preview, architecture comparison</sub></td>
-<td width="50%"><img src="docs/assets/img/screenshots/tui-2.png" alt="Inspector"/><br/><sub>Inspector — representation health gauges and PCA variance spectrum</sub></td>
+<td width="50%"><img src="docs/assets/img/screenshots/tui-1.png" alt="Dashboard"/><br/><sub>Dashboard -- model registry, image preview, architecture comparison</sub></td>
+<td width="50%"><img src="docs/assets/img/screenshots/tui-2.png" alt="Inspector"/><br/><sub>Inspector -- representation health gauges and PCA variance spectrum</sub></td>
 </tr>
 <tr>
-<td width="50%"><img src="docs/assets/img/screenshots/tui-3.png" alt="Compare"/><br/><sub>Compare — cross-model metrics, CLS similarity matrix, CKA and k-NN overlap</sub></td>
-<td width="50%"><img src="docs/assets/img/screenshots/tui-4.png" alt="Spectrum"/><br/><sub>Spectrum — full PCA scree plot with 90%/99% thresholds and interpretation</sub></td>
+<td width="50%"><img src="docs/assets/img/screenshots/tui-3.png" alt="Compare"/><br/><sub>Compare -- cross-model metrics, CLS similarity matrix, CKA and k-NN overlap</sub></td>
+<td width="50%"><img src="docs/assets/img/screenshots/tui-4.png" alt="Spectrum"/><br/><sub>Spectrum -- full PCA scree plot with 90%/99% thresholds</sub></td>
 </tr>
 </table>
 
-## PCA examples across the ready models
+## PCA projections across models
 
-These PCA RGB maps come from the checked-in example outputs in `docs/assets/img/examples/`. Each pixel block is a patch token projected onto the top three principal components, so contiguous color regions mean the model is grouping those patches into a similar representation neighborhood.
+Each pixel block below is a patch token projected onto the top three principal components (mapped to RGB). Contiguous color = the model groups those patches into a similar representation neighborhood. Same image, same patches, four different answers about what matters.
 
 <table>
 <tr>
-<td width="50%"><img src="docs/assets/img/examples/dinov2-vit-l14_pca.png" alt="DINOv2 PCA representation"/><br/><sub><strong>DINOv2</strong> — large contiguous regions show a segmentation-like representation: similar colors mean the model has grouped semantically related elephant and background patches together.</sub></td>
-<td width="50%"><img src="docs/assets/img/examples/ijepa-vit-h14_pca.png" alt="I-JEPA PCA representation"/><br/><sub><strong>I-JEPA</strong> — finer local variation reflects its latent-prediction objective: the PCA map suggests patches carry more context-specific information instead of collapsing into broad semantic zones.</sub></td>
+<td width="50%"><img src="docs/assets/img/examples/dinov2-vit-l14_pca.png" alt="DINOv2 PCA representation"/><br/><sub><strong>DINOv2</strong> -- large uniform regions. Self-distillation pushes semantically related patches together, so the model produces something close to unsupervised segmentation. Elephant = one color, background = another.</sub></td>
+<td width="50%"><img src="docs/assets/img/examples/ijepa-vit-h14_pca.png" alt="I-JEPA PCA representation"/><br/><sub><strong>I-JEPA</strong> -- finer local variation. The latent-prediction objective forces each patch to encode its own context rather than collapsing into broad semantic zones.</sub></td>
 </tr>
 <tr>
-<td width="50%"><img src="docs/assets/img/examples/vjepa2-vitl-fpc2-256_pca.png" alt="V-JEPA 2 PCA representation"/><br/><sub><strong>V-JEPA 2</strong> — structured but less static-looking regions hint at a motion-aware prior: the PCA layout suggests the encoder organizes the image as something that could evolve over time, not just a frozen scene.</sub></td>
-<td width="50%"><img src="docs/assets/img/examples/eupe-vit-b16_pca.png" alt="EUPE PCA representation"/><br/><sub><strong>EUPE</strong> — the more compressed, high-contrast partitioning matches its multi-teacher distillation setup: the PCA view suggests a compact representation that prioritizes strong task-relevant separations.</sub></td>
+<td width="50%"><img src="docs/assets/img/examples/vjepa2-vitl-fpc2-256_pca.png" alt="V-JEPA 2 PCA representation"/><br/><sub><strong>V-JEPA 2</strong> -- structured regions with less static partitioning. Trained on video, so even on a still image the encoder organizes patches as if they could move.</sub></td>
+<td width="50%"><img src="docs/assets/img/examples/eupe-vit-b16_pca.png" alt="EUPE PCA representation"/><br/><sub><strong>EUPE</strong> -- compressed, high-contrast boundaries. Multi-teacher distillation produces a compact representation that prioritizes hard task-relevant separations over smooth gradients.</sub></td>
 </tr>
 </table>
 
@@ -61,7 +61,7 @@ cargo build --release
 # Profile a model over a dataset (isotropy, uniformity, intrinsic dimensionality)
 ./target/release/latent-inspector profile --model dinov2-vit-l14 --dataset images/
 
-# Development-only stub backend (no model downloads, validation downgraded to unverified)
+# Stub backend for development (no model downloads, validation downgraded to unverified)
 LATENT_INSPECTOR_MODEL_BACKEND=stub \
   ./target/release/latent-inspector compare photo.jpg \
   --models dinov2-vit-l14,clip-vit-l14
@@ -69,16 +69,16 @@ LATENT_INSPECTOR_MODEL_BACKEND=stub \
 
 ## Why this exists
 
-Self-supervised learning (SSL) models learn to represent images without labels, but they do so in fundamentally different ways:
+Different SSL objectives produce different internal representations of the same image. You can read the papers and get intuitions about what should differ. But intuitions are wrong often enough that you should measure.
 
-- **DINOv2** learns patch-level features via self-distillation. Its representations naturally segment objects — patches on the elephant cluster together, patches on the background cluster together — without ever seeing a segmentation label.
-- **I-JEPA** predicts missing patches in latent space (not pixel space). It learns to fill in what's "probably there" based on context, favoring abstract structure over texture.
-- **V-JEPA 2** extends JEPA to video, learning spatiotemporal structure from internet-scale video data. Even on static images, its representations carry an implicit prior about how the world moves.
-- **EUPE** distills multiple specialist teachers (DINOv2, depth estimators, segmenters) into a single compact encoder. Its representation is a learned compromise — strong on classification, segmentation, and depth simultaneously.
-- **MAE** reconstructs masked pixel regions. It must encode enough detail to literally redraw the masked patches.
-- **CLIP** aligns images with text descriptions. Its representation is shaped by language, not just visual similarity.
+- **DINOv2** -- self-distillation across augmented views. Patches in similar semantic regions get pushed together. The result looks like unsupervised segmentation.
+- **I-JEPA** -- predict masked patches in latent space (not pixel space). Each patch must encode enough context to reconstruct its neighbors abstractly. Higher patch entropy than DINOv2 because the objective demands it.
+- **V-JEPA 2** -- JEPA on video. Learns spatiotemporal structure from internet-scale video. Even on a still image, the encoder carries a prior about how the world moves.
+- **EUPE** -- distill DINOv2 + depth estimators + segmenters into one small encoder. The representation is a learned compromise across tasks.
+- **MAE** -- reconstruct masked pixels. Must encode enough detail to literally redraw what was hidden.
+- **CLIP** -- align images with text. The representation is shaped by language, not just visual similarity.
 
-These different training objectives create different internal "world models." latent-inspector makes those differences visible, measurable, and comparable with concrete metrics.
+latent-inspector makes these differences concrete. Numbers, not vibes.
 
 ## Supported models
 
@@ -93,33 +93,32 @@ These different training objectives create different internal "world models." la
 | CLIP | ViT-L/14 | 304M | Contrastive image-text | Planned |
 | SigLIP | ViT-SO400M/14 | 400M | Sigmoid contrastive image-text | Planned |
 
-Models download automatically on first use (~1-2 GB each) and are cached locally. All downloads are SHA-256 verified and now retry bounded transient HTTP/read failures before surfacing an error. Override the cache location with `LATENT_INSPECTOR_CACHE_DIR`.
+Models download on first use (~1-2 GB each) and are SHA-256 verified. Downloads retry on transient HTTP failures. Override cache location with `LATENT_INSPECTOR_CACHE_DIR`.
 
 <summary><strong>Model provenance and ONNX artifacts</strong></summary>
 
-Every model runs through ONNX Runtime. The ONNX artifacts are sourced as follows:
+Everything runs through ONNX Runtime. Sources:
 
 | CLI name | Original checkpoint | ONNX source | Paper |
 |----------|-------------------|-------------|-------|
-| `dinov2-vit-l14` | [`facebook/dinov2-large`](https://huggingface.co/facebook/dinov2-large) | [`onnx-community/dinov2-large`](https://huggingface.co/onnx-community/dinov2-large) — community export | [Oquab et al. 2024](https://arxiv.org/abs/2304.07193) |
-| `ijepa-vit-h14` | [`facebook/ijepa_vith14_1k`](https://huggingface.co/facebook/ijepa_vith14_1k) | [`onnx-community/ijepa_vith14_1k`](https://huggingface.co/onnx-community/ijepa_vith14_1k) — community export | [Assran et al. 2023](https://arxiv.org/abs/2301.08243) |
-| `vjepa2-vitl-fpc2-256` | [`facebook/vjepa2-vitl-fpc64-256`](https://huggingface.co/facebook/vjepa2-vitl-fpc64-256) | [`abdelstark/vjepa2-vitl-fpc2-256-onnx`](https://huggingface.co/abdelstark/vjepa2-vitl-fpc2-256-onnx) — custom export | [Bardes et al. 2024](https://arxiv.org/abs/2506.09985) |
-| `eupe-vit-b16` | [`facebook/EUPE-ViT-B`](https://huggingface.co/facebook/EUPE-ViT-B) | [`abdelstark/eupe-vit-b16-onnx`](https://huggingface.co/abdelstark/eupe-vit-b16-onnx) — custom export | [Zhu et al. 2026](https://arxiv.org/abs/2603.22387) |
+| `dinov2-vit-l14` | [`facebook/dinov2-large`](https://huggingface.co/facebook/dinov2-large) | [`onnx-community/dinov2-large`](https://huggingface.co/onnx-community/dinov2-large) -- community export | [Oquab et al. 2024](https://arxiv.org/abs/2304.07193) |
+| `ijepa-vit-h14` | [`facebook/ijepa_vith14_1k`](https://huggingface.co/facebook/ijepa_vith14_1k) | [`onnx-community/ijepa_vith14_1k`](https://huggingface.co/onnx-community/ijepa_vith14_1k) -- community export | [Assran et al. 2023](https://arxiv.org/abs/2301.08243) |
+| `vjepa2-vitl-fpc2-256` | [`facebook/vjepa2-vitl-fpc64-256`](https://huggingface.co/facebook/vjepa2-vitl-fpc64-256) | [`abdelstark/vjepa2-vitl-fpc2-256-onnx`](https://huggingface.co/abdelstark/vjepa2-vitl-fpc2-256-onnx) -- custom export | [Bardes et al. 2024](https://arxiv.org/abs/2506.09985) |
+| `eupe-vit-b16` | [`facebook/EUPE-ViT-B`](https://huggingface.co/facebook/EUPE-ViT-B) | [`abdelstark/eupe-vit-b16-onnx`](https://huggingface.co/abdelstark/eupe-vit-b16-onnx) -- custom export | [Zhu et al. 2026](https://arxiv.org/abs/2603.22387) |
 
-**V-JEPA 2 ONNX export:** V-JEPA 2 is a video model (`facebook/vjepa2-vitl-fpc64-256`) trained on internet-scale video. Since latent-inspector analyzes single images, we exported only the encoder (stripping the predictor head), with a fixed 2-frame input — the single image is duplicated to satisfy the model's temporal tubelet requirement (`tubelet_size=2`). This produces 256 spatial patch tokens of dimension 1024, identical in shape to DINOv2, enabling direct cross-model comparison. The export was done using PyTorch's TorchScript ONNX exporter at opset 14, simplified with [onnxsim](https://github.com/daquexian/onnx-simplifier), and verified against the PyTorch reference (max diff < 0.003). The artifact is hosted at [`abdelstark/vjepa2-vitl-fpc2-256-onnx`](https://huggingface.co/abdelstark/vjepa2-vitl-fpc2-256-onnx) for convenience.
+**V-JEPA 2 export notes.** V-JEPA 2 is a video model. Since we analyze single images, we exported only the encoder (no predictor head) with a fixed 2-frame input -- the image is duplicated to meet the `tubelet_size=2` requirement. Output: 256 spatial patch tokens at dim 1024, same shape as DINOv2, so cross-model comparison works directly. Exported via TorchScript at opset 14, simplified with [onnxsim](https://github.com/daquexian/onnx-simplifier), verified against PyTorch reference (max diff < 0.003). Artifact: [`abdelstark/vjepa2-vitl-fpc2-256-onnx`](https://huggingface.co/abdelstark/vjepa2-vitl-fpc2-256-onnx).
 
-**EUPE ONNX export:** EUPE (`facebook/EUPE-ViT-B`) is a compact ViT-B/16 distilled from multiple domain-expert teachers. The `forward_features()` method returns normalized CLS and patch tokens as separate dict entries; we wrapped it to concatenate them into a single `[1, 197, 768]` tensor (CLS at index 0). RoPE position encoding was cast from BFloat16 to Float32 for export compatibility. The export uses TorchScript at opset 14 + onnxsim (834 nodes, max diff 0.0003 vs PyTorch). Hosted at [`abdelstark/eupe-vit-b16-onnx`](https://huggingface.co/abdelstark/eupe-vit-b16-onnx).
+**EUPE export notes.** EUPE's `forward_features()` returns CLS and patch tokens as separate dict entries. We wrapped it to concatenate into `[1, 197, 768]` (CLS at index 0). RoPE positions were cast from BFloat16 to Float32 for ONNX compatibility. Opset 14 + onnxsim, 834 nodes, max diff 0.0003 vs PyTorch. Artifact: [`abdelstark/eupe-vit-b16-onnx`](https://huggingface.co/abdelstark/eupe-vit-b16-onnx).
 
-To convert other HuggingFace models to ONNX, use the [ONNX Community Converter](https://huggingface.co/spaces/onnx-community/convert-to-onnx).
+For other HuggingFace models, use the [ONNX Community Converter](https://huggingface.co/spaces/onnx-community/convert-to-onnx).
 
 </details>
 
 ---
 
-## Case study: How DINOv2 and I-JEPA see an elephant
+## Case study: how DINOv2 and I-JEPA see an elephant
 
-This walkthrough uses a real elephant photograph to show what latent-inspector reveals about two fundamentally different SSL approaches. Every number below is from an actual ONNX inference run — not fabricated.
-
+A real example. Same elephant photograph, two models, different training objectives. 
 ### Compare both models
 
 ```bash
@@ -144,19 +143,19 @@ Patch uniformity      -2.891          -3.247
 ```
 
 <details>
-<summary><strong>What these numbers mean</strong></summary>
+<summary><strong>Reading these numbers</strong></summary>
 
-**Representation rank** (60 vs 44): How many dimensions the model actually uses. DINOv2 spreads information across 60 effective dimensions out of 1024. I-JEPA uses only 44 out of 1280. Neither wastes capacity (zero dead dimensions), but I-JEPA is more concentrated.
+**Representation rank** (60 vs 44). How many dimensions the model actually uses. DINOv2 spreads across 60 effective dimensions out of 1024. I-JEPA uses 44 out of 1280. Zero dead dimensions in both -- no wasted capacity, just different concentrations.
 
-**Patch entropy** (2.52 vs 2.89): How differentiated the patch representations are. I-JEPA creates more distinct per-patch features because its prediction objective forces fine-grained spatial encoding. DINOv2's self-distillation favors globally consistent features.
+**Patch entropy** (2.52 vs 2.89). How differentiated the patch representations are. I-JEPA's prediction objective forces fine-grained spatial encoding, so each patch carries more unique information. DINOv2's self-distillation favors globally consistent features -- patches on the same object tend to look alike.
 
-**CLS L2 norm** (46.3 vs N/A): DINOv2 exports a CLS token (a single vector summarizing the whole image). I-JEPA doesn't — it was never designed with one. latent-inspector reports `N/A` explicitly rather than silently dropping the metric.
+**CLS L2 norm** (46.3 vs N/A). DINOv2 has a CLS token (one vector summarizing the whole image). I-JEPA doesn't -- it was never designed with one. The tool reports `N/A` rather than silently dropping the metric.
 
-**Top-10 variance / Components@90%**: I-JEPA packs 72.7% of variance into 10 components and needs only 22 for 90%. DINOv2 is more spread out (66.8% / 31). I-JEPA's representation is lower-dimensional in practice despite having a wider embedding space.
+**Top-10 variance / Components@90%**. I-JEPA packs 72.7% of variance into 10 components and needs only 22 for 90%. DINOv2 is more spread (66.8% / 31). I-JEPA's representation is lower-dimensional in practice despite having a wider embedding space. Worth thinking about if you're choosing a backbone for a downstream task with limited data.
 
-**Isotropy** (0.712 vs 0.834): How directionally diverse the patch embeddings are (1 = perfectly isotropic, 0 = all patches point the same way). I-JEPA's patches are more directionally diverse — each patch represents something more distinct.
+**Isotropy** (0.712 vs 0.834). How directionally diverse the patch embeddings are (1 = perfectly isotropic, 0 = all patches point the same way). I-JEPA patches are more directionally diverse -- each patch represents something more distinct.
 
-**Uniformity** (-2.891 vs -3.247): Wang & Isola (2020) metric for how evenly patches spread on the unit hypersphere. More negative = better spread. I-JEPA distributes patches more uniformly, consistent with its latent-prediction objective that naturally prevents representational collapse.
+**Uniformity** (-2.891 vs -3.247). Wang & Isola (2020) metric for how evenly patches spread on the unit hypersphere. More negative = better spread. I-JEPA distributes patches more uniformly, consistent with its latent-prediction objective that naturally prevents representational collapse.
 
 </details>
 
@@ -167,34 +166,36 @@ Linear CKA:     0.329    (representation geometry overlap)
 k-NN overlap:   0.278    (fraction of shared nearest neighbors)
 ```
 
-CKA of 0.329 means the two models have some structural overlap but organize the elephant's representation in substantially different ways. k-NN overlap of 27.8% means when DINOv2 considers two patches "similar," I-JEPA often disagrees — the trunk patches might cluster with body patches in one model but with boundary patches in the other.
+CKA of 0.329 means some structural overlap but substantially different organization. k-NN overlap of 27.8% means when DINOv2 considers two patches "similar," I-JEPA often disagrees. The trunk patches might cluster with body patches in one model but with boundary patches in the other.
 
-### Key takeaway
+These are genuinely different representations of the same image. Not just rotations of each other. Different training objectives, different geometry.
 
-| Property | DINOv2 | I-JEPA | Interpretation |
-|----------|--------|--------|----------------|
+### Summary
+
+| Property | DINOv2 | I-JEPA | What it means |
+|----------|--------|--------|---------------|
 | Effective rank | 60/1024 | 44/1280 | DINOv2 uses more dimensions |
 | Variance concentration | 66.8% in top 10 | 72.7% in top 10 | I-JEPA is more concentrated |
 | Patch entropy | 2.52 | 2.89 | I-JEPA differentiates patches more |
 | Patch isotropy | 0.712 | 0.834 | I-JEPA spreads more uniformly |
 | CLS token | Yes (46.3 norm) | No | Different architectures |
-| CKA | — | 0.329 | Genuinely different world models |
+| CKA | -- | 0.329 | Different internal geometry |
 
 ---
 
 <details>
 <summary><h2>Commands reference</h2></summary>
 
-### `compare` — Side-by-side model comparison
+### `compare` -- side-by-side model comparison
 
 ```bash
 latent-inspector compare <image> --models <model1>,<model2>[,...]
   [--format terminal|json|html|png] [--output <dir>] [--pca-components <n>]
 ```
 
-Computes per-model metrics and pairwise cross-model similarity. Handles mismatched architectures gracefully: dimension-agnostic metrics (CKA, k-NN) are computed when patch counts match; dimension-dependent metrics (patch correspondence) and CLS-dependent metrics are reported as `N/A` with an explanation.
+Per-model metrics plus pairwise cross-model similarity. Handles mismatched architectures: dimension-agnostic metrics (CKA, k-NN) work when patch counts match; dimension-dependent and CLS-dependent metrics report `N/A` with an explanation.
 
-### `inspect` — Single model deep-dive
+### `inspect` -- single model deep-dive
 
 ```bash
 latent-inspector inspect <image> --model <model>
@@ -203,16 +204,16 @@ latent-inspector inspect <image> --model <model>
 
 Full representation analysis: rank, entropy, variance spectrum, patch norm statistics, isotropy, uniformity, attention concentration (when available), and PCA projection.
 
-### `neighbors` — k-NN retrieval across a dataset
+### `neighbors` -- k-NN retrieval across a dataset
 
 ```bash
 latent-inspector neighbors <image> --model <model> --dataset <dir>
   [--k <n>] [--format terminal|json|html|png] [--output <dir>]
 ```
 
-Find the k most similar images according to the model. Reveals what a model considers "similar." Falls back to mean-patch embeddings when no CLS token is available.
+Find the k most similar images according to the model. Shows what a model considers "similar." Falls back to mean-patch embeddings when no CLS token is available.
 
-### `similarity` — Cross-model alignment on a dataset
+### `similarity` -- cross-model alignment on a dataset
 
 ```bash
 latent-inspector similarity --model-a <model> --model-b <model> --dataset <dir>
@@ -221,25 +222,25 @@ latent-inspector similarity --model-a <model> --model-b <model> --dataset <dir>
 
 Dataset-level CKA, k-NN overlap, and (when both models expose CLS) mean CLS cosine similarity. Parallel inference across the dataset.
 
-### `profile` — Representation space profiling
+### `profile` -- representation space profiling
 
 ```bash
 latent-inspector profile --model <model> --dataset <dir>
   [--format terminal|json|html|png] [--output <dir>]
 ```
 
-Dataset-level representation fingerprint: isotropy (cosine + partition function), uniformity (Wang & Isola 2020), intrinsic dimensionality (Levina & Bickel 2004 MLE), plus per-image metric aggregates (mean/std/min/max).
+Dataset-level representation fingerprint: isotropy (cosine + partition function), uniformity (Wang & Isola 2020), intrinsic dimensionality (Levina & Bickel 2004 MLE), plus per-image metric aggregates.
 
-### `drift` — Track representation changes across checkpoints
+### `drift` -- track representation changes across checkpoints
 
 ```bash
 latent-inspector drift --model <model> --checkpoints <dir> --dataset <dir>
   [--format terminal|json|html|png] [--output <dir>]
 ```
 
-Load `.onnx` checkpoints from different training stages, compute consecutive CKA scores. Shows when representations materially shift during training. Natural numeric ordering (`step-2.onnx` before `step-10.onnx`).
+Load `.onnx` checkpoints from different training stages, compute consecutive CKA. Shows when representations materially shift during training. Natural numeric ordering (`step-2.onnx` before `step-10.onnx`).
 
-### `models` — Registry and cache status
+### `models` -- registry and cache status
 
 ```bash
 latent-inspector models [--verbose] [--download <model>]
@@ -248,7 +249,7 @@ latent-inspector models [--verbose] [--download <model>]
 
 Model registry with status, readiness, cache state, evidence status, artifact inventory. Use `--download <model>` to pre-cache.
 
-### `validate` — Preprocessing and parity checks
+### `validate` -- preprocessing and parity checks
 
 ```bash
 latent-inspector validate --model <model>
@@ -257,7 +258,7 @@ latent-inspector validate --model <model>
 
 Validates integration against checked-in contract and reference artifacts. Use `--refresh-goldens` after a verified ONNX update.
 
-### `tui` — Interactive terminal UI
+### `tui` -- interactive terminal UI
 
 ```bash
 latent-inspector tui [<image>] [-m <model1>,<model2>,...]
@@ -274,12 +275,12 @@ Every analysis command supports four output formats:
 
 | Format | Flag | Output | Use case |
 |--------|------|--------|----------|
-| **Terminal** | `--format terminal` (default) | Rich Unicode, ASCII fallback | Interactive exploration |
-| **JSON** | `--format json` | Structured metrics to stdout or file | Automation, scripting |
-| **HTML** | `--format html` | Self-contained report bundle | Sharing, review |
-| **PNG** | `--format png` | PCA projections, heatmaps, charts | Presentations, papers |
+| Terminal | `--format terminal` (default) | Rich Unicode, ASCII fallback | Interactive use |
+| JSON | `--format json` | Structured metrics | Scripting, pipelines |
+| HTML | `--format html` | Self-contained report bundle | Sharing |
+| PNG | `--format png` | PCA projections, heatmaps, charts | Papers, slides |
 
-When `--output <dir>` is provided, all formats also emit `artifacts.json` — a machine-readable manifest of every generated file with byte sizes and SHA-256 digests. HTML bundles include companion JSON. The stable file names and top-level JSON keys for these outputs are documented in [docs/REPORT-SCHEMA.md](docs/REPORT-SCHEMA.md).
+With `--output <dir>`, all formats also emit `artifacts.json` -- a manifest of generated files with byte sizes and SHA-256 digests. HTML bundles include companion JSON. Stable file names and JSON keys are documented in [docs/REPORT-SCHEMA.md](docs/REPORT-SCHEMA.md).
 
 Force ASCII output: `LATENT_INSPECTOR_FORCE_ASCII=1`.
 
@@ -290,133 +291,129 @@ Force ASCII output: `LATENT_INSPECTOR_FORCE_ASCII=1`.
 
 | Metric | What it measures | Range | Intuition |
 |--------|-----------------|-------|-----------|
-| **Effective rank** | Significant singular values | 1 to embed_dim | Higher = uses more capacity |
-| **Dead dimensions** | Zero-valued embedding dims | 0 to embed_dim | Should be 0 |
-| **Patch entropy** | Diversity of patch features (k-means) | 0 to log2(k) | Higher = more differentiated |
-| **Attention Gini** | Attention weight concentration | 0 to 1 | Higher = more focused |
-| **CLS L2 norm** | Global image vector magnitude | 0+ | Cross-image comparison |
-| **Patch norm mean/std** | Patch vector magnitude distribution | 0+ | Low std = uniform activation |
-| **Top-10 variance %** | Info in first 10 PCA components | 0-100% | Higher = more concentrated |
-| **Components@90%** | PCA components for 90% variance | 1 to embed_dim | Lower = more compressible |
-| **Linear CKA** | Representation geometry similarity | 0 to 1 | 1 = identical geometry |
-| **k-NN overlap** | Neighborhood agreement | 0 to 1 | 1 = same neighbors |
-| **Patch correspondence** | Hungarian-matched patch similarity | 0 to 1 | Optimal alignment quality |
-| **Isotropy (cosine)** | Embedding directional spread | 0 to 1 | Higher = more uniform |
-| **Isotropy (partition)** | Singular value uniformity | 0 to 1 | Higher = less top-heavy |
-| **Uniformity** | Hypersphere spread (Wang & Isola 2020) | -inf to 0 | More negative = better |
-| **Intrinsic dim** | Manifold dimension (Levina & Bickel 2004) | 1+ | Lower than ambient = compressed |
+| Effective rank | Significant singular values | 1 to embed_dim | Higher = uses more capacity |
+| Dead dimensions | Zero-valued embedding dims | 0 to embed_dim | Should be 0 |
+| Patch entropy | Diversity of patch features (k-means) | 0 to log2(k) | Higher = more differentiated |
+| Attention Gini | Attention weight concentration | 0 to 1 | Higher = more focused |
+| CLS L2 norm | Global image vector magnitude | 0+ | Cross-image comparison |
+| Patch norm mean/std | Patch vector magnitude distribution | 0+ | Low std = uniform activation |
+| Top-10 variance % | Info in first 10 PCA components | 0-100% | Higher = more concentrated |
+| Components@90% | PCA components for 90% variance | 1 to embed_dim | Lower = more compressible |
+| Linear CKA | Representation geometry similarity | 0 to 1 | 1 = identical geometry |
+| k-NN overlap | Neighborhood agreement | 0 to 1 | 1 = same neighbors |
+| Patch correspondence | Hungarian-matched patch similarity | 0 to 1 | Optimal alignment quality |
+| Isotropy (cosine) | Embedding directional spread | 0 to 1 | Higher = more uniform |
+| Isotropy (partition) | Singular value uniformity | 0 to 1 | Higher = less top-heavy |
+| Uniformity | Hypersphere spread (Wang & Isola 2020) | -inf to 0 | More negative = better |
+| Intrinsic dim | Manifold dimension (Levina & Bickel 2004) | 1+ | Lower than ambient = compressed |
 
 </details>
 
 <details>
-<summary><h2>Going deeper: from pixels to world models</h2></summary>
+<summary><h2>From pixels to world models</h2></summary>
 
-This section explains the full pipeline — what happens from the moment you feed an image to latent-inspector until you get a comparison of how different models perceive the world. It maps concepts to code and gives you the mental model to interpret the results.
+The full pipeline: what happens from image input to cross-model comparison. Read this if you want to understand what the metrics actually measure and why they differ between models.
 
 ### The representation pipeline
 
-Every vision transformer takes an image and produces a set of **patch embeddings**: one high-dimensional vector per spatial region of the image. Here's how latent-inspector processes them:
+Every vision transformer takes an image and produces **patch embeddings**: one high-dimensional vector per spatial region.
 
 ```
-Image (e.g. 224×224 RGB)
-  │
-  ├─ Resize short edge to model's input size, center-crop to square
-  │  (src/models/preprocess.rs — matches torchvision's standard ViT pipeline)
-  │
-  ├─ Normalize: (pixel / 255 - mean) / std  per channel
-  │  (model-specific mean/std from the registry)
-  │
-  ├─ ONNX Runtime inference
-  │  (src/models/loader.rs → ort crate → C++ ONNX Runtime backend)
-  │
-  └─ Output: [1, seq_len, embed_dim] tensor
-     │
-     ├─ CLS token (index 0) if present  →  global image representation
-     └─ Patch tokens (the rest)         →  per-region representations
+Image (e.g. 224x224 RGB)
+  |
+  +- Resize short edge to model's input size, center-crop to square
+  |  (src/models/preprocess.rs -- standard ViT pipeline)
+  |
+  +- Normalize: (pixel / 255 - mean) / std  per channel
+  |  (model-specific mean/std from registry)
+  |
+  +- ONNX Runtime inference
+  |  (src/models/loader.rs -> ort crate -> C++ ONNX Runtime backend)
+  |
+  +- Output: [1, seq_len, embed_dim] tensor
+     |
+     +- CLS token (index 0) if present  ->  global image representation
+     +- Patch tokens (the rest)         ->  per-region representations
 ```
 
-The key insight: **the patch tokens are the representation**. Each one is a point in a high-dimensional space (1024-dim for DINOv2, 1280-dim for I-JEPA). The geometry of these points — how they cluster, how they spread, how they relate to each other — is what defines the model's "perception" of the image.
+The patch tokens are the representation. Each is a point in a high-dimensional space (1024-dim for DINOv2, 1280-dim for I-JEPA). The geometry of these points -- how they cluster, how they spread, how they relate to each other -- is what defines the model's internal model of the image.
 
-### What makes models different
+### Why training objectives produce different geometry
 
-The training objective shapes the geometry. Consider our elephant image:
+Consider the elephant image:
 
-**DINOv2** (self-distillation): A student network learns to match a slowly-evolving teacher network's representations across different augmented views of the same image. This creates a consistency pressure: patches in similar semantic regions (elephant body, grass, sky) get pushed toward similar representations. The result is a representation that naturally segments the image — without ever seeing a segmentation label.
+**DINOv2** (self-distillation). A student network matches a slowly-evolving teacher across augmented views. This creates consistency pressure: patches in similar semantic regions get pushed toward similar representations. Elephant body patches cluster together. Background patches cluster together. The result looks like unsupervised segmentation -- no labels needed.
 
-**I-JEPA** (latent prediction): Given some visible patches, predict the representation of masked patches. Unlike MAE (which predicts pixels), I-JEPA predicts in representation space, so it must learn abstract structure. This creates a different pressure: each patch must encode enough context about its neighborhood to predict what's missing. The result is higher patch entropy (2.89 vs 2.52) — each patch carries more unique information.
+**I-JEPA** (latent prediction). Given visible patches, predict the representation of masked patches. Unlike MAE (which predicts pixels), I-JEPA predicts in representation space, so it must learn abstract structure. Each patch must encode enough context about its neighborhood to predict what's missing. This is why patch entropy is higher (2.89 vs 2.52) -- each patch carries more unique information.
 
-**V-JEPA 2** (video prediction): Trained on video, it predicts future frame representations from past frames. Even on a static image, its encoder carries an implicit prior about how the visual world moves and changes. It sees the elephant as something that could move — not just a static pattern.
+**V-JEPA 2** (video prediction). Predict future frame representations from past frames. Even on a static image, the encoder carries a prior about how the visual world moves. It sees the elephant as something that could walk away, not just a static arrangement of pixels.
 
-### How we compare them
+### How cross-model comparison works
 
-Once we have patch tokens from two models, we need to answer: **do these models see the world the same way?**
+Two models, two different embedding spaces. DINOv2 lives in R^1024, I-JEPA in R^1280. You can't subtract them. Instead, compare structural properties.
 
-The problem is that the embedding spaces are different — DINOv2's 1024 dimensions and I-JEPA's 1280 dimensions don't correspond to each other. You can't just subtract them. Instead, we compare **structural properties**:
+**CKA (Centered Kernel Alignment)** -- `src/analysis/cka.rs`
 
-**CKA (Centered Kernel Alignment)** — `src/analysis/cka.rs`
+Build a kernel matrix for each model: K[i,j] = dot(patch_i, patch_j). This captures pairwise similarity structure -- which patches are similar to which, regardless of coordinate system. Center both matrices, measure alignment via HSIC:
 
-Build a kernel matrix for each model: K[i,j] = dot(patch_i, patch_j). This captures the pairwise similarity structure — which patches are similar to which, regardless of the absolute coordinate system. Center both kernel matrices (subtract row/column means), then measure how aligned they are via HSIC (Hilbert-Schmidt Independence Criterion). CKA = 1 if the similarity structures are identical; 0 if they're unrelated.
+`CKA(X, Y) = HSIC(K_X, K_Y) / sqrt(HSIC(K_X, K_X) * HSIC(K_Y, K_Y))`
 
-The math: `CKA(X, Y) = HSIC(K_X, K_Y) / sqrt(HSIC(K_X, K_X) * HSIC(K_Y, K_Y))`
+Invariant to orthogonal transforms and isotropic scaling. Compares geometric structure, not coordinates.
 
-This is invariant to orthogonal transformations and isotropic scaling, so it compares the geometric structure, not the coordinate system.
+**k-NN overlap** -- `src/analysis/knn.rs`
 
-**k-NN overlap** — `src/analysis/knn.rs`
+For each patch, find its 10 nearest neighbors in model A and model B. Count how many overlap. If DINOv2 thinks patches 3, 7, 12 are similar (all on the trunk), does I-JEPA agree? Overlap of 0.278 = 27.8% agreement. Substantial disagreement about what "similar" means.
 
-For each patch, find its 10 nearest neighbors in model A's space and in model B's space. Count how many neighbors overlap. If DINOv2 thinks patches 3, 7, 12 are similar (they're all on the elephant's trunk), does I-JEPA agree? k-NN overlap of 0.278 means only 27.8% agreement — substantial disagreement about what constitutes "similar."
+**Patch correspondence** -- `src/analysis/correspondence.rs`
 
-**Patch correspondence** — `src/analysis/correspondence.rs`
-
-When embedding dimensions match (e.g., DINOv2 and V-JEPA 2 both produce 1024-dim), we can compute cosine similarity between every patch pair and find the optimal assignment using the Hungarian algorithm. This tells us whether there's a clean mapping between the two models' patch representations, or whether they've organized the space in incompatible ways.
+When dimensions match (e.g., DINOv2 and V-JEPA 2, both 1024-dim), compute cosine similarity between every patch pair and find optimal assignment via the Hungarian algorithm. Tells you whether there's a clean mapping between the two representations, or whether they organized the space incompatibly.
 
 ### Per-model health metrics
 
-Beyond cross-model comparison, each model's representation has intrinsic properties that reveal its quality:
+**Effective rank** -- `src/analysis/rank.rs`
 
-**Effective rank** — `src/analysis/rank.rs`
+SVD on the patch matrix. Threshold singular values at 1% of max, count survivors. Rank 60/1024 means 60 effective directions; the other 964 carry negligible information. Not waste -- just concentration.
 
-Compute singular values of the patch matrix, threshold at 1% of the maximum, count how many survive. This is the effective dimensionality — how many independent directions the model uses. A rank of 60/1024 means the model uses 60 directions effectively and the other 964 carry negligible information. Not wasteful — just concentrated.
+**PCA variance spectrum** -- `src/analysis/variance.rs`, `src/analysis/pca.rs`
 
-**PCA variance spectrum** — `src/analysis/variance.rs` and `src/analysis/pca.rs`
+Power method PCA (no LAPACK dependency) on centered patch matrix. Eigenvalue ratios show how information distributes. Steep scree plot = compressible representation. Flat plot = information spread uniformly. Both can be useful depending on your downstream task.
 
-Run PCA via the power method (no LAPACK dependency) on the centered patch matrix. The eigenvalue ratios show how information distributes across components. A steep scree plot (most variance in few components) means the representation is compressible. A flat plot means the model spreads information uniformly. Both can be useful — it depends on the downstream task.
+**Isotropy and uniformity** -- `src/analysis/isotropy.rs`
 
-**Isotropy and uniformity** — `src/analysis/isotropy.rs`
+Two views of the same question: is the representation using its space well?
+- Isotropy (1 - mean pairwise cosine): are patches directionally diverse, or all clustered in a narrow cone?
+- Uniformity (Wang & Isola 2020): log of average pairwise Gaussian kernel on the unit hypersphere. More negative = better coverage. Collapse to few modes pushes uniformity toward 0.
 
-Two complementary views of representation quality:
-- Isotropy (1 - mean pairwise cosine similarity): are patch vectors directionally diverse, or are they all clustered in a narrow cone? High isotropy means each patch points in a distinct direction.
-- Uniformity (Wang & Isola 2020): log of average pairwise Gaussian kernel on the unit hypersphere. Measures whether embeddings are evenly spread across the sphere. More negative = better coverage. Representations that collapse to a few modes will have uniformity near 0.
+**Patch entropy** -- `src/analysis/entropy.rs`
 
-**Patch entropy** — `src/analysis/entropy.rs`
-
-Run k-means clustering on patch tokens, compute Shannon entropy of the cluster assignment distribution. High entropy = patches spread across many clusters = the model creates diverse representations. Low entropy = most patches land in the same cluster = less discriminative.
+k-means on patch tokens, then Shannon entropy of cluster assignments. High entropy = patches spread across many clusters. Low entropy = most patches land in the same cluster. Direct measure of how discriminative the representation is at the patch level.
 
 ### The video model trick
 
-V-JEPA 2 expects video input: `[batch, frames, channels, height, width]`. For single-image analysis, we duplicate the frame (`src/models/loader.rs:infer()` → `run_video()`). With `tubelet_size=2`, the minimum is 2 identical frames, which collapses the temporal dimension to a single step, yielding pure spatial patch tokens. This is a valid encoding — the model's spatial pathway processes the image normally; the temporal pathway simply sees no motion.
+V-JEPA 2 expects `[batch, frames, channels, height, width]`. For single-image analysis, the frame is duplicated (`src/models/loader.rs:infer()` -> `run_video()`). With `tubelet_size=2`, two identical frames collapse the temporal dimension, yielding pure spatial patch tokens. The spatial pathway processes the image normally; the temporal pathway sees no motion. Valid encoding -- just the spatial component of a spatiotemporal model.
 
-### The trust pipeline
+### Validation
 
-Every report embeds a validation summary (`src/validation/`). Before trusting a model's metrics, latent-inspector checks:
-1. **Preprocessing contract**: does the registered resize/crop/normalize match the checked-in golden artifact?
-2. **Tensor semantics**: does the ONNX graph expose the expected input/output names and shapes?
-3. **Reference parity**: does the current output match previously approved reference outputs within tolerance?
+Every report embeds a validation summary (`src/validation/`). Before trusting metrics, the tool checks:
+1. **Preprocessing contract**: registered resize/crop/normalize matches checked-in golden artifact
+2. **Tensor semantics**: ONNX graph exposes expected input/output names and shapes
+3. **Reference parity**: output matches previously approved references within tolerance
 
-Models with `validated` status have passed all three checks against ONNX Runtime inference. Models with `stale` status have reference artifacts that were generated by a different backend (e.g., stub). Models with `unverified` have no reference artifacts yet.
+Status levels: `validated` (passed all checks against ONNX Runtime), `stale` (reference artifacts from a different backend), `unverified` (no reference artifacts yet).
 
 ### Code map
 
 ```
 src/
   models/
-    registry.rs      All model metadata: architecture, normalization, tensor contracts
-    loader.rs        ONNX session creation, inference (image + video paths), stub backend
-    preprocess.rs    Resize + center-crop + normalize → [1, 3, H, W] tensor
+    registry.rs      Model metadata: architecture, normalization, tensor contracts
+    loader.rs        ONNX session, inference (image + video paths), stub backend
+    preprocess.rs    Resize + center-crop + normalize -> [1, 3, H, W] tensor
     cache.rs         Download, SHA-256 verify, partial-resume, cache state
   extract/
-    features.rs      Split ModelOutput → CLS token + patch tokens + attention maps
+    features.rs      ModelOutput -> CLS token + patch tokens + attention maps
   analysis/
-    pca.rs           Power method PCA (no LAPACK needed)
+    pca.rs           Power method PCA (no LAPACK)
     cka.rs           Linear CKA + CLS cosine similarity
     knn.rs           Cosine similarity matrix, top-k neighbors, overlap
     rank.rs          Effective rank via singular value thresholding
@@ -426,8 +423,8 @@ src/
     attention.rs     Gini coefficient on attention weights
     correspondence.rs  Hungarian-matched patch correspondence
   viz/
-    terminal.rs      Rich Unicode terminal output (with ASCII fallback)
-    json.rs          Structured JSON for automation
+    terminal.rs      Rich Unicode terminal output (ASCII fallback)
+    json.rs          Structured JSON
     html.rs          Self-contained HTML report bundles
     png.rs           PCA RGB projections, heatmaps, variance charts
   validation/
@@ -441,36 +438,29 @@ src/
 <summary><h2>Development</h2></summary>
 
 ```bash
-# Build the release binary
 cargo build --release
 
-# Run commands without downloading models
+# Run without downloading models
 LATENT_INSPECTOR_MODEL_BACKEND=stub cargo run -- models
 LATENT_INSPECTOR_MODEL_BACKEND=stub cargo run -- compare docs/assets/img/samples/elephant_sample_image.jpg \
   --models dinov2-vit-l14,ijepa-vit-h14
 
-# Run all tests
 cargo test
-
-# Lint + format
 cargo fmt -- --check
 cargo clippy --all-targets -- -D warnings
 
-# Coverage gate used by CI (excludes the currently untested TUI surface)
+# Coverage (excludes TUI surface)
 cargo llvm-cov --workspace \
   --ignore-filename-regex '(^|/)src/tui/|(^|/)src/cli/tui.rs$' \
   --fail-under-lines 85 \
   --fail-under-functions 80 \
   --summary-only
 
-# Build artifact used by CI
-cargo build --release
-
-# Full CI pipeline
+# Full CI
 make all
 ```
 
-The stub backend (`LATENT_INSPECTOR_MODEL_BACKEND=stub`) produces deterministic synthetic outputs for development and testing without downloading real models. Validation summaries explicitly downgrade stub-backed results to `unverified`. The TUI launches with demo data when no image is provided; when an image is provided it runs the same live analysis pipeline as the CLI.
+The stub backend produces deterministic synthetic outputs for development and testing. Validation summaries downgrade stub-backed results to `unverified`. The TUI shows demo data without an image; with an image it runs the same live pipeline as the CLI.
 
 </details>
 
