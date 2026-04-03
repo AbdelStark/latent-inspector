@@ -512,3 +512,214 @@ fn neighbors_json_falls_back_to_mean_patch_for_clsless_models() {
     assert_eq!(payload["validation"]["status"], "unverified");
     assert_eq!(payload["neighbors"].as_array().unwrap().len(), 2);
 }
+
+#[test]
+fn profile_terminal_shows_space_metrics_and_aggregates() {
+    let dir = tempdir().unwrap();
+    let dataset_dir = dir.path().join("dataset");
+    let nested = dataset_dir.join("class-a");
+    fs::create_dir_all(&nested).unwrap();
+
+    write_image(&dataset_dir.join("root.png"), 11);
+    write_image(&nested.join("leaf.png"), 29);
+    write_image(&nested.join("stem.png"), 43);
+
+    let output = Command::new(bin())
+        .env("LATENT_INSPECTOR_MODEL_BACKEND", "stub")
+        .args([
+            "profile",
+            "--model",
+            "dinov2-vit-l14",
+            "--dataset",
+            dataset_dir.to_str().unwrap(),
+        ])
+        .output()
+        .unwrap();
+
+    assert_eq!(output.status.code(), Some(0));
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Representation Profile: dinov2-vit-l14"));
+    assert!(stdout.contains("Isotropy (cosine):"));
+    assert!(stdout.contains("Isotropy (partition):"));
+    assert!(stdout.contains("Uniformity:"));
+    assert!(stdout.contains("Intrinsic dimensionality:"));
+    assert!(stdout.contains("Per-Image Metric Aggregates"));
+    assert!(stdout.contains("Effective rank"));
+    assert!(stdout.contains("Patch entropy"));
+    assert!(stdout.contains("Dataset Summary"));
+    assert!(stdout.contains("Validation Summary"));
+    assert!(stdout.contains("unverified"));
+    assert!(stdout.contains("stub"));
+}
+
+#[test]
+fn profile_json_output_writes_structured_report() {
+    let dir = tempdir().unwrap();
+    let dataset_dir = dir.path().join("dataset");
+    let nested = dataset_dir.join("class-a");
+    fs::create_dir_all(&nested).unwrap();
+
+    write_image(&dataset_dir.join("root.png"), 11);
+    write_image(&nested.join("leaf.png"), 29);
+    write_image(&nested.join("stem.png"), 43);
+
+    let output_dir = dir.path().join("profile-output");
+    let output = Command::new(bin())
+        .env("LATENT_INSPECTOR_MODEL_BACKEND", "stub")
+        .args([
+            "profile",
+            "--model",
+            "dinov2-vit-l14",
+            "--dataset",
+            dataset_dir.to_str().unwrap(),
+            "--format",
+            "json",
+            "--output",
+            output_dir.to_str().unwrap(),
+        ])
+        .output()
+        .unwrap();
+
+    assert_eq!(output.status.code(), Some(0));
+
+    let payload = read_json(&output_dir.join("profile.json"));
+    assert_eq!(payload["model"], "dinov2-vit-l14");
+    assert_eq!(payload["sample_count"], 3);
+    assert_eq!(payload["embedding_basis"], "cls-token");
+    assert!(payload["embed_dim"].as_u64().unwrap() > 0);
+
+    // Space metrics are present and finite
+    let space = &payload["space_metrics"];
+    assert!(space["isotropy_cosine"].as_f64().is_some());
+    assert!(space["isotropy_partition"].as_f64().is_some());
+    assert!(space["uniformity"].as_f64().is_some());
+    assert!(space["intrinsic_dimensionality"].as_f64().is_some());
+
+    // Aggregate metrics
+    let aggregates = payload["aggregate_metrics"].as_array().unwrap();
+    assert!(!aggregates.is_empty());
+    let agg_keys: Vec<&str> = aggregates
+        .iter()
+        .map(|a| a["key"].as_str().unwrap())
+        .collect();
+    assert!(agg_keys.contains(&"effective_rank"));
+    assert!(agg_keys.contains(&"patch_entropy"));
+    assert!(agg_keys.contains(&"top10_variance_pct"));
+
+    // Per-image metrics
+    let per_image = payload["per_image_metrics"].as_array().unwrap();
+    assert_eq!(per_image.len(), 3);
+
+    // Validation
+    assert_eq!(payload["validation"]["status"], "unverified");
+    assert_eq!(payload["validation"]["backend"]["kind"], "stub");
+
+    // Dataset summary
+    assert_eq!(payload["dataset_summary"]["loaded"], 3);
+
+    // Manifest
+    let manifest = read_artifact_manifest(&output_dir);
+    assert_eq!(manifest["command"], "profile");
+    assert_eq!(manifest["format"], "json");
+    assert_eq!(manifest["primary_artifact"], "profile.json");
+    assert_eq!(manifest["context"]["model"], "dinov2-vit-l14");
+    assert!(manifest["summary"]["isotropy_cosine"].is_number());
+    assert!(manifest["summary"]["uniformity"].is_number());
+    assert!(manifest["summary"]["intrinsic_dimensionality"].is_number());
+    assert_eq!(
+        manifest["validation_summary"]["overall_status"],
+        "unverified"
+    );
+    assert_artifact_metadata(&manifest, "profile.json");
+}
+
+#[test]
+fn profile_html_output_embeds_assets_and_validation() {
+    let dir = tempdir().unwrap();
+    let dataset_dir = dir.path().join("dataset");
+    fs::create_dir_all(&dataset_dir).unwrap();
+
+    write_image(&dataset_dir.join("img1.png"), 11);
+    write_image(&dataset_dir.join("img2.png"), 29);
+    write_image(&dataset_dir.join("img3.png"), 43);
+
+    let output_dir = dir.path().join("profile-html");
+    let output = Command::new(bin())
+        .env("LATENT_INSPECTOR_MODEL_BACKEND", "stub")
+        .args([
+            "profile",
+            "--model",
+            "dinov2-vit-l14",
+            "--dataset",
+            dataset_dir.to_str().unwrap(),
+            "--format",
+            "html",
+            "--output",
+            output_dir.to_str().unwrap(),
+        ])
+        .output()
+        .unwrap();
+
+    assert_eq!(output.status.code(), Some(0));
+
+    let html = fs::read_to_string(output_dir.join("report.html")).unwrap();
+    assert!(html.contains("Representation Profile"));
+    assert!(html.contains("Space-Level Metrics"));
+    assert!(html.contains("Isotropy (cosine)"));
+    assert!(html.contains("Uniformity"));
+    assert!(html.contains("Intrinsic dimensionality"));
+    assert!(html.contains("Per-Image Metric Aggregates"));
+    assert!(html.contains("Validation Summary"));
+    assert!(html.contains("Export Bundle"));
+    assert!(html.contains("dinov2-vit-l14"));
+
+    let payload = read_json(&output_dir.join("profile.json"));
+    assert_eq!(payload["model"], "dinov2-vit-l14");
+    assert_eq!(payload["sample_count"], 3);
+
+    let manifest = read_artifact_manifest(&output_dir);
+    assert_eq!(manifest["command"], "profile");
+    assert_eq!(manifest["format"], "html");
+    assert_eq!(manifest["primary_artifact"], "report.html");
+    assert_artifact_metadata(&manifest, "report.html");
+    assert_artifact_metadata(&manifest, "profile.json");
+    assert!(html.contains(&digest_preview_for(&output_dir.join("profile.json"))));
+}
+
+#[test]
+fn profile_png_output_writes_chart() {
+    let dir = tempdir().unwrap();
+    let dataset_dir = dir.path().join("dataset");
+    fs::create_dir_all(&dataset_dir).unwrap();
+
+    write_image(&dataset_dir.join("img1.png"), 11);
+    write_image(&dataset_dir.join("img2.png"), 29);
+    write_image(&dataset_dir.join("img3.png"), 43);
+
+    let output_dir = dir.path().join("profile-png");
+    let output = Command::new(bin())
+        .env("LATENT_INSPECTOR_MODEL_BACKEND", "stub")
+        .args([
+            "profile",
+            "--model",
+            "dinov2-vit-l14",
+            "--dataset",
+            dataset_dir.to_str().unwrap(),
+            "--format",
+            "png",
+            "--output",
+            output_dir.to_str().unwrap(),
+        ])
+        .output()
+        .unwrap();
+
+    assert_eq!(output.status.code(), Some(0));
+    assert!(output_dir.join("profile.png").exists());
+
+    let manifest = read_artifact_manifest(&output_dir);
+    assert_eq!(manifest["command"], "profile");
+    assert_eq!(manifest["format"], "png");
+    assert_eq!(manifest["primary_artifact"], "profile.png");
+    assert_artifact_metadata(&manifest, "profile.png");
+}
