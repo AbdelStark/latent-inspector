@@ -53,7 +53,7 @@ fn embed_single_image_global_level_outputs_jsonl() {
 
     let record: Value = serde_json::from_str(lines[0]).unwrap();
     assert_eq!(record["model"], "dinov2-vit-l14");
-    assert!(record["embedding"].as_array().unwrap().len() > 0);
+    assert!(!record["embedding"].as_array().unwrap().is_empty());
     assert!(record["embed_dim"].as_u64().unwrap() > 0);
     assert!(record["image"].as_str().unwrap().contains("photo.png"));
 }
@@ -133,7 +133,7 @@ fn embed_patches_level_includes_patch_data() {
     let content = fs::read_to_string(&output_path).unwrap();
     let record: Value = serde_json::from_str(content.lines().next().unwrap()).unwrap();
     assert!(record["n_patches"].as_u64().unwrap() > 0);
-    assert!(record["patches"].as_array().unwrap().len() > 0);
+    assert!(!record["patches"].as_array().unwrap().is_empty());
     // patches should be n_patches * embed_dim elements
     let n_patches = record["n_patches"].as_u64().unwrap() as usize;
     let embed_dim = record["embed_dim"].as_u64().unwrap() as usize;
@@ -175,8 +175,8 @@ fn embed_full_level_includes_both() {
     let content = fs::read_to_string(&output_path).unwrap();
     let record: Value = serde_json::from_str(content.lines().next().unwrap()).unwrap();
     // Full level has both embedding and patches
-    assert!(record["embedding"].as_array().unwrap().len() > 0);
-    assert!(record["patches"].as_array().unwrap().len() > 0);
+    assert!(!record["embedding"].as_array().unwrap().is_empty());
+    assert!(!record["patches"].as_array().unwrap().is_empty());
     assert!(record["basis"].as_str().is_some());
 }
 

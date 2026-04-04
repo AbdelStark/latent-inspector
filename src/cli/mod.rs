@@ -1,5 +1,6 @@
 use clap::{Parser, Subcommand};
 
+pub mod benchmark;
 pub mod compare;
 pub mod drift;
 pub mod embed;
@@ -30,6 +31,8 @@ pub struct Cli {
 
 #[derive(Subcommand, Debug)]
 pub enum Commands {
+    /// Benchmark inference latency for a model.
+    Benchmark(benchmark::BenchmarkArgs),
     /// Compare representations across multiple models for a single image.
     Compare(compare::CompareArgs),
     /// Export embeddings as JSON Lines for downstream use.
