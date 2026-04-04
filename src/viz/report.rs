@@ -348,6 +348,9 @@ pub struct ProfileImageMetrics {
     pub top10_variance_pct: f32,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub spatial_coherence: Option<f32>,
+    pub rankme: f32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub spectral_decay: Option<f32>,
 }
 
 /// Aggregate statistics for a single metric across all profiled images.
