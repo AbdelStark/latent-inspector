@@ -51,6 +51,7 @@ pub struct InspectHtmlAssets {
     pub variance_image: Option<VisualAsset>,
     pub attention_image: Option<VisualAsset>,
     pub similarity_heatmap: Option<VisualAsset>,
+    pub coherence_heatmap: Option<VisualAsset>,
 }
 
 impl InspectHtmlAssets {
@@ -60,6 +61,7 @@ impl InspectHtmlAssets {
             && self.variance_image.is_none()
             && self.attention_image.is_none()
             && self.similarity_heatmap.is_none()
+            && self.coherence_heatmap.is_none()
     }
 }
 
@@ -353,7 +355,7 @@ fn render_html_with_bundle(
         .iter()
         .map(|metric| {
             format!(
-                "<tr><td>{}</td><td>{}/{}</td><td>{}</td><td>{:.2}</td><td>{}</td><td>{}</td><td>{:.1}%</td><td>{}</td><td>{:.3}</td><td>{:.2}</td></tr>",
+                "<tr><td>{}</td><td>{}/{}</td><td>{}</td><td>{:.2}</td><td>{}</td><td>{}</td><td>{:.1}%</td><td>{}</td><td>{:.3}</td><td>{:.2}</td><td>{}</td></tr>",
                 escape_html(&metric.model_name),
                 metric.effective_rank,
                 metric.embed_dim,
@@ -371,6 +373,10 @@ fn render_html_with_bundle(
                 metric.components_90pct,
                 metric.patch_isotropy,
                 metric.patch_uniformity,
+                metric
+                    .spatial_coherence
+                    .map(|value| format!("{value:.3}"))
+                    .unwrap_or_else(|| "N/A".to_string()),
             )
         })
         .collect::<Vec<_>>()
@@ -488,6 +494,7 @@ fn render_html_with_bundle(
       <th>Components@90%</th>
       <th>Patch isotropy</th>
       <th>Patch uniformity</th>
+      <th>Spatial coherence</th>
     </tr>
   </thead>
   <tbody>
@@ -904,6 +911,7 @@ fn render_inspect_html_with_bundle(
                  <tr><td>Top-10 variance concentration</td><td>{:.1}%</td></tr>\
                  <tr><td>Patch isotropy</td><td>{:.3}</td></tr>\
                  <tr><td>Patch uniformity</td><td>{:.2}</td></tr>\
+                 <tr><td>Spatial coherence</td><td>{}</td></tr>\
                  </tbody></table>",
                 metrics.n_patches,
                 metrics.embed_dim,
@@ -924,6 +932,10 @@ fn render_inspect_html_with_bundle(
                 metrics.top10_variance_pct,
                 metrics.patch_isotropy,
                 metrics.patch_uniformity,
+                metrics
+                    .spatial_coherence
+                    .map(|value| format!("{value:.3}"))
+                    .unwrap_or_else(|| "N/A".to_string()),
             ),
         ),
         (
@@ -988,6 +1000,13 @@ fn render_inspect_html_with_bundle(
             ("Embed dim", metrics.embed_dim.to_string()),
             ("Effective rank", metrics.effective_rank.to_string()),
             ("Patch isotropy", format!("{:.3}", metrics.patch_isotropy)),
+            (
+                "Spatial coherence",
+                metrics
+                    .spatial_coherence
+                    .map(|v| format!("{v:.3}"))
+                    .unwrap_or_else(|| "N/A".to_string()),
+            ),
         ],
         &sections,
         bundle,
@@ -1010,6 +1029,9 @@ fn render_inspect_asset_gallery(assets: &InspectHtmlAssets) -> String {
         visuals.push(asset.clone());
     }
     if let Some(asset) = &assets.similarity_heatmap {
+        visuals.push(asset.clone());
+    }
+    if let Some(asset) = &assets.coherence_heatmap {
         visuals.push(asset.clone());
     }
 
@@ -2236,6 +2258,7 @@ mod tests {
                 components_90pct: 41,
                 patch_isotropy: 0.65,
                 patch_uniformity: -2.1,
+                spatial_coherence: Some(0.72),
             },
             validation: validation_summary(model),
             variance_spectrum: VarianceSpectrumReport {
@@ -2304,6 +2327,7 @@ mod tests {
                 components_90pct: 48,
                 patch_isotropy: 0.65,
                 patch_uniformity: -2.1,
+                spatial_coherence: Some(0.72),
             },
             ModelMetrics {
                 model_name: "clip".into(),
@@ -2320,6 +2344,7 @@ mod tests {
                 components_90pct: 36,
                 patch_isotropy: 0.65,
                 patch_uniformity: -2.1,
+                spatial_coherence: Some(0.72),
             },
         ];
         let comparisons = vec![ComparisonMetrics {
@@ -2368,6 +2393,7 @@ mod tests {
                 components_90pct: 48,
                 patch_isotropy: 0.65,
                 patch_uniformity: -2.1,
+                spatial_coherence: Some(0.72),
             },
             ModelMetrics {
                 model_name: "mae".into(),
@@ -2384,6 +2410,7 @@ mod tests {
                 components_90pct: 36,
                 patch_isotropy: 0.65,
                 patch_uniformity: -2.1,
+                spatial_coherence: Some(0.72),
             },
         ];
         let comparisons = vec![ComparisonMetrics {
@@ -2525,6 +2552,12 @@ mod tests {
                 alt: "Patch self-similarity heatmap".into(),
                 description: "Cosine similarity between all patch pairs.".into(),
             }),
+            coherence_heatmap: Some(VisualAsset {
+                title: "Spatial Coherence".into(),
+                path: "dinov2-vit-l14_coherence.png".into(),
+                alt: "Spatial coherence heatmap".into(),
+                description: "Per-patch spatial coherence.".into(),
+            }),
         };
         let html = render_inspect_html(&report, &assets);
 
@@ -2619,6 +2652,12 @@ mod tests {
                 path: "dinov2-vit-l14_similarity.png".into(),
                 alt: "Patch self-similarity heatmap".into(),
                 description: "Cosine similarity between all patch pairs.".into(),
+            }),
+            coherence_heatmap: Some(VisualAsset {
+                title: "Spatial Coherence".into(),
+                path: "dinov2-vit-l14_coherence.png".into(),
+                alt: "Spatial coherence heatmap".into(),
+                description: "Per-patch spatial coherence.".into(),
             }),
         };
 

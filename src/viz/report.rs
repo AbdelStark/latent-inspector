@@ -346,6 +346,8 @@ pub struct ProfileImageMetrics {
     pub patch_norm_mean: f32,
     pub patch_norm_std: f32,
     pub top10_variance_pct: f32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub spatial_coherence: Option<f32>,
 }
 
 /// Aggregate statistics for a single metric across all profiled images.
@@ -683,6 +685,7 @@ mod tests {
                 components_90pct: 64,
                 patch_isotropy: 0.65,
                 patch_uniformity: -2.1,
+                spatial_coherence: Some(0.72),
             },
             ModelMetrics {
                 model_name: "clip".into(),
@@ -699,6 +702,7 @@ mod tests {
                 components_90pct: 52,
                 patch_isotropy: 0.65,
                 patch_uniformity: -2.1,
+                spatial_coherence: Some(0.72),
             },
         ]
     }
@@ -820,6 +824,7 @@ mod tests {
                 components_90pct: 64,
                 patch_isotropy: 0.65,
                 patch_uniformity: -2.1,
+                spatial_coherence: Some(0.72),
             },
             ModelMetrics {
                 model_name: "mae".into(),
@@ -836,6 +841,7 @@ mod tests {
                 components_90pct: 52,
                 patch_isotropy: 0.65,
                 patch_uniformity: -2.1,
+                spatial_coherence: Some(0.72),
             },
         ];
         let comparisons = vec![ComparisonMetrics {

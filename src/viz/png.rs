@@ -230,6 +230,58 @@ pub fn save_series_chart(values: &[f32], output_path: &Path) -> Result<(), VizEr
     Ok(())
 }
 
+/// Minimum output dimension for coherence heatmaps.
+const COHERENCE_MIN_OUTPUT_SIZE: u32 = 448;
+
+/// Save a spatial coherence heatmap as a PNG.
+///
+/// Takes per-patch coherence values (from `spatial_coherence_map`) and renders
+/// them as a grid heatmap where blue = low coherence (spatially differentiated)
+/// and red = high coherence (spatially smooth/segmented).
+///
+/// `coherence_map`: flat Vec of length `grid_size * grid_size`.
+/// `grid_size`: number of patches along each axis (square grid).
+pub fn save_coherence_heatmap(
+    coherence_map: &[f32],
+    grid_size: usize,
+    output_path: &Path,
+) -> Result<(), VizError> {
+    let expected = grid_size * grid_size;
+    if coherence_map.len() < expected {
+        return Err(VizError::Png(format!(
+            "Expected {expected} coherence values for {grid_size}x{grid_size} grid, got {}",
+            coherence_map.len()
+        )));
+    }
+
+    // Normalize to [0, 1] for heatmap coloring
+    let min = coherence_map.iter().copied().fold(f32::INFINITY, f32::min);
+    let max = coherence_map
+        .iter()
+        .copied()
+        .fold(f32::NEG_INFINITY, f32::max);
+    let range = (max - min).max(1e-8);
+
+    let scale = (COHERENCE_MIN_OUTPUT_SIZE as usize / grid_size).max(1);
+    let out_size = (grid_size * scale) as u32;
+
+    let mut img: RgbImage = ImageBuffer::new(out_size, out_size);
+    for py in 0..out_size {
+        for px in 0..out_size {
+            let gx = (px as usize / scale).min(grid_size - 1);
+            let gy = (py as usize / scale).min(grid_size - 1);
+            let idx = gy * grid_size + gx;
+            let normalized = (coherence_map[idx] - min) / range;
+            let color = heatmap_color(normalized);
+            img.put_pixel(px, py, Rgb(color));
+        }
+    }
+
+    img.save(output_path)
+        .map_err(|e| VizError::Png(format!("Failed to save {}: {e}", output_path.display())))?;
+    Ok(())
+}
+
 pub fn save_variance_spectrum_chart(ratios: &[f32], output_path: &Path) -> Result<(), VizError> {
     if ratios.is_empty() {
         return Err(VizError::Png(
@@ -314,5 +366,24 @@ mod tests {
 
         save_series_chart(&[0.2, 0.6, 0.4], &path).unwrap();
         assert!(path.exists());
+    }
+
+    #[test]
+    fn test_save_coherence_heatmap() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("coherence.png");
+        // 4x4 grid with varying coherence values
+        let coherence_map: Vec<f32> = (0..16).map(|i| i as f32 / 15.0).collect();
+        save_coherence_heatmap(&coherence_map, 4, &path).unwrap();
+        assert!(path.exists());
+    }
+
+    #[test]
+    fn test_coherence_heatmap_rejects_wrong_size() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("coherence.png");
+        let coherence_map = vec![0.5; 10]; // not enough for 4x4 grid
+        let result = save_coherence_heatmap(&coherence_map, 4, &path);
+        assert!(result.is_err());
     }
 }

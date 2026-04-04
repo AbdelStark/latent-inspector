@@ -92,6 +92,14 @@ pub fn run(args: InspectArgs) -> Result<(), Error> {
             println!("  Components@90%:   {}", report.metrics.components_90pct);
             println!("  Patch isotropy:   {:.3}", report.metrics.patch_isotropy);
             println!("  Patch uniformity: {:.3}", report.metrics.patch_uniformity);
+            println!(
+                "  Spatial coherence: {}",
+                report
+                    .metrics
+                    .spatial_coherence
+                    .map(|v| format!("{:.3}", v))
+                    .unwrap_or_else(|| "N/A".to_string())
+            );
             if let Some(attention) = &report.attention {
                 println!(
                     "  Attention source: {} ({} layers x {} heads)",
@@ -252,6 +260,21 @@ fn write_inspect_visual_artifacts(
         None
     };
 
+    // Spatial coherence heatmap
+    let coherence_filename = format!("{prefix}_coherence.png");
+    let coherence_heatmap = if let Ok(coh_map) =
+        crate::analysis::spatial_coherence_map(&features.patch_tokens)
+    {
+        crate::viz::png::save_coherence_heatmap(&coh_map, grid, &outdir.join(&coherence_filename))?;
+        Some(assets::visual_asset(
+                coherence_filename,
+                "Spatial Coherence",
+                "Per-patch spatial coherence heatmap. Red = high coherence (similar neighbors), blue = low coherence (differentiated).",
+            ))
+    } else {
+        None
+    };
+
     Ok(crate::viz::html::InspectHtmlAssets {
         source_image: source_image
             .map(|image| {
@@ -276,6 +299,7 @@ fn write_inspect_visual_artifacts(
         )),
         attention_image,
         similarity_heatmap,
+        coherence_heatmap,
     })
 }
 

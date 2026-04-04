@@ -202,7 +202,7 @@ latent-inspector inspect <image> --model <model>
   [--format terminal|json|html|png] [--output <dir>] [--pca-components <n>]
 ```
 
-Full representation analysis: rank, entropy, variance spectrum, patch norm statistics, isotropy, uniformity, attention concentration (when available), and PCA projection.
+Full representation analysis: rank, entropy, variance spectrum, patch norm statistics, isotropy, uniformity, spatial coherence, attention concentration (when available), and PCA projection. PNG/HTML output includes a spatial coherence heatmap.
 
 ### `neighbors` -- k-NN retrieval across a dataset
 
@@ -239,6 +239,15 @@ latent-inspector drift --model <model> --checkpoints <dir> --dataset <dir>
 ```
 
 Load `.onnx` checkpoints from different training stages, compute consecutive CKA. Shows when representations materially shift during training. Natural numeric ordering (`step-2.onnx` before `step-10.onnx`).
+
+### `embed` -- export embeddings as JSON Lines
+
+```bash
+latent-inspector embed <image-or-dir> --model <model>
+  [--level global|patches|full] [--output <file.jsonl>]
+```
+
+Export model embeddings for downstream use (Python, JS, etc). Outputs one JSON object per line (JSONL). Three levels: `global` (CLS/mean-patch vector), `patches` (full patch matrix), `full` (both). Writes to stdout by default; use `--output` for file output. Handles single images and directories (recursive scan).
 
 ### `models` -- registry and cache status
 
@@ -306,6 +315,7 @@ Force ASCII output: `LATENT_INSPECTOR_FORCE_ASCII=1`.
 | Isotropy (partition) | Singular value uniformity | 0 to 1 | Higher = less top-heavy |
 | Uniformity | Hypersphere spread (Wang & Isola 2020) | -inf to 0 | More negative = better |
 | Intrinsic dim | Manifold dimension (Levina & Bickel 2004) | 1+ | Lower than ambient = compressed |
+| Spatial coherence | Similarity of adjacent patches on grid | -1 to 1 | Higher = smoother/segmented |
 
 </details>
 
@@ -414,6 +424,7 @@ src/
     features.rs      ModelOutput -> CLS token + patch tokens + attention maps
   analysis/
     pca.rs           Power method PCA (no LAPACK)
+    coherence.rs     Spatial coherence (adjacent patch similarity on grid)
     cka.rs           Linear CKA + CLS cosine similarity
     knn.rs           Cosine similarity matrix, top-k neighbors, overlap
     rank.rs          Effective rank via singular value thresholding
