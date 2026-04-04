@@ -285,6 +285,14 @@ pub struct DriftStep {
     pub linear_cka: f32,
 }
 
+/// Per-checkpoint representation health snapshot.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DriftCheckpointHealth {
+    pub checkpoint: String,
+    /// RankMe computed over the dataset embedding matrix for this checkpoint.
+    pub rankme: f32,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DriftReport {
     pub model: String,
@@ -295,6 +303,9 @@ pub struct DriftReport {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub dataset_summary: Option<DatasetProcessingSummary>,
     pub drift: Vec<DriftStep>,
+    /// Per-checkpoint representation health (RankMe over dataset embeddings).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub checkpoint_health: Vec<DriftCheckpointHealth>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub mean_consecutive_cka: Option<f32>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -315,6 +326,31 @@ impl DriftReport {
         drift: Vec<DriftStep>,
         validation: Vec<ModelValidationSummary>,
     ) -> Self {
+        Self::with_health(
+            model,
+            checkpoints,
+            dataset,
+            dataset_embedding_basis,
+            checkpoint_names,
+            dataset_summary,
+            drift,
+            Vec::new(),
+            validation,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn with_health(
+        model: impl Into<String>,
+        checkpoints: impl Into<String>,
+        dataset: impl Into<String>,
+        dataset_embedding_basis: EmbeddingBasis,
+        checkpoint_names: Vec<String>,
+        dataset_summary: Option<DatasetProcessingSummary>,
+        drift: Vec<DriftStep>,
+        checkpoint_health: Vec<DriftCheckpointHealth>,
+        validation: Vec<ModelValidationSummary>,
+    ) -> Self {
         let mean_consecutive_cka = (!drift.is_empty())
             .then(|| drift.iter().map(|step| step.linear_cka).sum::<f32>() / drift.len() as f32);
         let largest_shift = drift
@@ -330,6 +366,7 @@ impl DriftReport {
             checkpoint_names,
             dataset_summary,
             drift,
+            checkpoint_health,
             mean_consecutive_cka,
             largest_shift,
             validation,
@@ -338,6 +375,11 @@ impl DriftReport {
 
     pub fn cka_series(&self) -> Vec<f32> {
         self.drift.iter().map(|step| step.linear_cka).collect()
+    }
+
+    /// Returns the per-checkpoint RankMe values for charting.
+    pub fn rankme_series(&self) -> Vec<f32> {
+        self.checkpoint_health.iter().map(|h| h.rankme).collect()
     }
 }
 

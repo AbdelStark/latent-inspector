@@ -839,6 +839,19 @@ pub fn print_drift_report(report: &DriftReport) {
         report.dataset_embedding_basis.label(),
         &rows,
     );
+
+    if !report.checkpoint_health.is_empty() {
+        println!();
+        println!("Checkpoint Representation Health");
+        println!("{}", light_rule(50));
+        println!("  {:<28} {:>8}", "Checkpoint", "RankMe");
+        println!("  {}", light_rule(46));
+        for h in &report.checkpoint_health {
+            println!("  {:<28} {:>8.1}", truncate(&h.checkpoint, 27), h.rankme);
+        }
+        println!("{}", light_rule(50));
+    }
+
     if !report.validation.is_empty() {
         print_validation_summaries(&report.validation);
     }

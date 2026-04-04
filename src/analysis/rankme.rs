@@ -8,6 +8,17 @@
 //! is the Shannon entropy of the normalized singular value distribution.
 
 use crate::analysis::variance::VarianceSpectrum;
+use crate::errors::AnalysisError;
+use ndarray::Array2;
+
+/// Compute RankMe directly from a data matrix `[N, D]`.
+///
+/// Runs PCA with up to `max_components` components, then computes the smooth
+/// effective rank from the resulting singular value distribution.
+pub fn rankme(data: &Array2<f32>, max_components: usize) -> Result<f32, AnalysisError> {
+    let spec = crate::analysis::variance_spectrum(data, max_components)?;
+    Ok(rankme_from_spectrum(&spec))
+}
 
 /// Compute RankMe from a pre-computed variance spectrum.
 ///

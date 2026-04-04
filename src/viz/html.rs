@@ -747,7 +747,30 @@ fn render_drift_html_with_bundle(
                 .to_string()
         });
 
+    let health_section = if report.checkpoint_health.is_empty() {
+        String::new()
+    } else {
+        let health_rows = report
+            .checkpoint_health
+            .iter()
+            .map(|h| {
+                format!(
+                    "<tr><td><code>{}</code></td><td>{:.1}</td></tr>",
+                    escape_html(&h.checkpoint),
+                    h.rankme,
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        format!(
+            "<table><thead><tr><th>Checkpoint</th><th>RankMe</th></tr></thead><tbody>{health_rows}</tbody></table>"
+        )
+    };
+
     let mut sections = vec![("Consecutive Drift", rows)];
+    if !health_section.is_empty() {
+        sections.push(("Checkpoint Representation Health", health_section));
+    }
     if !assets.is_empty() {
         sections.push((
             "Visual Artefacts",
