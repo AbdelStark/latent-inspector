@@ -355,7 +355,7 @@ fn render_html_with_bundle(
         .iter()
         .map(|metric| {
             format!(
-                "<tr><td>{}</td><td>{}/{}</td><td>{}</td><td>{:.2}</td><td>{}</td><td>{}</td><td>{:.1}%</td><td>{}</td><td>{:.3}</td><td>{:.2}</td><td>{}</td></tr>",
+                "<tr><td>{}</td><td>{}/{}</td><td>{}</td><td>{:.2}</td><td>{}</td><td>{}</td><td>{:.1}%</td><td>{}</td><td>{:.3}</td><td>{:.2}</td><td>{}</td><td>{:.1}</td><td>{}</td></tr>",
                 escape_html(&metric.model_name),
                 metric.effective_rank,
                 metric.embed_dim,
@@ -376,6 +376,11 @@ fn render_html_with_bundle(
                 metric
                     .spatial_coherence
                     .map(|value| format!("{value:.3}"))
+                    .unwrap_or_else(|| "N/A".to_string()),
+                metric.rankme,
+                metric
+                    .spectral_decay
+                    .map(|value| format!("{value:.2}"))
                     .unwrap_or_else(|| "N/A".to_string()),
             )
         })
@@ -495,6 +500,8 @@ fn render_html_with_bundle(
       <th>Patch isotropy</th>
       <th>Patch uniformity</th>
       <th>Spatial coherence</th>
+      <th>RankMe</th>
+      <th>Spectral decay</th>
     </tr>
   </thead>
   <tbody>
@@ -912,6 +919,8 @@ fn render_inspect_html_with_bundle(
                  <tr><td>Patch isotropy</td><td>{:.3}</td></tr>\
                  <tr><td>Patch uniformity</td><td>{:.2}</td></tr>\
                  <tr><td>Spatial coherence</td><td>{}</td></tr>\
+                 <tr><td>RankMe (smooth rank)</td><td>{:.1}</td></tr>\
+                 <tr><td>Spectral decay (&beta;)</td><td>{}</td></tr>\
                  </tbody></table>",
                 metrics.n_patches,
                 metrics.embed_dim,
@@ -935,6 +944,11 @@ fn render_inspect_html_with_bundle(
                 metrics
                     .spatial_coherence
                     .map(|value| format!("{value:.3}"))
+                    .unwrap_or_else(|| "N/A".to_string()),
+                metrics.rankme,
+                metrics
+                    .spectral_decay
+                    .map(|value| format!("{value:.2}"))
                     .unwrap_or_else(|| "N/A".to_string()),
             ),
         ),
@@ -999,6 +1013,7 @@ fn render_inspect_html_with_bundle(
             ("Patch tokens", metrics.n_patches.to_string()),
             ("Embed dim", metrics.embed_dim.to_string()),
             ("Effective rank", metrics.effective_rank.to_string()),
+            ("RankMe", format!("{:.1}", metrics.rankme)),
             ("Patch isotropy", format!("{:.3}", metrics.patch_isotropy)),
             (
                 "Spatial coherence",
@@ -2259,6 +2274,8 @@ mod tests {
                 patch_isotropy: 0.65,
                 patch_uniformity: -2.1,
                 spatial_coherence: Some(0.72),
+                rankme: 18.5,
+                spectral_decay: Some(1.42),
             },
             validation: validation_summary(model),
             variance_spectrum: VarianceSpectrumReport {
@@ -2328,6 +2345,8 @@ mod tests {
                 patch_isotropy: 0.65,
                 patch_uniformity: -2.1,
                 spatial_coherence: Some(0.72),
+                rankme: 22.4,
+                spectral_decay: Some(1.35),
             },
             ModelMetrics {
                 model_name: "clip".into(),
@@ -2345,6 +2364,8 @@ mod tests {
                 patch_isotropy: 0.65,
                 patch_uniformity: -2.1,
                 spatial_coherence: Some(0.72),
+                rankme: 15.8,
+                spectral_decay: Some(1.92),
             },
         ];
         let comparisons = vec![ComparisonMetrics {
@@ -2394,6 +2415,8 @@ mod tests {
                 patch_isotropy: 0.65,
                 patch_uniformity: -2.1,
                 spatial_coherence: Some(0.72),
+                rankme: 22.4,
+                spectral_decay: Some(1.35),
             },
             ModelMetrics {
                 model_name: "mae".into(),
@@ -2411,6 +2434,8 @@ mod tests {
                 patch_isotropy: 0.65,
                 patch_uniformity: -2.1,
                 spatial_coherence: Some(0.72),
+                rankme: 15.8,
+                spectral_decay: Some(1.92),
             },
         ];
         let comparisons = vec![ComparisonMetrics {

@@ -100,6 +100,15 @@ pub fn run(args: InspectArgs) -> Result<(), Error> {
                     .map(|v| format!("{:.3}", v))
                     .unwrap_or_else(|| "N/A".to_string())
             );
+            println!("  RankMe:           {:.1}", report.metrics.rankme);
+            println!(
+                "  Spectral decay:   {}",
+                report
+                    .metrics
+                    .spectral_decay
+                    .map(|v| format!("{:.2}", v))
+                    .unwrap_or_else(|| "N/A".to_string())
+            );
             if let Some(attention) = &report.attention {
                 println!(
                     "  Attention source: {} ({} layers x {} heads)",

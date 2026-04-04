@@ -135,6 +135,8 @@ mod tests {
             patch_isotropy: 0.65,
             patch_uniformity: -2.1,
             spatial_coherence: Some(0.72),
+            rankme: 18.5,
+            spectral_decay: Some(1.42),
         }
     }
 

@@ -273,6 +273,23 @@ pub fn print_metrics_table(metrics: &[ModelMetrics]) {
     }
     println!();
 
+    print!("{:<22}", "RankMe");
+    for m in metrics {
+        print!("{:<16}", format!("{:.1}", m.rankme));
+    }
+    println!();
+
+    print!("{:<22}", "Spectral decay");
+    for m in metrics {
+        print!(
+            "{:<16}",
+            m.spectral_decay
+                .map(|v| format!("{:.2}", v))
+                .unwrap_or_else(|| "N/A".to_string())
+        );
+    }
+    println!();
+
     println!("{}", heavy_rule(80));
 }
 

@@ -45,7 +45,7 @@ pub fn draw(frame: &mut Frame, area: Rect, app: &App) {
     };
 
     let chunks = Layout::vertical([
-        Constraint::Length(14), // Metrics gauges
+        Constraint::Length(18), // Metrics gauges
         Constraint::Fill(1),    // Variance spectrum
     ])
     .split(inner);
@@ -155,6 +155,26 @@ fn draw_metrics_panel(frame: &mut Frame, area: Rect, m: &crate::analysis::ModelM
             gauge_width,
             true,
             "0=independent, 1=smooth/segmented",
+        ),
+        gauge_line(
+            "RankMe",
+            &format!("{:.1}", m.rankme),
+            (m.rankme / m.embed_dim as f32).min(1.0),
+            gauge_width,
+            true,
+            "Smooth eff. rank (higher=richer)",
+        ),
+        gauge_line(
+            "Spectral decay",
+            &m.spectral_decay
+                .map(|v| format!("{:.2}", v))
+                .unwrap_or_else(|| "N/A".into()),
+            m.spectral_decay
+                .map(|v| (v / 4.0).clamp(0.0, 1.0))
+                .unwrap_or(0.0),
+            gauge_width,
+            false,
+            "Lower → more uniform spread",
         ),
     ];
 

@@ -686,6 +686,8 @@ mod tests {
                 patch_isotropy: 0.65,
                 patch_uniformity: -2.1,
                 spatial_coherence: Some(0.72),
+                rankme: 22.4,
+                spectral_decay: Some(1.35),
             },
             ModelMetrics {
                 model_name: "clip".into(),
@@ -703,6 +705,8 @@ mod tests {
                 patch_isotropy: 0.65,
                 patch_uniformity: -2.1,
                 spatial_coherence: Some(0.72),
+                rankme: 15.8,
+                spectral_decay: Some(1.92),
             },
         ]
     }
@@ -825,6 +829,8 @@ mod tests {
                 patch_isotropy: 0.65,
                 patch_uniformity: -2.1,
                 spatial_coherence: Some(0.72),
+                rankme: 22.4,
+                spectral_decay: Some(1.35),
             },
             ModelMetrics {
                 model_name: "mae".into(),
@@ -842,6 +848,8 @@ mod tests {
                 patch_isotropy: 0.65,
                 patch_uniformity: -2.1,
                 spatial_coherence: Some(0.72),
+                rankme: 15.8,
+                spectral_decay: Some(1.92),
             },
         ];
         let comparisons = vec![ComparisonMetrics {
