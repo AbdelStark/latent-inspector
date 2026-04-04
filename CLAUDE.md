@@ -33,7 +33,7 @@ src/
   extract/      Feature extraction (CLS token, patch tokens, attention maps)
   analysis/     Representation metrics (PCA, CKA, k-NN, entropy, isotropy, coherence, etc.)
   viz/          Output rendering: terminal, JSON, HTML, PNG
-  cli/          Subcommands: compare, inspect, neighbors, profile, similarity, drift, models, validate, tui
+  cli/          Subcommands: compare, embed, inspect, neighbors, profile, similarity, drift, models, validate, tui
   tui/          Interactive terminal UI (ratatui)
   validation/   Contract checks, reference parity, golden fixtures
   dataset/      Image dataset loading and iteration
@@ -59,7 +59,7 @@ src/
 5. Update display in: `src/viz/terminal.rs`, `src/viz/html.rs`, `src/viz/json.rs`
 6. Update `src/cli/inspect.rs` terminal output
 7. Update TUI views: `src/tui/views/inspector.rs`, `src/tui/views/compare.rs`, `src/tui/views/dashboard.rs`
-8. Add `spatial_coherence` field to all `ModelMetrics` literals in test fixtures
+8. Add the new field to all `ModelMetrics` literals in test fixtures
 9. Write tests in the metric module
 10. Run `cargo test && cargo clippy --all-targets -- -D warnings && cargo fmt -- --check`
 
