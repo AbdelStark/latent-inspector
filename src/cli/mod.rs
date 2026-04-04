@@ -2,6 +2,7 @@ use clap::{Parser, Subcommand};
 
 pub mod compare;
 pub mod drift;
+pub mod embed;
 pub mod inspect;
 pub mod models;
 pub mod neighbors;
@@ -31,6 +32,8 @@ pub struct Cli {
 pub enum Commands {
     /// Compare representations across multiple models for a single image.
     Compare(compare::CompareArgs),
+    /// Export embeddings as JSON Lines for downstream use.
+    Embed(embed::EmbedArgs),
     /// Deep-dive analysis of a single model's representation.
     Inspect(inspect::InspectArgs),
     /// Find nearest neighbors in a dataset for a query image.

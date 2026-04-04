@@ -34,6 +34,7 @@ fn main() {
 
     let result = match args.command {
         cli::Commands::Compare(a) => cli::compare::run(a),
+        cli::Commands::Embed(a) => cli::embed::run(a),
         cli::Commands::Inspect(a) => cli::inspect::run(a),
         cli::Commands::Neighbors(a) => cli::neighbors::run(a),
         cli::Commands::Profile(a) => cli::profile::run(a),
