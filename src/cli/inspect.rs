@@ -379,6 +379,8 @@ fn inspect_manifest_context(args: &InspectArgs, requested_components: usize) -> 
 fn inspect_manifest_summary(report: &crate::viz::report::InspectReport) -> serde_json::Value {
     json!({
         "effective_rank": report.metrics.effective_rank,
+        "rankme": report.metrics.rankme,
+        "spectral_decay": report.metrics.spectral_decay,
         "patch_entropy": report.metrics.patch_entropy,
         "attention_gini": report.metrics.attention_gini,
         "components_90pct": report.metrics.components_90pct,

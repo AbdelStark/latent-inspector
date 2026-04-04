@@ -960,12 +960,14 @@ fn render_inspect_html_with_bundle(
                  <div class=\"stat-card\"><span>Components @ 90%</span><strong>{}</strong></div>\
                  <div class=\"stat-card\"><span>Components @ 99%</span><strong>{}</strong></div>\
                  <div class=\"stat-card\"><span>Top-10 concentration</span><strong>{:.1}%</strong></div>\
+                 <div class=\"stat-card\"><span>RankMe</span><strong>{:.1}</strong></div>\
                  <div class=\"stat-card\"><span>Components shown</span><strong>{}</strong></div>\
                  </div>{}",
                 escape_html(&report.model),
                 variance.components_90pct,
                 variance.components_99pct,
                 variance.top10_concentration * 100.0,
+                variance.rankme,
                 variance.ratios.len(),
                 variance_table,
             ),
@@ -2284,6 +2286,8 @@ mod tests {
                 components_90pct: 41,
                 components_99pct: 88,
                 top10_concentration: 0.62,
+                rankme: 18.5,
+                spectral_decay: Some(1.42),
             },
             attention: Some(crate::viz::report::InspectAttentionSummary {
                 mean_gini: 0.58,

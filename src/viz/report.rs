@@ -155,6 +155,11 @@ pub struct VarianceSpectrumReport {
     pub components_90pct: usize,
     pub components_99pct: usize,
     pub top10_concentration: f32,
+    /// Smooth effective rank (RankMe, Garrido et al. 2023).
+    pub rankme: f32,
+    /// Power-law spectral decay exponent. `None` if fewer than 2 positive eigenvalues.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub spectral_decay: Option<f32>,
 }
 
 impl From<&VarianceSpectrum> for VarianceSpectrumReport {
@@ -165,6 +170,8 @@ impl From<&VarianceSpectrum> for VarianceSpectrumReport {
             components_90pct: value.components_90pct,
             components_99pct: value.components_99pct,
             top10_concentration: value.top10_concentration,
+            rankme: crate::analysis::rankme_from_spectrum(value),
+            spectral_decay: crate::analysis::spectral_decay_from_spectrum(value),
         }
     }
 }
