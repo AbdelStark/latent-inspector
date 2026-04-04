@@ -316,6 +316,8 @@ Force ASCII output: `LATENT_INSPECTOR_FORCE_ASCII=1`.
 | Uniformity | Hypersphere spread (Wang & Isola 2020) | -inf to 0 | More negative = better |
 | Intrinsic dim | Manifold dimension (Levina & Bickel 2004) | 1+ | Lower than ambient = compressed |
 | Spatial coherence | Similarity of adjacent patches on grid | -1 to 1 | Higher = smoother/segmented |
+| RankMe | Smooth effective rank (Garrido et al. 2023) | 1 to k | Higher = richer representation |
+| Spectral decay (β) | Power-law eigenvalue decay exponent | 0+ | Lower = more uniform spread |
 
 </details>
 
@@ -398,6 +400,14 @@ Two views of the same question: is the representation using its space well?
 
 k-means on patch tokens, then Shannon entropy of cluster assignments. High entropy = patches spread across many clusters. Low entropy = most patches land in the same cluster. Direct measure of how discriminative the representation is at the patch level.
 
+**RankMe (smooth effective rank)** -- `src/analysis/rankme.rs`
+
+Garrido et al. (ICML 2023). Computes `exp(H(p))` where `p` is the normalized singular value distribution and `H` is Shannon entropy. Unlike threshold-based effective rank, RankMe is smooth and differentiable -- a value of 1 means total collapse (all variance in one dimension), while a value near `k` means variance is uniformly spread. Better at detecting subtle representation degradation.
+
+**Spectral decay (β)** -- `src/analysis/spectral_decay.rs`
+
+Fits a power law `λ_i ~ i^(-β)` to the eigenvalue spectrum via least-squares in log-log space. Low β (< 1) means slow decay -- the representation distributes information broadly across dimensions. High β (> 2) means rapid decay -- a few dimensions dominate. Complements RankMe: RankMe tells you *how many* effective dimensions, spectral decay tells you *how sharply* the spectrum drops off.
+
 ### The video model trick
 
 V-JEPA 2 expects `[batch, frames, channels, height, width]`. For single-image analysis, the frame is duplicated (`src/models/loader.rs:infer()` -> `run_video()`). With `tubelet_size=2`, two identical frames collapse the temporal dimension, yielding pure spatial patch tokens. The spatial pathway processes the image normally; the temporal pathway sees no motion. Valid encoding -- just the spatial component of a spatiotemporal model.
@@ -433,6 +443,8 @@ src/
     isotropy.rs      Cosine isotropy, partition function isotropy, uniformity
     attention.rs     Gini coefficient on attention weights
     correspondence.rs  Hungarian-matched patch correspondence
+    rankme.rs        Smooth effective rank via Shannon entropy (Garrido 2023)
+    spectral_decay.rs  Power-law eigenvalue decay exponent
   viz/
     terminal.rs      Rich Unicode terminal output (ASCII fallback)
     json.rs          Structured JSON
