@@ -992,6 +992,11 @@ fn inspect_terminal_shows_metrics_and_validation() {
         stdout.contains("Patch uniformity"),
         "Expected patch uniformity metric"
     );
+    assert!(stdout.contains("RankMe"), "Expected RankMe metric");
+    assert!(
+        stdout.contains("Spectral decay"),
+        "Expected spectral decay metric"
+    );
     // Variance spectrum
     assert!(
         stdout.contains("Variance spectrum"),
@@ -1062,6 +1067,11 @@ fn compare_terminal_shows_metrics_table_and_matrices() {
     assert!(
         stdout.contains("Patch uniformity"),
         "Expected patch uniformity row"
+    );
+    assert!(stdout.contains("RankMe"), "Expected RankMe row");
+    assert!(
+        stdout.contains("Spectral decay"),
+        "Expected spectral decay row"
     );
     // Pairwise matrices
     assert!(

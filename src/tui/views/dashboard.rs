@@ -307,6 +307,12 @@ fn draw_selected_model_detail(frame: &mut Frame, area: Rect, app: &App) {
             m.spatial_coherence.unwrap_or(0.0),
             true,
         ));
+        lines.push(metric_line(
+            "  RankMe",
+            &format!("{:.1}", m.rankme),
+            (m.rankme / m.embed_dim as f32).min(1.0),
+            true,
+        ));
     }
 
     let paragraph = Paragraph::new(Text::from(lines)).style(Style::new().bg(theme::BG_DARK));

@@ -60,6 +60,8 @@ fn draw_metrics_table(frame: &mut Frame, area: Rect, app: &App) {
         "Patch isotropy",
         "Patch uniformity",
         "Spatial coherence",
+        "RankMe",
+        "Spectral decay",
     ];
 
     let model_names: Vec<&str> = app.metrics.iter().map(|m| m.model_name.as_str()).collect();
@@ -94,6 +96,11 @@ fn draw_metrics_table(frame: &mut Frame, area: Rect, app: &App) {
                 9 => m
                     .spatial_coherence
                     .map(|v| format!("{:.3}", v))
+                    .unwrap_or_else(|| "N/A".into()),
+                10 => format!("{:.1}", m.rankme),
+                11 => m
+                    .spectral_decay
+                    .map(|v| format!("{:.2}", v))
                     .unwrap_or_else(|| "N/A".into()),
                 _ => "—".into(),
             };

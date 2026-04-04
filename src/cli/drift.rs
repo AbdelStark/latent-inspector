@@ -1,4 +1,4 @@
-use crate::analysis::linear_cka;
+use crate::analysis::{linear_cka, rankme};
 use crate::dataset::ImageEntry;
 use crate::errors::Error;
 use crate::extract::{EmbeddingBasis, ExtractedFeatures};
@@ -6,7 +6,7 @@ use crate::models::ModelSession;
 use crate::validation::summarize_session_or_unverified;
 use crate::viz::assets;
 use crate::viz::manifest::{ArtifactKind, OutputArtifactManifest};
-use crate::viz::report::{DriftReport, DriftStep};
+use crate::viz::report::{DriftCheckpointHealth, DriftReport, DriftStep};
 use crate::viz::{terminal, OutputFormat};
 use clap::Args;
 use ndarray::Array2;
@@ -109,7 +109,20 @@ pub fn run(args: DriftArgs) -> Result<(), Error> {
         });
     }
 
-    let report = DriftReport::new(
+    // Compute per-checkpoint RankMe on the dataset embedding matrix
+    let max_components = crate::analysis::MAX_PCA_COMPONENTS;
+    let checkpoint_health: Vec<DriftCheckpointHealth> = all_embeddings
+        .iter()
+        .map(|(name, mat)| {
+            let rm = rankme(mat, max_components).unwrap_or(0.0);
+            DriftCheckpointHealth {
+                checkpoint: name.clone(),
+                rankme: rm,
+            }
+        })
+        .collect();
+
+    let report = DriftReport::with_health(
         args.model.clone(),
         args.checkpoints.display().to_string(),
         args.dataset.display().to_string(),
@@ -117,6 +130,7 @@ pub fn run(args: DriftArgs) -> Result<(), Error> {
         checkpoint_names,
         dataset_summary,
         drift_rows,
+        checkpoint_health,
         validation,
     );
     render_output(&args, &report, &preview_entries)?;

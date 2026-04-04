@@ -9,6 +9,8 @@ pub mod isotropy;
 pub mod knn;
 pub mod pca;
 pub mod rank;
+pub mod rankme;
+pub mod spectral_decay;
 pub mod uniformity;
 pub mod variance;
 
@@ -23,6 +25,8 @@ pub use isotropy::{isotropy_score, partition_isotropy};
 pub use knn::{cosine_similarity_matrix, knn_overlap, top_k_neighbors};
 pub use pca::{pca, transform, transform_top_k, PcaResult};
 pub use rank::{dead_dimensions, effective_rank};
+pub use rankme::{rankme, rankme_from_spectrum};
+pub use spectral_decay::spectral_decay_from_spectrum;
 pub use uniformity::uniformity;
 pub use variance::{variance_spectrum, variance_spectrum_from_pca_result, VarianceSpectrum};
 
@@ -63,6 +67,16 @@ pub struct ModelMetrics {
     /// `None` when the patch count is not a perfect square grid.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub spatial_coherence: Option<f32>,
+    /// RankMe: smooth effective rank via Shannon entropy of normalized singular values.
+    /// exp(H(p)) where p is the normalized singular value distribution.
+    /// Range [1, k] — higher means richer, more spread-out representations.
+    /// Reference: Garrido et al., ICML 2023.
+    pub rankme: f32,
+    /// Spectral decay exponent (beta): power-law fit to eigenvalue decay.
+    /// Higher beta = faster decay = more concentrated representation.
+    /// `None` when fewer than 2 positive eigenvalues exist.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub spectral_decay: Option<f32>,
 }
 
 /// Compute all per-model metrics for the given features.
@@ -118,6 +132,10 @@ pub fn model_metrics_from_spectrum(
     // Spatial coherence: gracefully degrade when patch count is not a perfect square
     let sc = spatial_coherence(&features.patch_tokens).ok();
 
+    // Smooth effective rank (RankMe) and spectral decay rate
+    let rm = rankme_from_spectrum(spec);
+    let sd = spectral_decay_from_spectrum(spec);
+
     Ok(ModelMetrics {
         model_name: model_name.to_string(),
         n_patches: features.n_patches,
@@ -134,6 +152,8 @@ pub fn model_metrics_from_spectrum(
         patch_isotropy: iso,
         patch_uniformity: uni,
         spatial_coherence: sc,
+        rankme: rm,
+        spectral_decay: sd,
     })
 }
 

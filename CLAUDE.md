@@ -31,7 +31,7 @@ cargo llvm-cov --workspace \
 src/
   models/       Model registry, ONNX loading, preprocessing, download caching
   extract/      Feature extraction (CLS token, patch tokens, attention maps)
-  analysis/     Representation metrics (PCA, CKA, k-NN, entropy, isotropy, coherence, etc.)
+  analysis/     Representation metrics (PCA, CKA, k-NN, entropy, isotropy, coherence, RankMe, spectral decay, etc.)
   viz/          Output rendering: terminal, JSON, HTML, PNG
   cli/          Subcommands: compare, embed, inspect, neighbors, profile, similarity, drift, models, validate, tui
   tui/          Interactive terminal UI (ratatui)

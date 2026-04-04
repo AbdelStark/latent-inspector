@@ -8,11 +8,7 @@ use tempfile::tempdir;
 
 fn write_image(path: &Path) {
     let image = image::RgbImage::from_fn(224, 224, |x, y| {
-        image::Rgb([
-            (x as u8) % 255,
-            (y as u8) % 255,
-            ((x + y) as u8) % 255,
-        ])
+        image::Rgb([(x as u8) % 255, (y as u8) % 255, ((x + y) as u8) % 255])
     });
     image.save(path).unwrap();
 }

@@ -121,6 +121,8 @@ pub fn run(args: ProfileArgs) -> Result<(), Error> {
             patch_norm_std: s.metrics.patch_norm_std,
             top10_variance_pct: s.metrics.top10_variance_pct,
             spatial_coherence: s.metrics.spatial_coherence,
+            rankme: s.metrics.rankme,
+            spectral_decay: s.metrics.spectral_decay,
         })
         .collect();
 
@@ -186,6 +188,21 @@ fn build_aggregates(samples: &[ProfileSample]) -> Vec<crate::viz::report::Aggreg
             "spatial_coherence",
             "Spatial coherence",
             &coherence,
+        ));
+    }
+
+    let rankme: Vec<f32> = samples.iter().map(|s| s.metrics.rankme).collect();
+    aggs.push(build_aggregate("rankme", "RankMe", &rankme));
+
+    let spectral_decay: Vec<f32> = samples
+        .iter()
+        .filter_map(|s| s.metrics.spectral_decay)
+        .collect();
+    if !spectral_decay.is_empty() {
+        aggs.push(build_aggregate(
+            "spectral_decay",
+            "Spectral decay",
+            &spectral_decay,
         ));
     }
 
