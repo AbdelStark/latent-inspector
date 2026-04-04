@@ -51,6 +51,7 @@ pub struct InspectHtmlAssets {
     pub variance_image: Option<VisualAsset>,
     pub attention_image: Option<VisualAsset>,
     pub similarity_heatmap: Option<VisualAsset>,
+    pub coherence_heatmap: Option<VisualAsset>,
 }
 
 impl InspectHtmlAssets {
@@ -60,6 +61,7 @@ impl InspectHtmlAssets {
             && self.variance_image.is_none()
             && self.attention_image.is_none()
             && self.similarity_heatmap.is_none()
+            && self.coherence_heatmap.is_none()
     }
 }
 
@@ -1027,6 +1029,9 @@ fn render_inspect_asset_gallery(assets: &InspectHtmlAssets) -> String {
         visuals.push(asset.clone());
     }
     if let Some(asset) = &assets.similarity_heatmap {
+        visuals.push(asset.clone());
+    }
+    if let Some(asset) = &assets.coherence_heatmap {
         visuals.push(asset.clone());
     }
 
@@ -2547,6 +2552,12 @@ mod tests {
                 alt: "Patch self-similarity heatmap".into(),
                 description: "Cosine similarity between all patch pairs.".into(),
             }),
+            coherence_heatmap: Some(VisualAsset {
+                title: "Spatial Coherence".into(),
+                path: "dinov2-vit-l14_coherence.png".into(),
+                alt: "Spatial coherence heatmap".into(),
+                description: "Per-patch spatial coherence.".into(),
+            }),
         };
         let html = render_inspect_html(&report, &assets);
 
@@ -2641,6 +2652,12 @@ mod tests {
                 path: "dinov2-vit-l14_similarity.png".into(),
                 alt: "Patch self-similarity heatmap".into(),
                 description: "Cosine similarity between all patch pairs.".into(),
+            }),
+            coherence_heatmap: Some(VisualAsset {
+                title: "Spatial Coherence".into(),
+                path: "dinov2-vit-l14_coherence.png".into(),
+                alt: "Spatial coherence heatmap".into(),
+                description: "Per-patch spatial coherence.".into(),
             }),
         };
 
