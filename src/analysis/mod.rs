@@ -1,5 +1,6 @@
 pub mod attention;
 pub mod cka;
+pub mod coherence;
 pub mod correspondence;
 pub mod entropy;
 pub(crate) mod finite;
@@ -13,6 +14,7 @@ pub mod variance;
 
 pub use attention::{gini, mean_gini, per_head_gini};
 pub use cka::{cls_cosine_similarity, linear_cka};
+pub use coherence::{spatial_coherence, spatial_coherence_map};
 pub use correspondence::{patch_correspondence, patch_cosine_similarity, CorrespondenceResult};
 pub use entropy::{patch_entropy, patch_norm_stats, shannon_entropy, NormStats};
 pub use finite::square_grid_side;
@@ -55,6 +57,12 @@ pub struct ModelMetrics {
     pub patch_isotropy: f32,
     /// Uniformity of the patch embeddings on the unit hypersphere (more negative = better spread).
     pub patch_uniformity: f32,
+    /// Spatial coherence: mean cosine similarity between adjacent patches on the grid.
+    /// High values (~1) indicate smooth, segmentation-like representations (e.g. DINOv2).
+    /// Low values (~0) indicate spatially differentiated representations (e.g. I-JEPA).
+    /// `None` when the patch count is not a perfect square grid.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub spatial_coherence: Option<f32>,
 }
 
 /// Compute all per-model metrics for the given features.
@@ -107,6 +115,9 @@ pub fn model_metrics_from_spectrum(
         0.0
     };
 
+    // Spatial coherence: gracefully degrade when patch count is not a perfect square
+    let sc = spatial_coherence(&features.patch_tokens).ok();
+
     Ok(ModelMetrics {
         model_name: model_name.to_string(),
         n_patches: features.n_patches,
@@ -122,6 +133,7 @@ pub fn model_metrics_from_spectrum(
         components_90pct: spec.components_90pct,
         patch_isotropy: iso,
         patch_uniformity: uni,
+        spatial_coherence: sc,
     })
 }
 

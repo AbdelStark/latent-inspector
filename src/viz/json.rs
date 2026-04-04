@@ -134,6 +134,7 @@ mod tests {
             components_90pct: 32,
             patch_isotropy: 0.65,
             patch_uniformity: -2.1,
+            spatial_coherence: Some(0.72),
         }
     }
 

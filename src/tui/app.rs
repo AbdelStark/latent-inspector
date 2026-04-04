@@ -353,6 +353,7 @@ fn demo_metrics() -> Vec<ModelMetrics> {
             components_90pct: 47,
             patch_isotropy: 0.72,
             patch_uniformity: -2.8,
+            spatial_coherence: Some(0.847),
         },
         ModelMetrics {
             model_name: "mae-vit-l16".into(),
@@ -369,6 +370,7 @@ fn demo_metrics() -> Vec<ModelMetrics> {
             components_90pct: 31,
             patch_isotropy: 0.45,
             patch_uniformity: -1.3,
+            spatial_coherence: Some(0.523),
         },
         ModelMetrics {
             model_name: "clip-vit-l14".into(),
@@ -385,6 +387,7 @@ fn demo_metrics() -> Vec<ModelMetrics> {
             components_90pct: 38,
             patch_isotropy: 0.38,
             patch_uniformity: -1.1,
+            spatial_coherence: Some(0.612),
         },
         ModelMetrics {
             model_name: "ijepa-vit-h14".into(),
@@ -401,6 +404,7 @@ fn demo_metrics() -> Vec<ModelMetrics> {
             components_90pct: 67,
             patch_isotropy: 0.81,
             patch_uniformity: -3.2,
+            spatial_coherence: Some(0.691),
         },
         ModelMetrics {
             model_name: "siglip-so400m".into(),
@@ -417,6 +421,7 @@ fn demo_metrics() -> Vec<ModelMetrics> {
             components_90pct: 43,
             patch_isotropy: 0.52,
             patch_uniformity: -1.8,
+            spatial_coherence: Some(0.734),
         },
     ]
 }

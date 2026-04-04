@@ -262,6 +262,17 @@ pub fn print_metrics_table(metrics: &[ModelMetrics]) {
     }
     println!();
 
+    print!("{:<22}", "Spatial coherence");
+    for m in metrics {
+        print!(
+            "{:<16}",
+            m.spatial_coherence
+                .map(|v| format!("{:.3}", v))
+                .unwrap_or_else(|| "N/A".to_string())
+        );
+    }
+    println!();
+
     println!("{}", heavy_rule(80));
 }
 

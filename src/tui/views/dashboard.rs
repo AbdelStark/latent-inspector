@@ -299,6 +299,14 @@ fn draw_selected_model_detail(frame: &mut Frame, area: Rect, app: &App) {
             m.patch_isotropy,
             true,
         ));
+        lines.push(metric_line(
+            "  Sp. coherence",
+            &m.spatial_coherence
+                .map(|v| format!("{:.3}", v))
+                .unwrap_or_else(|| "N/A".into()),
+            m.spatial_coherence.unwrap_or(0.0),
+            true,
+        ));
     }
 
     let paragraph = Paragraph::new(Text::from(lines)).style(Style::new().bg(theme::BG_DARK));

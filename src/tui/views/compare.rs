@@ -59,6 +59,7 @@ fn draw_metrics_table(frame: &mut Frame, area: Rect, app: &App) {
         "Components@90%",
         "Patch isotropy",
         "Patch uniformity",
+        "Spatial coherence",
     ];
 
     let model_names: Vec<&str> = app.metrics.iter().map(|m| m.model_name.as_str()).collect();
@@ -90,6 +91,10 @@ fn draw_metrics_table(frame: &mut Frame, area: Rect, app: &App) {
                 6 => format!("{}", m.components_90pct),
                 7 => format!("{:.3}", m.patch_isotropy),
                 8 => format!("{:.2}", m.patch_uniformity),
+                9 => m
+                    .spatial_coherence
+                    .map(|v| format!("{:.3}", v))
+                    .unwrap_or_else(|| "N/A".into()),
                 _ => "—".into(),
             };
             cells.push(Cell::from(value).style(Style::new().fg(theme::model_color(i))));

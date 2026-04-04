@@ -146,6 +146,16 @@ fn draw_metrics_panel(frame: &mut Frame, area: Rect, m: &crate::analysis::ModelM
             true,
             "More negative → better spread",
         ),
+        gauge_line(
+            "Spatial coherence",
+            &m.spatial_coherence
+                .map(|v| format!("{:.3}", v))
+                .unwrap_or_else(|| "N/A".into()),
+            m.spatial_coherence.unwrap_or(0.0),
+            gauge_width,
+            true,
+            "0=independent, 1=smooth/segmented",
+        ),
     ];
 
     let mut text_lines: Vec<Line> = Vec::new();

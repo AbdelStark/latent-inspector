@@ -353,7 +353,7 @@ fn render_html_with_bundle(
         .iter()
         .map(|metric| {
             format!(
-                "<tr><td>{}</td><td>{}/{}</td><td>{}</td><td>{:.2}</td><td>{}</td><td>{}</td><td>{:.1}%</td><td>{}</td><td>{:.3}</td><td>{:.2}</td></tr>",
+                "<tr><td>{}</td><td>{}/{}</td><td>{}</td><td>{:.2}</td><td>{}</td><td>{}</td><td>{:.1}%</td><td>{}</td><td>{:.3}</td><td>{:.2}</td><td>{}</td></tr>",
                 escape_html(&metric.model_name),
                 metric.effective_rank,
                 metric.embed_dim,
@@ -371,6 +371,10 @@ fn render_html_with_bundle(
                 metric.components_90pct,
                 metric.patch_isotropy,
                 metric.patch_uniformity,
+                metric
+                    .spatial_coherence
+                    .map(|value| format!("{value:.3}"))
+                    .unwrap_or_else(|| "N/A".to_string()),
             )
         })
         .collect::<Vec<_>>()
@@ -488,6 +492,7 @@ fn render_html_with_bundle(
       <th>Components@90%</th>
       <th>Patch isotropy</th>
       <th>Patch uniformity</th>
+      <th>Spatial coherence</th>
     </tr>
   </thead>
   <tbody>
@@ -904,6 +909,7 @@ fn render_inspect_html_with_bundle(
                  <tr><td>Top-10 variance concentration</td><td>{:.1}%</td></tr>\
                  <tr><td>Patch isotropy</td><td>{:.3}</td></tr>\
                  <tr><td>Patch uniformity</td><td>{:.2}</td></tr>\
+                 <tr><td>Spatial coherence</td><td>{}</td></tr>\
                  </tbody></table>",
                 metrics.n_patches,
                 metrics.embed_dim,
@@ -924,6 +930,10 @@ fn render_inspect_html_with_bundle(
                 metrics.top10_variance_pct,
                 metrics.patch_isotropy,
                 metrics.patch_uniformity,
+                metrics
+                    .spatial_coherence
+                    .map(|value| format!("{value:.3}"))
+                    .unwrap_or_else(|| "N/A".to_string()),
             ),
         ),
         (
@@ -988,6 +998,13 @@ fn render_inspect_html_with_bundle(
             ("Embed dim", metrics.embed_dim.to_string()),
             ("Effective rank", metrics.effective_rank.to_string()),
             ("Patch isotropy", format!("{:.3}", metrics.patch_isotropy)),
+            (
+                "Spatial coherence",
+                metrics
+                    .spatial_coherence
+                    .map(|v| format!("{v:.3}"))
+                    .unwrap_or_else(|| "N/A".to_string()),
+            ),
         ],
         &sections,
         bundle,
@@ -2236,6 +2253,7 @@ mod tests {
                 components_90pct: 41,
                 patch_isotropy: 0.65,
                 patch_uniformity: -2.1,
+                spatial_coherence: Some(0.72),
             },
             validation: validation_summary(model),
             variance_spectrum: VarianceSpectrumReport {
@@ -2304,6 +2322,7 @@ mod tests {
                 components_90pct: 48,
                 patch_isotropy: 0.65,
                 patch_uniformity: -2.1,
+                spatial_coherence: Some(0.72),
             },
             ModelMetrics {
                 model_name: "clip".into(),
@@ -2320,6 +2339,7 @@ mod tests {
                 components_90pct: 36,
                 patch_isotropy: 0.65,
                 patch_uniformity: -2.1,
+                spatial_coherence: Some(0.72),
             },
         ];
         let comparisons = vec![ComparisonMetrics {
@@ -2368,6 +2388,7 @@ mod tests {
                 components_90pct: 48,
                 patch_isotropy: 0.65,
                 patch_uniformity: -2.1,
+                spatial_coherence: Some(0.72),
             },
             ModelMetrics {
                 model_name: "mae".into(),
@@ -2384,6 +2405,7 @@ mod tests {
                 components_90pct: 36,
                 patch_isotropy: 0.65,
                 patch_uniformity: -2.1,
+                spatial_coherence: Some(0.72),
             },
         ];
         let comparisons = vec![ComparisonMetrics {

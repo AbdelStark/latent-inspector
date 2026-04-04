@@ -120,6 +120,7 @@ pub fn run(args: ProfileArgs) -> Result<(), Error> {
             patch_norm_mean: s.metrics.patch_norm_mean,
             patch_norm_std: s.metrics.patch_norm_std,
             top10_variance_pct: s.metrics.top10_variance_pct,
+            spatial_coherence: s.metrics.spatial_coherence,
         })
         .collect();
 
@@ -174,6 +175,18 @@ fn build_aggregates(samples: &[ProfileSample]) -> Vec<crate::viz::report::Aggreg
         .collect();
     if !gini.is_empty() {
         aggs.push(build_aggregate("attention_gini", "Attention Gini", &gini));
+    }
+
+    let coherence: Vec<f32> = samples
+        .iter()
+        .filter_map(|s| s.metrics.spatial_coherence)
+        .collect();
+    if !coherence.is_empty() {
+        aggs.push(build_aggregate(
+            "spatial_coherence",
+            "Spatial coherence",
+            &coherence,
+        ));
     }
 
     aggs

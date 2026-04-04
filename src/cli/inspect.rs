@@ -92,6 +92,14 @@ pub fn run(args: InspectArgs) -> Result<(), Error> {
             println!("  Components@90%:   {}", report.metrics.components_90pct);
             println!("  Patch isotropy:   {:.3}", report.metrics.patch_isotropy);
             println!("  Patch uniformity: {:.3}", report.metrics.patch_uniformity);
+            println!(
+                "  Spatial coherence: {}",
+                report
+                    .metrics
+                    .spatial_coherence
+                    .map(|v| format!("{:.3}", v))
+                    .unwrap_or_else(|| "N/A".to_string())
+            );
             if let Some(attention) = &report.attention {
                 println!(
                     "  Attention source: {} ({} layers x {} heads)",
