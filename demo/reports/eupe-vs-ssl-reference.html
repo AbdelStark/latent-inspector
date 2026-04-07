@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EUPE vs DINOv2 / I-JEPA / V-JEPA 2 — a latent-inspector comparison</title>
+<meta name="description" content="Concrete benchmark of EUPE vs three reference self-supervised vision models using latent-inspector on a single image. PCA spectra, effective rank, isotropy, CKA, k-NN overlap, and the geometric signature of multi-teacher distillation.">
+<link rel="canonical" href="https://abdelstark.github.io/latent-inspector/reports/eupe-vs-ssl-reference.html">
+<style>
+  :root {
+    --bg: #08080c;
+    --bg-card: #101018;
+    --border: #1e1e2c;
+    --text: #d8d8e4;
+    --text-secondary: #8888a0;
+    --text-dim: #555568;
+    --white: #f0f0f8;
+    --orange: #e8773a;
+    --blue: #5b9cf5;
+    --green: #4ac0a0;
+    --red: #e05555;
+    --yellow: #d4b040;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); }
+  body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    font-weight: 300;
+    font-size: 17px;
+    line-height: 1.65;
+    max-width: 820px;
+    margin: 0 auto;
+    padding: 56px 24px 96px;
+  }
+  h1 { font-weight: 800; font-size: 2em; letter-spacing: -0.02em; color: var(--white); line-height: 1.15; margin: 0 0 8px; }
+  h2 { font-weight: 700; font-size: 1.4em; color: var(--white); margin: 48px 0 12px; letter-spacing: -0.01em; }
+  h3 { font-weight: 600; font-size: 1.05em; color: var(--text); margin: 28px 0 8px; }
+  p { margin: 0 0 16px; }
+  a { color: var(--blue); text-decoration: none; border-bottom: 1px dotted var(--blue); }
+  a:hover { border-bottom-style: solid; }
+  code { font-family: 'JetBrains Mono', monospace; font-size: 0.88em; background: var(--bg-card); padding: 2px 6px; border-radius: 3px; color: var(--orange); }
+  pre { font-family: 'JetBrains Mono', monospace; font-size: 0.85em; background: var(--bg-card); border: 1px solid var(--border); border-radius: 4px; padding: 14px 18px; overflow-x: auto; line-height: 1.4; }
+  pre code { background: transparent; padding: 0; color: var(--text); }
+  table { width: 100%; border-collapse: collapse; margin: 18px 0; font-size: 0.9em; }
+  th, td { padding: 8px 10px; text-align: left; border-bottom: 1px solid var(--border); font-family: 'JetBrains Mono', monospace; font-size: 0.88em; }
+  th { color: var(--text-secondary); font-weight: 500; font-size: 0.8em; text-transform: uppercase; letter-spacing: 0.04em; border-bottom-color: var(--text-dim); }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  td.eupe { color: var(--orange); font-weight: 500; }
+  td.model-name { color: var(--text-secondary); }
+  .meta { color: var(--text-dim); font-size: 0.85em; margin-bottom: 32px; border-bottom: 1px solid var(--border); padding-bottom: 24px; }
+  .meta a { color: var(--text-secondary); }
+  .callout { background: var(--bg-card); border-left: 3px solid var(--orange); padding: 14px 18px; margin: 24px 0; border-radius: 0 4px 4px 0; }
+  .callout strong { color: var(--white); }
+  .fig { margin: 24px 0; }
+  .fig img { width: 100%; border: 1px solid var(--border); border-radius: 4px; display: block; }
+  .fig-caption { color: var(--text-secondary); font-size: 0.85em; margin-top: 8px; text-align: center; }
+  .fig-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 24px 0; }
+  .fig-grid figure { margin: 0; }
+  .fig-grid img { width: 100%; border: 1px solid var(--border); border-radius: 4px; display: block; }
+  .fig-grid figcaption { color: var(--text-secondary); font-size: 0.82em; margin-top: 6px; text-align: center; font-family: 'JetBrains Mono', monospace; }
+  .highlight { color: var(--orange); font-weight: 500; }
+  .muted { color: var(--text-dim); font-size: 0.85em; }
+  ul { margin: 8px 0 16px; padding-left: 24px; }
+  li { margin-bottom: 6px; }
+  .footer { margin-top: 80px; padding-top: 32px; border-top: 1px solid var(--border); color: var(--text-dim); font-size: 0.82em; }
+</style>
+</head>
+<body>
+
+<h1>EUPE vs DINOv2 / I-JEPA / V-JEPA 2</h1>
+<p class="meta">
+  A <a href="https://github.com/AbdelStark/latent-inspector">latent-inspector</a> comparison.
+  Abdel (<a href="https://x.com/AbdelStark">@AbdelStark</a>) · April 2026 · Single-image, fixed-prompt benchmark ·
+  <a href="eupe-compare.json">raw JSON report</a>
+</p>
+
+<p>
+  EUPE is a very different kind of vision encoder from DINOv2, I-JEPA, and V-JEPA 2, and when you measure the representations side-by-side on the same image, <em>every metric tells the same story</em>: EUPE collapses to a small number of dominant axes, lives in a qualitatively different geometry, and barely agrees with any SSL-only model about which patches are near each other.
+</p>
+
+<p>
+  This page is a public writeup of the observations I mentioned in my reply to <a href="https://x.com/_sakshams_/status/2041621635355349060">Saksham's question</a> about what I saw when I added EUPE to the latent-inspector model registry. All numbers below come from a single reproducible run of <code>latent-inspector compare</code> on the canonical <code>elephant_sample_image.jpg</code>, with the full JSON dumped alongside this page so anyone can verify. Caveats about the HuggingFace → ONNX export path are at the bottom.
+</p>
+
+<h2>Headline: EUPE is off-manifold from the three SSL-only models</h2>
+
+<p>The short version, before the table:</p>
+<ul>
+  <li><strong>CKA against the reference models: near zero.</strong> EUPE↔DINOv2 = 0.044, EUPE↔V-JEPA 2 = 0.038, EUPE↔I-JEPA ≈ <span class="highlight">0.000</span>. By comparison, the three SSL-only models score CKA 0.27–0.36 between themselves.</li>
+  <li><strong>k-NN agreement on which patches are similar: ~10%.</strong> EUPE's 10-nearest-neighbor structure overlaps the reference models at 8.9%–13.2%, versus 20%–28% among the three SSL-only models.</li>
+  <li><strong>Patch isotropy collapses by ~30×.</strong> DINOv2 / I-JEPA sit at isotropy ≈ 0.79–0.80, V-JEPA 2 at 0.68, and EUPE at <span class="highlight">0.026</span>. EUPE's patches don't spread around a sphere — they live along a handful of dominant axes.</li>
+  <li><strong>Variance concentrates in ~12–17 dimensions out of 768.</strong> EUPE needs only 12 principal components to capture 90% of variance; the others need 22–38 (out of 1024–1280). Its effective rank is 17 versus 44–64 for the reference models.</li>
+  <li><strong>Spatial coherence almost saturates.</strong> EUPE's spatial coherence is 0.985 (neighboring patches are nearly identical in representation); the references are 0.44–0.57 (more local variation).</li>
+</ul>
+
+<div class="callout">
+  <strong>The interpretation I'd offer</strong> (and would love to have corrected if it's wrong): this looks like the geometric signature of <em>multi-teacher distillation into a capacity-constrained student</em>. EUPE is 86 M parameters (ViT-B/16) trying to serve multiple specialized teachers at once; the representation has to pick a small number of task-relevant axes and compress hard along them. That's consistent with everything the numbers show: low effective rank, top-heavy variance, high spatial coherence, very low isotropy, and near-orthogonal alignment with models whose objective is to spread the representation across the manifold.
+</div>
+
+<h2>PCA projections — same image, four different answers</h2>
+
+<div class="fig-grid">
+  <figure>
+    <img src="../dinov2-vit-l14_pca.png" alt="DINOv2 PCA projection">
+    <figcaption>DINOv2 — self-distillation → segmentation-like regions</figcaption>
+  </figure>
+  <figure>
+    <img src="../ijepa-vit-h14_pca.png" alt="I-JEPA PCA projection">
+    <figcaption>I-JEPA — latent-prediction → fine local variation</figcaption>
+  </figure>
+  <figure>
+    <img src="../vjepa2-vitl-fpc2-256_pca.png" alt="V-JEPA 2 PCA projection">
+    <figcaption>V-JEPA 2 — video-trained → motion-adjacent structure</figcaption>
+  </figure>
+  <figure>
+    <img src="../eupe-vit-b16_pca.png" alt="EUPE PCA projection">
+    <figcaption class="highlight">EUPE — compressed, high-contrast boundaries</figcaption>
+  </figure>
+</div>
+
+<p class="muted">Each pixel block is a patch token projected onto the top three principal components (mapped to RGB). Contiguous color = the model groups those patches into a similar neighborhood. EUPE's projection is visibly blockier and more saturated than the other three, which is the visual shadow of the quantitative story below.</p>
+
+<h2>Per-model metrics</h2>
+
+<table>
+  <thead>
+    <tr>
+      <th>Metric</th>
+      <th class="num">DINOv2 L/14</th>
+      <th class="num">I-JEPA H/14</th>
+      <th class="num">V-JEPA 2 L</th>
+      <th class="num">EUPE B/16</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr><td>Patches</td>
+        <td class="num">256</td><td class="num">256</td><td class="num">256</td><td class="num eupe">196</td></tr>
+    <tr><td>Embedding dim</td>
+        <td class="num">1024</td><td class="num">1280</td><td class="num">1024</td><td class="num eupe">768</td></tr>
+    <tr><td>Effective rank</td>
+        <td class="num">60</td><td class="num">44</td><td class="num">64</td><td class="num eupe">17</td></tr>
+    <tr><td>RankMe</td>
+        <td class="num">51.54</td><td class="num">46.63</td><td class="num">54.99</td><td class="num eupe">38.44</td></tr>
+    <tr><td>Top-10 variance (%)</td>
+        <td class="num">66.79</td><td class="num">72.71</td><td class="num">58.14</td><td class="num eupe">88.81</td></tr>
+    <tr><td>Components for 90%</td>
+        <td class="num">31</td><td class="num">22</td><td class="num">38</td><td class="num eupe">12</td></tr>
+    <tr><td>Spectral decay</td>
+        <td class="num">1.272</td><td class="num">1.592</td><td class="num">1.075</td><td class="num eupe">1.727</td></tr>
+    <tr><td>Patch isotropy</td>
+        <td class="num">0.796</td><td class="num">0.788</td><td class="num">0.678</td><td class="num eupe">0.026</td></tr>
+    <tr><td>Patch uniformity</td>
+        <td class="num">−2.700</td><td class="num">−2.717</td><td class="num">−2.499</td><td class="num eupe">−0.104</td></tr>
+    <tr><td>Spatial coherence</td>
+        <td class="num">0.574</td><td class="num">0.532</td><td class="num">0.440</td><td class="num eupe">0.985</td></tr>
+    <tr><td>Patch entropy</td>
+        <td class="num">2.523</td><td class="num">2.891</td><td class="num">2.362</td><td class="num eupe">2.839</td></tr>
+    <tr><td>CLS L2 norm</td>
+        <td class="num">46.28</td><td class="num">—</td><td class="num">—</td><td class="num eupe">56.49</td></tr>
+    <tr><td>Patch norm mean</td>
+        <td class="num">47.52</td><td class="num">33.77</td><td class="num">101.04</td><td class="num eupe">57.32</td></tr>
+    <tr><td>Patch norm std</td>
+        <td class="num">1.413</td><td class="num">6.137</td><td class="num">6.713</td><td class="num eupe">1.516</td></tr>
+  </tbody>
+</table>
+
+<p class="muted">Reading guide: Effective rank = dimensions above a fixed singular-value threshold. RankMe = continuous effective-rank proxy (Garrido et al., 2023). Patch isotropy follows Mu & Viswanath's definition, rescaled to [0,1]. Uniformity follows Wang & Isola. Spatial coherence = mean cosine similarity between 4-connected neighboring patches on the token grid. All numbers from one <code>latent-inspector compare</code> run on <code>elephant_sample_image.jpg</code>; see <a href="eupe-compare.json">eupe-compare.json</a> for the full raw output.</p>
+
+<h2>Pairwise: EUPE is orthogonal to everyone</h2>
+
+<h3>Linear CKA (full 6×6 pairs, all supported)</h3>
+
+<table>
+  <thead>
+    <tr>
+      <th></th><th class="num">DINOv2</th><th class="num">I-JEPA</th><th class="num">V-JEPA 2</th><th class="num">EUPE</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr><td class="model-name">DINOv2</td><td class="num">1.000</td><td class="num">0.329</td><td class="num">0.358</td><td class="num eupe">0.044</td></tr>
+    <tr><td class="model-name">I-JEPA</td><td class="num">0.329</td><td class="num">1.000</td><td class="num">0.275</td><td class="num eupe">0.000</td></tr>
+    <tr><td class="model-name">V-JEPA 2</td><td class="num">0.358</td><td class="num">0.275</td><td class="num">1.000</td><td class="num eupe">0.038</td></tr>
+    <tr><td class="model-name eupe">EUPE</td><td class="num eupe">0.044</td><td class="num eupe">0.000</td><td class="num eupe">0.038</td><td class="num eupe">1.000</td></tr>
+  </tbody>
+</table>
+
+<p>Two things to notice. First, the three SSL-only models form a cluster — they each have CKA 0.27–0.36 with each other, which is "weak but non-trivial structural agreement". Second, EUPE is the lone outlier at <strong>CKA &lt; 0.05 against all three</strong>, and essentially zero against I-JEPA. That's the kind of CKA number you'd expect between a vision encoder and, say, a language model — not between two vision encoders trained on natural images.</p>
+
+<h3>k-NN overlap at k = 10</h3>
+
+<table>
+  <thead>
+    <tr>
+      <th></th><th class="num">DINOv2</th><th class="num">I-JEPA</th><th class="num">V-JEPA 2</th><th class="num">EUPE</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr><td class="model-name">DINOv2</td><td class="num">1.000</td><td class="num">0.278</td><td class="num">0.205</td><td class="num eupe">0.132</td></tr>
+    <tr><td class="model-name">I-JEPA</td><td class="num">0.278</td><td class="num">1.000</td><td class="num">0.202</td><td class="num eupe">0.100</td></tr>
+    <tr><td class="model-name">V-JEPA 2</td><td class="num">0.205</td><td class="num">0.202</td><td class="num">1.000</td><td class="num eupe">0.089</td></tr>
+    <tr><td class="model-name eupe">EUPE</td><td class="num eupe">0.132</td><td class="num eupe">0.100</td><td class="num eupe">0.089</td><td class="num eupe">1.000</td></tr>
+  </tbody>
+</table>
+
+<p>k-NN overlap is a structural test that's insensitive to the choice of coordinate frame — it only cares about whether <em>which patches are similar to which other patches</em> agrees across models. EUPE disagrees with the reference models on 87–91% of the k=10 neighborhoods, against 72–80% disagreement among the three SSL-only models. This matches the CKA finding: EUPE is organizing the patch space along different axes.</p>
+
+<h3>Dropped metrics (with reasons)</h3>
+<ul>
+  <li><strong>CLS cosine similarity:</strong> unavailable between EUPE and the references because the CLS dimensions differ (768 vs 1024) AND because I-JEPA / V-JEPA 2 don't expose a CLS token in the first place. EUPE's own CLS L2 norm is 56.5 (vs DINOv2's 46.3).</li>
+  <li><strong>Mean patch correspondence:</strong> unavailable between models with different embedding dimensions. This drops all EUPE pairs and all cross-family pairs.</li>
+  <li><strong>Patch-grid alignment:</strong> EUPE has a 14×14 patch grid (196 tokens), the others have 16×16 (256 tokens). <code>latent-inspector</code> aligns by taking the first 196 shared patches; if you care about this, the "note" field in the JSON spells it out per pair.</li>
+</ul>
+
+<h2>What I would watch if I were you</h2>
+
+<p>I want to be explicit about what I <em>don't</em> know, and what would sharpen the interpretation:</p>
+
+<ol>
+  <li><strong>Is the low-rank/high-anisotropy signature consistent across many images, or an artifact of one particular photograph?</strong> The compare here is on one image (elephant). Running the full <code>latent-inspector benchmark</code> across the sample set would tell us whether the effective-rank-17 and the isotropy collapse are invariants of the encoder or dependent on content.</li>
+  <li><strong>Do EUPE's top-12 principal components still carry the teacher-relevant signal?</strong> If I projected EUPE tokens onto a DINOv2 subspace (or vice versa) and measured classification/retrieval accuracy, the compression might be "lossless for the teachers' tasks" while looking dramatic on generic spectral metrics. That's a natural follow-up experiment.</li>
+  <li><strong>What does EUPE look like on downstream tasks relative to its compression?</strong> The headline numbers here are measuring representation <em>geometry</em>, not representation <em>quality</em>. Those are related but not identical. EUPE's compressed representation might actually be <em>better</em> for the specific tasks it was distilled for, even though it looks like an outlier by spectral metrics that reward spreading the representation.</li>
+  <li><strong>How does EUPE compare against other distillation-family models?</strong> I don't have, say, a multi-teacher BEiT variant or a CLIP-distilled model in the registry yet. Those would be the right control group to test "multi-teacher distillation → compressed representation" as a general pattern.</li>
+</ol>
+
+<h2>Caveats about the ONNX export path</h2>
+
+<p>Because I mentioned it in my reply to Saksham and I want to be honest about it: I exported EUPE from the HuggingFace release to ONNX myself, and it is in principle possible that some of what I'm seeing is a conversion artifact rather than a property of the trained model. The relevant details:</p>
+
+<ul>
+  <li>The ONNX file is structural only; no quantization, no graph surgery beyond what the standard <code>torch.onnx.export</code> + <code>optimum-onnx</code> path does.</li>
+  <li>The CLS and patch outputs go through <code>latent-inspector</code>'s normal extraction path — same code that handles DINOv2, same preprocessing normalization, same token-grid reshape.</li>
+  <li>The evidence <em>against</em> a conversion bug: the extreme numbers are <em>consistent across six independent metrics</em> (effective rank, RankMe, top-10 variance, 90%-components count, isotropy, spatial coherence). If ONNX were producing garbage I'd expect one or two metrics to go weird, not every metric to line up with the "compressed representation" interpretation.</li>
+  <li>The evidence <em>for</em> caution: I haven't reference-checked the ONNX export against the PyTorch model's raw outputs on a fixed image. I can do that (and I will, if Saksham or anyone from the EUPE team wants the numbers).</li>
+</ul>
+
+<p>Everything in this writeup is reproducible. The raw JSON is at <a href="eupe-compare.json">eupe-compare.json</a>. The code is at <a href="https://github.com/AbdelStark/latent-inspector">github.com/AbdelStark/latent-inspector</a>. The exact command is:</p>
+
+<pre><code>cargo build --release
+./target/release/latent-inspector compare docs/assets/img/samples/elephant_sample_image.jpg \
+  --models dinov2-vit-l14,ijepa-vit-h14,vjepa2-vitl-fpc2-256,eupe-vit-b16 \
+  --output /tmp/eupe-compare \
+  --format json</code></pre>
+
+<p>If any of the interpretation is wrong, I'd rather hear it than have it stand. The whole reason I built this tool is to have a concrete substrate for conversations exactly like this one.</p>
+
+<div class="footer">
+  Generated with <a href="https://github.com/AbdelStark/latent-inspector">latent-inspector</a> · single-image benchmark · all numbers reproducible from the command block above · <a href="../index.html">back to slide deck</a>
+</div>
+
+</body>
+</html>

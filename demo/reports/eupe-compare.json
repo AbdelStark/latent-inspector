@@ -1,0 +1,600 @@
+{
+  "image": "docs/assets/img/samples/elephant_sample_image.jpg",
+  "requested_models": [
+    "dinov2-vit-l14",
+    "ijepa-vit-h14",
+    "vjepa2-vitl-fpc2-256",
+    "eupe-vit-b16"
+  ],
+  "metrics": [
+    {
+      "model_name": "dinov2-vit-l14",
+      "n_patches": 256,
+      "embed_dim": 1024,
+      "effective_rank": 60,
+      "dead_dimensions": 0,
+      "patch_entropy": 2.5229468,
+      "attention_gini": null,
+      "cls_l2_norm": 46.279892,
+      "patch_norm_mean": 47.517574,
+      "patch_norm_std": 1.4129773,
+      "top10_variance_pct": 66.79412,
+      "components_90pct": 31,
+      "patch_isotropy": 0.795566,
+      "patch_uniformity": -2.7001605,
+      "spatial_coherence": 0.57396716,
+      "rankme": 51.54327,
+      "spectral_decay": 1.2723802
+    },
+    {
+      "model_name": "ijepa-vit-h14",
+      "n_patches": 256,
+      "embed_dim": 1280,
+      "effective_rank": 44,
+      "dead_dimensions": 0,
+      "patch_entropy": 2.890598,
+      "attention_gini": null,
+      "cls_l2_norm": null,
+      "patch_norm_mean": 33.771305,
+      "patch_norm_std": 6.136659,
+      "top10_variance_pct": 72.70681,
+      "components_90pct": 22,
+      "patch_isotropy": 0.7884939,
+      "patch_uniformity": -2.7173722,
+      "spatial_coherence": 0.53155607,
+      "rankme": 46.634605,
+      "spectral_decay": 1.5922526
+    },
+    {
+      "model_name": "vjepa2-vitl-fpc2-256",
+      "n_patches": 256,
+      "embed_dim": 1024,
+      "effective_rank": 64,
+      "dead_dimensions": 0,
+      "patch_entropy": 2.3617692,
+      "attention_gini": null,
+      "cls_l2_norm": null,
+      "patch_norm_mean": 101.03558,
+      "patch_norm_std": 6.713215,
+      "top10_variance_pct": 58.141415,
+      "components_90pct": 38,
+      "patch_isotropy": 0.67778134,
+      "patch_uniformity": -2.4990141,
+      "spatial_coherence": 0.43983573,
+      "rankme": 54.988335,
+      "spectral_decay": 1.0746424
+    },
+    {
+      "model_name": "eupe-vit-b16",
+      "n_patches": 196,
+      "embed_dim": 768,
+      "effective_rank": 17,
+      "dead_dimensions": 0,
+      "patch_entropy": 2.8394182,
+      "attention_gini": null,
+      "cls_l2_norm": 56.48838,
+      "patch_norm_mean": 57.315727,
+      "patch_norm_std": 1.5164145,
+      "top10_variance_pct": 88.81261,
+      "components_90pct": 12,
+      "patch_isotropy": 0.02643478,
+      "patch_uniformity": -0.10403962,
+      "spatial_coherence": 0.9850896,
+      "rankme": 38.443256,
+      "spectral_decay": 1.7273724
+    }
+  ],
+  "comparisons": [
+    {
+      "model_a": "dinov2-vit-l14",
+      "model_b": "ijepa-vit-h14",
+      "alignment": {
+        "patch_count_a": 256,
+        "patch_count_b": 256,
+        "compared_patch_count": 256
+      },
+      "cls_cosine_sim": null,
+      "linear_cka": 0.3290942,
+      "knn_overlap_k10": 0.27773437,
+      "mean_patch_correspondence": null,
+      "metric_caveats": [
+        {
+          "key": "cls_cosine_sim",
+          "label": "CLS cosine similarity",
+          "reason": "Unavailable because only one model exposes a CLS token."
+        },
+        {
+          "key": "mean_patch_correspondence",
+          "label": "Mean patch correspondence",
+          "reason": "Unavailable because embedding dimensions differ (1024 vs 1280)."
+        }
+      ]
+    },
+    {
+      "model_a": "dinov2-vit-l14",
+      "model_b": "vjepa2-vitl-fpc2-256",
+      "alignment": {
+        "patch_count_a": 256,
+        "patch_count_b": 256,
+        "compared_patch_count": 256
+      },
+      "cls_cosine_sim": null,
+      "linear_cka": 0.35802194,
+      "knn_overlap_k10": 0.20546874,
+      "mean_patch_correspondence": 0.06194472,
+      "metric_caveats": [
+        {
+          "key": "cls_cosine_sim",
+          "label": "CLS cosine similarity",
+          "reason": "Unavailable because only one model exposes a CLS token."
+        }
+      ]
+    },
+    {
+      "model_a": "dinov2-vit-l14",
+      "model_b": "eupe-vit-b16",
+      "alignment": {
+        "patch_count_a": 256,
+        "patch_count_b": 196,
+        "compared_patch_count": 196,
+        "note": "Compared the first 196 shared patches because the models expose different patch grids (256 vs 196)."
+      },
+      "cls_cosine_sim": null,
+      "linear_cka": 0.044375647,
+      "knn_overlap_k10": 0.13163266,
+      "mean_patch_correspondence": null,
+      "metric_caveats": [
+        {
+          "key": "cls_cosine_sim",
+          "label": "CLS cosine similarity",
+          "reason": "Unavailable because CLS dimensions differ (1024 vs 768)."
+        },
+        {
+          "key": "mean_patch_correspondence",
+          "label": "Mean patch correspondence",
+          "reason": "Unavailable because embedding dimensions differ (1024 vs 768)."
+        }
+      ]
+    },
+    {
+      "model_a": "ijepa-vit-h14",
+      "model_b": "vjepa2-vitl-fpc2-256",
+      "alignment": {
+        "patch_count_a": 256,
+        "patch_count_b": 256,
+        "compared_patch_count": 256
+      },
+      "cls_cosine_sim": null,
+      "linear_cka": 0.27543575,
+      "knn_overlap_k10": 0.20234375,
+      "mean_patch_correspondence": null,
+      "metric_caveats": [
+        {
+          "key": "cls_cosine_sim",
+          "label": "CLS cosine similarity",
+          "reason": "Unavailable because neither model exposes a CLS token."
+        },
+        {
+          "key": "mean_patch_correspondence",
+          "label": "Mean patch correspondence",
+          "reason": "Unavailable because embedding dimensions differ (1280 vs 1024)."
+        }
+      ]
+    },
+    {
+      "model_a": "ijepa-vit-h14",
+      "model_b": "eupe-vit-b16",
+      "alignment": {
+        "patch_count_a": 256,
+        "patch_count_b": 196,
+        "compared_patch_count": 196,
+        "note": "Compared the first 196 shared patches because the models expose different patch grids (256 vs 196)."
+      },
+      "cls_cosine_sim": null,
+      "linear_cka": 0.0,
+      "knn_overlap_k10": 0.1,
+      "mean_patch_correspondence": null,
+      "metric_caveats": [
+        {
+          "key": "cls_cosine_sim",
+          "label": "CLS cosine similarity",
+          "reason": "Unavailable because only one model exposes a CLS token."
+        },
+        {
+          "key": "mean_patch_correspondence",
+          "label": "Mean patch correspondence",
+          "reason": "Unavailable because embedding dimensions differ (1280 vs 768)."
+        }
+      ]
+    },
+    {
+      "model_a": "vjepa2-vitl-fpc2-256",
+      "model_b": "eupe-vit-b16",
+      "alignment": {
+        "patch_count_a": 256,
+        "patch_count_b": 196,
+        "compared_patch_count": 196,
+        "note": "Compared the first 196 shared patches because the models expose different patch grids (256 vs 196)."
+      },
+      "cls_cosine_sim": null,
+      "linear_cka": 0.0376142,
+      "knn_overlap_k10": 0.08928572,
+      "mean_patch_correspondence": null,
+      "metric_caveats": [
+        {
+          "key": "cls_cosine_sim",
+          "label": "CLS cosine similarity",
+          "reason": "Unavailable because only one model exposes a CLS token."
+        },
+        {
+          "key": "mean_patch_correspondence",
+          "label": "Mean patch correspondence",
+          "reason": "Unavailable because embedding dimensions differ (1024 vs 768)."
+        }
+      ]
+    }
+  ],
+  "overview": {
+    "model_highlights": [
+      {
+        "label": "Highest effective rank",
+        "model": "vjepa2-vitl-fpc2-256",
+        "value": "64/1024"
+      },
+      {
+        "label": "Highest patch entropy",
+        "model": "ijepa-vit-h14",
+        "value": "2.89"
+      },
+      {
+        "label": "Most top-heavy variance",
+        "model": "eupe-vit-b16",
+        "value": "88.8%"
+      }
+    ],
+    "comparison_highlights": [
+      {
+        "label": "Strongest CKA alignment",
+        "model_a": "dinov2-vit-l14",
+        "model_b": "vjepa2-vitl-fpc2-256",
+        "value": 0.35802194
+      },
+      {
+        "label": "Weakest CKA alignment",
+        "model_a": "ijepa-vit-h14",
+        "model_b": "eupe-vit-b16",
+        "value": 0.0
+      },
+      {
+        "label": "Highest neighborhood overlap",
+        "model_a": "dinov2-vit-l14",
+        "model_b": "ijepa-vit-h14",
+        "value": 0.27773437
+      },
+      {
+        "label": "Strongest patch correspondence",
+        "model_a": "dinov2-vit-l14",
+        "model_b": "vjepa2-vitl-fpc2-256",
+        "value": 0.06194472
+      }
+    ],
+    "cls_cosine_matrix": {
+      "labels": [
+        "dinov2-vit-l14",
+        "ijepa-vit-h14",
+        "vjepa2-vitl-fpc2-256",
+        "eupe-vit-b16"
+      ],
+      "rows": [
+        [
+          1.0,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          1.0
+        ]
+      ]
+    },
+    "cls_cosine_support": {
+      "supported_pairs": 0,
+      "total_pairs": 6,
+      "unavailable_pairs": 6,
+      "unavailable_reasons": [
+        {
+          "reason": "Unavailable because only one model exposes a CLS token.",
+          "count": 4
+        },
+        {
+          "reason": "Unavailable because CLS dimensions differ (1024 vs 768).",
+          "count": 1
+        },
+        {
+          "reason": "Unavailable because neither model exposes a CLS token.",
+          "count": 1
+        }
+      ]
+    },
+    "linear_cka_matrix": {
+      "labels": [
+        "dinov2-vit-l14",
+        "ijepa-vit-h14",
+        "vjepa2-vitl-fpc2-256",
+        "eupe-vit-b16"
+      ],
+      "rows": [
+        [
+          1.0,
+          0.3290942,
+          0.35802194,
+          0.044375647
+        ],
+        [
+          0.3290942,
+          1.0,
+          0.27543575,
+          0.0
+        ],
+        [
+          0.35802194,
+          0.27543575,
+          1.0,
+          0.0376142
+        ],
+        [
+          0.044375647,
+          0.0,
+          0.0376142,
+          1.0
+        ]
+      ]
+    },
+    "linear_cka_support": {
+      "supported_pairs": 6,
+      "total_pairs": 6,
+      "unavailable_pairs": 0
+    },
+    "knn_overlap_matrix": {
+      "labels": [
+        "dinov2-vit-l14",
+        "ijepa-vit-h14",
+        "vjepa2-vitl-fpc2-256",
+        "eupe-vit-b16"
+      ],
+      "rows": [
+        [
+          1.0,
+          0.27773437,
+          0.20546874,
+          0.13163266
+        ],
+        [
+          0.27773437,
+          1.0,
+          0.20234375,
+          0.1
+        ],
+        [
+          0.20546874,
+          0.20234375,
+          1.0,
+          0.08928572
+        ],
+        [
+          0.13163266,
+          0.1,
+          0.08928572,
+          1.0
+        ]
+      ]
+    },
+    "knn_overlap_support": {
+      "supported_pairs": 6,
+      "total_pairs": 6,
+      "unavailable_pairs": 0
+    },
+    "correspondence_matrix": {
+      "labels": [
+        "dinov2-vit-l14",
+        "ijepa-vit-h14",
+        "vjepa2-vitl-fpc2-256",
+        "eupe-vit-b16"
+      ],
+      "rows": [
+        [
+          1.0,
+          null,
+          0.06194472,
+          null
+        ],
+        [
+          null,
+          1.0,
+          null,
+          null
+        ],
+        [
+          0.06194472,
+          null,
+          1.0,
+          null
+        ],
+        [
+          null,
+          null,
+          null,
+          1.0
+        ]
+      ]
+    },
+    "correspondence_support": {
+      "supported_pairs": 1,
+      "total_pairs": 6,
+      "unavailable_pairs": 5,
+      "unavailable_reasons": [
+        {
+          "reason": "Unavailable because embedding dimensions differ (1024 vs 768).",
+          "count": 2
+        },
+        {
+          "reason": "Unavailable because embedding dimensions differ (1024 vs 1280).",
+          "count": 1
+        },
+        {
+          "reason": "Unavailable because embedding dimensions differ (1280 vs 1024).",
+          "count": 1
+        },
+        {
+          "reason": "Unavailable because embedding dimensions differ (1280 vs 768).",
+          "count": 1
+        }
+      ]
+    }
+  },
+  "validation": [
+    {
+      "model": "dinov2-vit-l14",
+      "status": "validated",
+      "evidence_timestamp": "2026-03-27T12:00:00Z",
+      "backend": {
+        "kind": "onnx-runtime",
+        "status": "validated",
+        "summary": "Validation ran against live ONNX Runtime execution."
+      },
+      "preprocess": {
+        "status": "validated",
+        "summary": "Approved preprocessing evidence matches the current registry contract."
+      },
+      "tensors": [
+        {
+          "name": "last_hidden_state",
+          "role": "patch+cls sequence",
+          "status": "validated",
+          "summary": "Approved tensor semantics evidence matches the current registry contract."
+        }
+      ],
+      "parity": {
+        "status": "validated",
+        "summary": "Approved reference parity evidence matches the current registry contract.",
+        "artifact_id": "dinov2-vit-l14:standard:2026-03-27T12:00:00Z",
+        "fixture_set": "standard",
+        "checked_signals": 0,
+        "drifted_signals": 0
+      },
+      "caveats": [],
+      "recommendation": "Safe to interpret as source-aligned for supported report features."
+    },
+    {
+      "model": "ijepa-vit-h14",
+      "status": "validated",
+      "evidence_timestamp": "2026-03-27T12:00:00Z",
+      "backend": {
+        "kind": "onnx-runtime",
+        "status": "validated",
+        "summary": "Validation ran against live ONNX Runtime execution."
+      },
+      "preprocess": {
+        "status": "validated",
+        "summary": "Approved preprocessing evidence matches the current registry contract."
+      },
+      "tensors": [
+        {
+          "name": "last_hidden_state",
+          "role": "patch sequence",
+          "status": "validated",
+          "summary": "Approved tensor semantics evidence matches the current registry contract."
+        }
+      ],
+      "parity": {
+        "status": "validated",
+        "summary": "Approved reference parity evidence matches the current registry contract.",
+        "artifact_id": "ijepa-vit-h14:standard:2026-03-27T12:00:00Z",
+        "fixture_set": "standard",
+        "checked_signals": 0,
+        "drifted_signals": 0
+      },
+      "caveats": [],
+      "recommendation": "Safe to interpret as source-aligned for supported report features."
+    },
+    {
+      "model": "vjepa2-vitl-fpc2-256",
+      "status": "validated",
+      "evidence_timestamp": "2026-03-27T12:00:00Z",
+      "backend": {
+        "kind": "onnx-runtime",
+        "status": "validated",
+        "summary": "Validation ran against live ONNX Runtime execution."
+      },
+      "preprocess": {
+        "status": "validated",
+        "summary": "Approved preprocessing evidence matches the current registry contract."
+      },
+      "tensors": [
+        {
+          "name": "last_hidden_state",
+          "role": "patch sequence",
+          "status": "validated",
+          "summary": "Approved tensor semantics evidence matches the current registry contract."
+        }
+      ],
+      "parity": {
+        "status": "validated",
+        "summary": "Approved reference parity evidence matches the current registry contract.",
+        "artifact_id": "vjepa2-vitl-fpc2-256:standard:2026-03-27T12:00:00Z",
+        "fixture_set": "standard",
+        "checked_signals": 0,
+        "drifted_signals": 0
+      },
+      "caveats": [],
+      "recommendation": "Safe to interpret as source-aligned for supported report features."
+    },
+    {
+      "model": "eupe-vit-b16",
+      "status": "validated",
+      "evidence_timestamp": "2026-03-27T12:00:00Z",
+      "backend": {
+        "kind": "onnx-runtime",
+        "status": "validated",
+        "summary": "Validation ran against live ONNX Runtime execution."
+      },
+      "preprocess": {
+        "status": "validated",
+        "summary": "Approved preprocessing evidence matches the current registry contract."
+      },
+      "tensors": [
+        {
+          "name": "last_hidden_state",
+          "role": "patch+cls sequence",
+          "status": "validated",
+          "summary": "Approved tensor semantics evidence matches the current registry contract."
+        }
+      ],
+      "parity": {
+        "status": "validated",
+        "summary": "Approved reference parity evidence matches the current registry contract.",
+        "artifact_id": "eupe-vit-b16:standard:2026-03-27T12:00:00Z",
+        "fixture_set": "standard",
+        "checked_signals": 0,
+        "drifted_signals": 0
+      },
+      "caveats": [],
+      "recommendation": "Safe to interpret as source-aligned for supported report features."
+    }
+  ]
+}
