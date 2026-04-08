@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>latent-inspector reports</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #0d1117;
+    --panel: #161b22;
+    --panel-2: #11161d;
+    --text: #e6edf3;
+    --muted: #8b949e;
+    --accent: #79c0ff;
+    --border: #30363d;
+  }
+  body {
+    font-family: "Segoe UI", system-ui, sans-serif;
+    margin: 0;
+    min-height: 100vh;
+    background: radial-gradient(circle at top, #182032 0%, var(--bg) 45%);
+    color: var(--text);
+  }
+  main {
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 3rem 1.5rem 4rem;
+  }
+  h1, h2 {
+    color: var(--accent);
+  }
+  p {
+    color: var(--muted);
+    line-height: 1.5;
+  }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 1rem;
+    margin-top: 1.5rem;
+  }
+  .card {
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 1rem 1.1rem;
+    background: linear-gradient(180deg, var(--panel), var(--panel-2));
+  }
+  .eyebrow {
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-size: 0.75rem;
+  }
+  a {
+    color: var(--accent);
+    text-decoration: none;
+  }
+  a:hover {
+    text-decoration: underline;
+  }
+  code {
+    color: var(--text);
+  }
+</style>
+</head>
+<body>
+<main>
+  <p class="eyebrow">latent-inspector</p>
+  <h1>Published Reports</h1>
+  <p>GitHub Pages publishes the slide deck and selected self-contained comparison bundles from <code>demo/</code>. Use the deck for the narrative presentation and the report bundles for raw inspect output.</p>
+
+  <div class="grid">
+    <article class="card">
+      <p class="eyebrow">Presentation</p>
+      <h2><a href="../index.html">Slide Deck</a></h2>
+      <p>Launch presentation and corrected EUPE interpretation.</p>
+    </article>
+
+    <article class="card">
+      <p class="eyebrow">Sample Report</p>
+      <h2><a href="20260408-123006/report.html">2026-04-08 Four-Model Compare</a></h2>
+      <p>Self-contained HTML bundle for the elephant comparison across DINOv2, I-JEPA, V-JEPA 2, and EUPE.</p>
+    </article>
+
+    <article class="card">
+      <p class="eyebrow">Reference Report</p>
+      <h2><a href="eupe-vs-ssl-reference.html">EUPE vs SSL Reference</a></h2>
+      <p>Corrected EUPE reference report used in the repo narrative and README correction section.</p>
+    </article>
+  </div>
+</main>
+</body>
+</html>

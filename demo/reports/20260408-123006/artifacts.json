@@ -1,0 +1,217 @@
+{
+  "command": "compare",
+  "format": "html",
+  "primary_artifact": "report.html",
+  "context": {
+    "image": "docs/assets/img/samples/elephant_sample_image.jpg",
+    "models": [
+      "dinov2-vit-l14",
+      "ijepa-vit-h14",
+      "vjepa2-vitl-fpc2-256",
+      "eupe-vit-b16"
+    ]
+  },
+  "summary": {
+    "comparison_count": 6,
+    "comparison_highlights": [
+      {
+        "label": "Strongest CKA alignment",
+        "model_a": "dinov2-vit-l14",
+        "model_b": "vjepa2-vitl-fpc2-256",
+        "value": 0.35802173614501953
+      },
+      {
+        "label": "Weakest CKA alignment",
+        "model_a": "vjepa2-vitl-fpc2-256",
+        "model_b": "eupe-vit-b16",
+        "value": 0.07618848234415054
+      },
+      {
+        "label": "Highest neighborhood overlap",
+        "model_a": "dinov2-vit-l14",
+        "model_b": "ijepa-vit-h14",
+        "value": 0.2777343690395355
+      },
+      {
+        "label": "Strongest patch correspondence",
+        "model_a": "dinov2-vit-l14",
+        "model_b": "vjepa2-vitl-fpc2-256",
+        "value": 0.06194474548101425
+      }
+    ],
+    "model_count": 4,
+    "model_highlights": [
+      {
+        "label": "Highest effective rank",
+        "model": "vjepa2-vitl-fpc2-256",
+        "value": "64/1024"
+      },
+      {
+        "label": "Highest patch entropy",
+        "model": "ijepa-vit-h14",
+        "value": "2.89"
+      },
+      {
+        "label": "Most top-heavy variance",
+        "model": "eupe-vit-b16",
+        "value": "87.0%"
+      }
+    ],
+    "pairwise_support": {
+      "cls_cosine": {
+        "supported_pairs": 0,
+        "total_pairs": 6,
+        "unavailable_pairs": 6,
+        "unavailable_reasons": [
+          {
+            "count": 4,
+            "reason": "Unavailable because only one model exposes a CLS token."
+          },
+          {
+            "count": 1,
+            "reason": "Unavailable because CLS dimensions differ (1024 vs 768)."
+          },
+          {
+            "count": 1,
+            "reason": "Unavailable because neither model exposes a CLS token."
+          }
+        ]
+      },
+      "knn_overlap_k10": {
+        "supported_pairs": 6,
+        "total_pairs": 6,
+        "unavailable_pairs": 0
+      },
+      "linear_cka": {
+        "supported_pairs": 6,
+        "total_pairs": 6,
+        "unavailable_pairs": 0
+      },
+      "mean_patch_correspondence": {
+        "supported_pairs": 1,
+        "total_pairs": 6,
+        "unavailable_pairs": 5,
+        "unavailable_reasons": [
+          {
+            "count": 2,
+            "reason": "Unavailable because embedding dimensions differ (1024 vs 768)."
+          },
+          {
+            "count": 1,
+            "reason": "Unavailable because embedding dimensions differ (1024 vs 1280)."
+          },
+          {
+            "count": 1,
+            "reason": "Unavailable because embedding dimensions differ (1280 vs 1024)."
+          },
+          {
+            "count": 1,
+            "reason": "Unavailable because embedding dimensions differ (1280 vs 768)."
+          }
+        ]
+      }
+    }
+  },
+  "artifacts": [
+    {
+      "path": "report.html",
+      "kind": "html",
+      "label": "Compare report",
+      "byte_size": 28992,
+      "sha256": "572d3851bf5d7928e6f084689ab899bd8ce8407b28a9cbbea7e99448c07418ad"
+    },
+    {
+      "path": "compare.json",
+      "kind": "json",
+      "label": "Compare report data",
+      "byte_size": 16567,
+      "sha256": "5d69517aa0294d5323efc371b392f41022b940ec65d9d1cc3fbca895c8008e3e"
+    },
+    {
+      "path": "input_image.png",
+      "kind": "png",
+      "label": "Source image used for this compare report.",
+      "byte_size": 193772,
+      "sha256": "6a2a8cfb07bf969abad349d316626348da23d7d2c6939727e753d45faa39d88a"
+    },
+    {
+      "path": "dinov2-vit-l14_pca.png",
+      "kind": "png",
+      "label": "Patch-space RGB projection derived from the top three PCA components for dinov2-vit-l14.",
+      "byte_size": 5566,
+      "sha256": "4a0f87e478f2df5ef28db4005e6656e0894686d289b7c8c1db158f8e0f28ad4a"
+    },
+    {
+      "path": "ijepa-vit-h14_pca.png",
+      "kind": "png",
+      "label": "Patch-space RGB projection derived from the top three PCA components for ijepa-vit-h14.",
+      "byte_size": 5646,
+      "sha256": "49fc43ec3e7e70be23ed81f2da4fa21d22937d73e6be57ff919fdaac3a076658"
+    },
+    {
+      "path": "vjepa2-vitl-fpc2-256_pca.png",
+      "kind": "png",
+      "label": "Patch-space RGB projection derived from the top three PCA components for vjepa2-vitl-fpc2-256.",
+      "byte_size": 5737,
+      "sha256": "c6975e07740d548af94181333a19be45bc26137f6984a66b5d72c3ea925535ce"
+    },
+    {
+      "path": "eupe-vit-b16_pca.png",
+      "kind": "png",
+      "label": "Patch-space RGB projection derived from the top three PCA components for eupe-vit-b16.",
+      "byte_size": 5133,
+      "sha256": "423e4d57bf8f980228e7e4115c10673861204bd24607d381dee80e24cfeca6fc"
+    },
+    {
+      "path": "linear_cka.png",
+      "kind": "png",
+      "label": "Cross-model representation alignment measured with linear CKA.",
+      "byte_size": 1472,
+      "sha256": "c302637b1a3729b862ea4e1b7be8cc9e43950b4497b3313d62cb4e28aa7eb14e"
+    },
+    {
+      "path": "knn_overlap_k10.png",
+      "kind": "png",
+      "label": "Cross-model neighborhood agreement using k=10.",
+      "byte_size": 1470,
+      "sha256": "2de59917847ba03d67cc032b588c3d96e5a5d4f302ee9243334d1cf3942498f1"
+    },
+    {
+      "path": "patch_correspondence.png",
+      "kind": "png",
+      "label": "Direct patch-space correspondence for models with matching embedding dimensions.",
+      "byte_size": 1481,
+      "sha256": "a5e4f09e53ce552e664ee777c2c3b2f702e3ab51939573b606b60868890311d0"
+    }
+  ],
+  "validation": [
+    {
+      "model": "dinov2-vit-l14",
+      "status": "validated",
+      "recommendation": "Safe to interpret as source-aligned for supported report features."
+    },
+    {
+      "model": "ijepa-vit-h14",
+      "status": "validated",
+      "recommendation": "Safe to interpret as source-aligned for supported report features."
+    },
+    {
+      "model": "vjepa2-vitl-fpc2-256",
+      "status": "validated",
+      "recommendation": "Safe to interpret as source-aligned for supported report features."
+    },
+    {
+      "model": "eupe-vit-b16",
+      "status": "validated",
+      "recommendation": "Safe to interpret as source-aligned for supported report features."
+    }
+  ],
+  "validation_summary": {
+    "overall_status": "validated",
+    "validated": 4,
+    "partial": 0,
+    "unverified": 0,
+    "stale": 0,
+    "failed": 0
+  }
+}

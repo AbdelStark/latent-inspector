@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>latent-inspector: elephant_sample_image.jpg</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #0d1117;
+    --panel: #161b22;
+    --panel-2: #11161d;
+    --text: #e6edf3;
+    --muted: #8b949e;
+    --accent: #79c0ff;
+    --ok: #3fb950;
+    --warn: #d29922;
+    --bad: #f85149;
+    --border: #30363d;
+    --chip: #1b2230;
+  }
+  body { font-family: 'Segoe UI', system-ui, sans-serif; margin: 2rem; background: radial-gradient(circle at top, #182032 0%, var(--bg) 45%); color: var(--text); }
+  h1, h2, h3 { color: var(--accent); }
+  h3 { margin-top: 0; }
+  .panel { background: linear-gradient(180deg, var(--panel), var(--panel-2)); border: 1px solid var(--border); border-radius: 16px; padding: 1rem 1.25rem; margin: 1rem 0 1.5rem; }
+  table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+  th { background: var(--panel); padding: 0.5rem 1rem; text-align: left; color: var(--accent); border-bottom: 2px solid var(--border); }
+  td { padding: 0.4rem 1rem; border-bottom: 1px solid #21262d; vertical-align: top; }
+  tr:hover td { background: #161b22; }
+  .badge { font-size: 0.8em; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--border); background: #1f2937; text-transform: uppercase; letter-spacing: 0.04em; }
+  .badge.validated { color: var(--ok); border-color: rgba(63,185,80,0.35); }
+  .badge.partial, .badge.stale { color: var(--warn); border-color: rgba(210,153,34,0.35); }
+  .badge.failed, .badge.unverified { color: var(--bad); border-color: rgba(248,81,73,0.35); }
+  .caveat { color: var(--muted); margin: 0.3rem 0 0; }
+  .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 0.9rem; margin-top: 1rem; }
+  .stat-card { border: 1px solid var(--border); border-radius: 14px; padding: 0.9rem 1rem; background: rgba(255,255,255,0.03); }
+  .stat-card strong { display: block; font-size: 1.4rem; margin-top: 0.25rem; }
+  .chip-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 0.8rem; }
+  .chip-card { border: 1px solid var(--border); border-radius: 12px; padding: 0.9rem 1rem; background: var(--chip); }
+  .chip-card p { margin: 0.3rem 0 0; color: var(--muted); }
+  .matrix-grid { display: grid; gap: 1rem; }
+  .matrix-card { border: 1px solid var(--border); border-radius: 12px; padding: 0.9rem 1rem; background: rgba(255,255,255,0.02); }
+  .validation-grid { display: grid; gap: 1rem; }
+  .validation-card { border: 1px solid var(--border); border-radius: 14px; padding: 1rem; background: rgba(255,255,255,0.02); }
+  .bundle-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem; }
+  .bundle-card { border: 1px solid var(--border); border-radius: 14px; padding: 1rem; background: rgba(255,255,255,0.02); }
+  .json-block { margin: 0; padding: 0.85rem 1rem; border-radius: 12px; border: 1px solid var(--border); background: rgba(0,0,0,0.25); overflow-x: auto; white-space: pre-wrap; word-break: break-word; }
+  .delta-list { margin: 0.5rem 0 0; padding-left: 1.1rem; color: var(--muted); }
+  .delta-list li { margin: 0.25rem 0; }
+  .empty-state { color: var(--muted); margin: 0; }
+  code { color: #c9d1d9; }
+</style>
+</head>
+<body>
+<h1>latent-inspector</h1>
+<p><a href="../../index.html">Slide deck</a> · <a href="../index.html">Reports index</a></p>
+<div class="panel">
+  <p>Image: <code>elephant_sample_image.jpg</code></p>
+  <div class="stats-grid">
+    <div class="stat-card"><span>Models analysed</span><strong>4</strong></div>
+    <div class="stat-card"><span>Pairwise comparisons</span><strong>6</strong></div>
+    <div class="stat-card"><span>Validated reports</span><strong>4</strong></div>
+  </div>
+</div>
+
+<div class="panel">
+<h2>Highlights</h2>
+<div class="chip-grid"><article class="chip-card"><strong>Highest effective rank</strong><p>vjepa2-vitl-fpc2-256: 64/1024</p></article>
+<article class="chip-card"><strong>Highest patch entropy</strong><p>ijepa-vit-h14: 2.89</p></article>
+<article class="chip-card"><strong>Most top-heavy variance</strong><p>eupe-vit-b16: 87.0%</p></article>
+<article class="chip-card"><strong>Strongest CKA alignment</strong><p>dinov2-vit-l14 ↔ vjepa2-vitl-fpc2-256: 0.358</p></article>
+<article class="chip-card"><strong>Weakest CKA alignment</strong><p>vjepa2-vitl-fpc2-256 ↔ eupe-vit-b16: 0.076</p></article>
+<article class="chip-card"><strong>Highest neighborhood overlap</strong><p>dinov2-vit-l14 ↔ ijepa-vit-h14: 0.278</p></article>
+<article class="chip-card"><strong>Strongest patch correspondence</strong><p>dinov2-vit-l14 ↔ vjepa2-vitl-fpc2-256: 0.062</p></article></div>
+</div>
+
+<div class="panel">
+<h2>Per-model metrics</h2>
+<table>
+  <thead>
+    <tr>
+      <th>Model</th>
+      <th>Repr. rank</th>
+      <th>Dead dims</th>
+      <th>Patch entropy</th>
+      <th>Attention Gini</th>
+      <th>CLS L2 norm</th>
+      <th>Top-10 var%</th>
+      <th>Components@90%</th>
+      <th>Patch isotropy</th>
+      <th>Patch uniformity</th>
+      <th>Spatial coherence</th>
+      <th>RankMe</th>
+      <th>Spectral decay</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr><td>dinov2-vit-l14</td><td>60/1024</td><td>0</td><td>2.52</td><td>N/A</td><td>46.3</td><td>66.8%</td><td>31</td><td>0.796</td><td>-2.70</td><td>0.574</td><td>51.5</td><td>1.27</td></tr>
+<tr><td>ijepa-vit-h14</td><td>44/1280</td><td>0</td><td>2.89</td><td>N/A</td><td>N/A</td><td>72.7%</td><td>22</td><td>0.788</td><td>-2.72</td><td>0.532</td><td>46.6</td><td>1.59</td></tr>
+<tr><td>vjepa2-vitl-fpc2-256</td><td>64/1024</td><td>0</td><td>2.36</td><td>N/A</td><td>N/A</td><td>58.1%</td><td>38</td><td>0.678</td><td>-2.50</td><td>0.440</td><td>55.0</td><td>1.07</td></tr>
+<tr><td>eupe-vit-b16</td><td>22/768</td><td>0</td><td>2.83</td><td>N/A</td><td>14.9</td><td>87.0%</td><td>13</td><td>0.375</td><td>-1.23</td><td>0.913</td><td>38.5</td><td>1.82</td></tr>
+  </tbody>
+</table>
+</div>
+
+<div class="panel">
+<h2>Cross-model comparison</h2>
+<table>
+  <thead>
+    <tr>
+      <th>Model A</th>
+      <th>Model B</th>
+      <th>Patch alignment</th>
+      <th>CLS cosine sim</th>
+      <th>Linear CKA</th>
+      <th>k-NN overlap (k=10)</th>
+      <th>Mean patch corr.</th>
+      <th>Metric caveats</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr><td>dinov2-vit-l14</td><td>ijepa-vit-h14</td><td>256 shared patches</td><td>N/A</td><td>0.329</td><td>0.278</td><td>N/A</td><td>CLS cosine similarity: Unavailable because only one model exposes a CLS token.<br/>Mean patch correspondence: Unavailable because embedding dimensions differ (1024 vs 1280).</td></tr>
+<tr><td>dinov2-vit-l14</td><td>vjepa2-vitl-fpc2-256</td><td>256 shared patches</td><td>N/A</td><td>0.358</td><td>0.205</td><td>0.062</td><td>CLS cosine similarity: Unavailable because only one model exposes a CLS token.</td></tr>
+<tr><td>dinov2-vit-l14</td><td>eupe-vit-b16</td><td>196 shared patches (from 256 vs 196)</td><td>N/A</td><td>0.151</td><td>0.172</td><td>N/A</td><td>Patch alignment: Compared the first 196 shared patches because the models expose different patch grids (256 vs 196).<br/>CLS cosine similarity: Unavailable because CLS dimensions differ (1024 vs 768).<br/>Mean patch correspondence: Unavailable because embedding dimensions differ (1024 vs 768).</td></tr>
+<tr><td>ijepa-vit-h14</td><td>vjepa2-vitl-fpc2-256</td><td>256 shared patches</td><td>N/A</td><td>0.275</td><td>0.202</td><td>N/A</td><td>CLS cosine similarity: Unavailable because neither model exposes a CLS token.<br/>Mean patch correspondence: Unavailable because embedding dimensions differ (1280 vs 1024).</td></tr>
+<tr><td>ijepa-vit-h14</td><td>eupe-vit-b16</td><td>196 shared patches (from 256 vs 196)</td><td>N/A</td><td>0.116</td><td>0.128</td><td>N/A</td><td>Patch alignment: Compared the first 196 shared patches because the models expose different patch grids (256 vs 196).<br/>CLS cosine similarity: Unavailable because only one model exposes a CLS token.<br/>Mean patch correspondence: Unavailable because embedding dimensions differ (1280 vs 768).</td></tr>
+<tr><td>vjepa2-vitl-fpc2-256</td><td>eupe-vit-b16</td><td>196 shared patches (from 256 vs 196)</td><td>N/A</td><td>0.076</td><td>0.087</td><td>N/A</td><td>Patch alignment: Compared the first 196 shared patches because the models expose different patch grids (256 vs 196).<br/>CLS cosine similarity: Unavailable because only one model exposes a CLS token.<br/>Mean patch correspondence: Unavailable because embedding dimensions differ (1024 vs 768).</td></tr>
+  </tbody>
+            </table>
+</div>
+
+<div class="panel">
+<h2>Pairwise matrices</h2>
+<div class="matrix-grid"><article class="matrix-card"><h3>CLS cosine similarity</h3><p class="caveat"><strong>Comparable model pairs:</strong> 0/6</p><p class="caveat"><strong>Unavailable pairs:</strong> 6</p><p class="caveat">x4 Unavailable because only one model exposes a CLS token.</p><p class="caveat">x1 Unavailable because CLS dimensions differ (1024 vs 768).</p><p class="caveat">x1 Unavailable because neither model exposes a CLS token.</p><table><thead><tr><th></th><th>dinov2-vit-l14</th><th>ijepa-vit-h14</th><th>vjepa2-vitl-fpc2-256</th><th>eupe-vit-b16</th></tr></thead><tbody><tr><th>dinov2-vit-l14</th><td>1.000</td><td>N/A</td><td>N/A</td><td>N/A</td></tr><tr><th>ijepa-vit-h14</th><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td></tr><tr><th>vjepa2-vitl-fpc2-256</th><td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td></tr><tr><th>eupe-vit-b16</th><td>N/A</td><td>N/A</td><td>N/A</td><td>1.000</td></tr></tbody></table></article>
+<article class="matrix-card"><h3>Linear CKA</h3><p class="caveat"><strong>Comparable model pairs:</strong> 6/6</p><table><thead><tr><th></th><th>dinov2-vit-l14</th><th>ijepa-vit-h14</th><th>vjepa2-vitl-fpc2-256</th><th>eupe-vit-b16</th></tr></thead><tbody><tr><th>dinov2-vit-l14</th><td>1.000</td><td>0.329</td><td>0.358</td><td>0.151</td></tr><tr><th>ijepa-vit-h14</th><td>0.329</td><td>1.000</td><td>0.275</td><td>0.116</td></tr><tr><th>vjepa2-vitl-fpc2-256</th><td>0.358</td><td>0.275</td><td>1.000</td><td>0.076</td></tr><tr><th>eupe-vit-b16</th><td>0.151</td><td>0.116</td><td>0.076</td><td>1.000</td></tr></tbody></table></article>
+<article class="matrix-card"><h3>k-NN overlap (k=10)</h3><p class="caveat"><strong>Comparable model pairs:</strong> 6/6</p><table><thead><tr><th></th><th>dinov2-vit-l14</th><th>ijepa-vit-h14</th><th>vjepa2-vitl-fpc2-256</th><th>eupe-vit-b16</th></tr></thead><tbody><tr><th>dinov2-vit-l14</th><td>1.000</td><td>0.278</td><td>0.205</td><td>0.172</td></tr><tr><th>ijepa-vit-h14</th><td>0.278</td><td>1.000</td><td>0.202</td><td>0.128</td></tr><tr><th>vjepa2-vitl-fpc2-256</th><td>0.205</td><td>0.202</td><td>1.000</td><td>0.087</td></tr><tr><th>eupe-vit-b16</th><td>0.172</td><td>0.128</td><td>0.087</td><td>1.000</td></tr></tbody></table></article>
+<article class="matrix-card"><h3>Mean patch correspondence</h3><p class="caveat"><strong>Comparable model pairs:</strong> 1/6</p><p class="caveat"><strong>Unavailable pairs:</strong> 5</p><p class="caveat">x2 Unavailable because embedding dimensions differ (1024 vs 768).</p><p class="caveat">x1 Unavailable because embedding dimensions differ (1024 vs 1280).</p><p class="caveat">x1 Unavailable because embedding dimensions differ (1280 vs 1024).</p><p class="caveat">x1 Unavailable because embedding dimensions differ (1280 vs 768).</p><table><thead><tr><th></th><th>dinov2-vit-l14</th><th>ijepa-vit-h14</th><th>vjepa2-vitl-fpc2-256</th><th>eupe-vit-b16</th></tr></thead><tbody><tr><th>dinov2-vit-l14</th><td>1.000</td><td>N/A</td><td>0.062</td><td>N/A</td></tr><tr><th>ijepa-vit-h14</th><td>N/A</td><td>1.000</td><td>N/A</td><td>N/A</td></tr><tr><th>vjepa2-vitl-fpc2-256</th><td>0.062</td><td>N/A</td><td>1.000</td><td>N/A</td></tr><tr><th>eupe-vit-b16</th><td>N/A</td><td>N/A</td><td>N/A</td><td>1.000</td></tr></tbody></table></article></div>
+</div>
+
+<div class="panel"><h2>Visual Artefacts</h2><div><h3>Source image</h3><div class="inspect-asset-grid"><article class="inspect-asset-card"><h3>Input image</h3><img src="input_image.png" alt="Input image" /><p class="caveat">Source image used for this compare report.</p></article></div></div>
+<div><h3>Per-model PCA projections</h3><div class="inspect-asset-grid"><article class="inspect-asset-card"><h3>dinov2-vit-l14 PCA projection</h3><img src="dinov2-vit-l14_pca.png" alt="dinov2-vit-l14 PCA projection" /><p class="caveat">Patch-space RGB projection derived from the top three PCA components for dinov2-vit-l14.</p></article>
+<article class="inspect-asset-card"><h3>ijepa-vit-h14 PCA projection</h3><img src="ijepa-vit-h14_pca.png" alt="ijepa-vit-h14 PCA projection" /><p class="caveat">Patch-space RGB projection derived from the top three PCA components for ijepa-vit-h14.</p></article>
+<article class="inspect-asset-card"><h3>vjepa2-vitl-fpc2-256 PCA projection</h3><img src="vjepa2-vitl-fpc2-256_pca.png" alt="vjepa2-vitl-fpc2-256 PCA projection" /><p class="caveat">Patch-space RGB projection derived from the top three PCA components for vjepa2-vitl-fpc2-256.</p></article>
+<article class="inspect-asset-card"><h3>eupe-vit-b16 PCA projection</h3><img src="eupe-vit-b16_pca.png" alt="eupe-vit-b16 PCA projection" /><p class="caveat">Patch-space RGB projection derived from the top three PCA components for eupe-vit-b16.</p></article></div></div>
+<div><h3>Pairwise metric heatmaps</h3><div class="inspect-asset-grid"><article class="inspect-asset-card"><h3>Linear CKA heatmap</h3><img src="linear_cka.png" alt="Linear CKA heatmap" /><p class="caveat">Cross-model representation alignment measured with linear CKA.</p></article>
+<article class="inspect-asset-card"><h3>k-NN overlap heatmap</h3><img src="knn_overlap_k10.png" alt="k-NN overlap heatmap" /><p class="caveat">Cross-model neighborhood agreement using k=10.</p></article>
+<article class="inspect-asset-card"><h3>Patch correspondence heatmap</h3><img src="patch_correspondence.png" alt="Patch correspondence heatmap" /><p class="caveat">Direct patch-space correspondence for models with matching embedding dimensions.</p></article></div></div></div>
+
+<div class="panel"><h2>Export Bundle</h2><div class="stats-grid"><div class="stat-card"><span>Command</span><strong>compare</strong></div><div class="stat-card"><span>Format</span><strong>html</strong></div><div class="stat-card"><span>Primary artifact</span><strong>report.html</strong></div><div class="stat-card"><span>Bundle files</span><strong>11</strong></div><div class="stat-card"><span>Validation overview</span><strong>validated</strong></div></div><div class="bundle-grid" style="margin-top:1rem"><article class="bundle-card"><h3>Bundle Files</h3><table><thead><tr><th>Path</th><th>Kind</th><th>Label</th><th>Role</th><th>Size</th><th>SHA-256</th></tr></thead><tbody><tr><td><a href="report.html"><code>report.html</code></a></td><td>html</td><td>Compare report</td><td>primary</td><td>&mdash;</td><td>&mdash;</td></tr><tr><td><a href="compare.json"><code>compare.json</code></a></td><td>json</td><td>Compare report data</td><td>supporting</td><td>16.2 KiB</td><td><code title="5d69517aa0294d5323efc371b392f41022b940ec65d9d1cc3fbca895c8008e3e">5d69517aa0294d53…</code></td></tr><tr><td><a href="input_image.png"><code>input_image.png</code></a></td><td>png</td><td>Source image used for this compare report.</td><td>supporting</td><td>189.2 KiB</td><td><code title="6a2a8cfb07bf969abad349d316626348da23d7d2c6939727e753d45faa39d88a">6a2a8cfb07bf969a…</code></td></tr><tr><td><a href="dinov2-vit-l14_pca.png"><code>dinov2-vit-l14_pca.png</code></a></td><td>png</td><td>Patch-space RGB projection derived from the top three PCA components for dinov2-vit-l14.</td><td>supporting</td><td>5.4 KiB</td><td><code title="4a0f87e478f2df5ef28db4005e6656e0894686d289b7c8c1db158f8e0f28ad4a">4a0f87e478f2df5e…</code></td></tr><tr><td><a href="ijepa-vit-h14_pca.png"><code>ijepa-vit-h14_pca.png</code></a></td><td>png</td><td>Patch-space RGB projection derived from the top three PCA components for ijepa-vit-h14.</td><td>supporting</td><td>5.5 KiB</td><td><code title="49fc43ec3e7e70be23ed81f2da4fa21d22937d73e6be57ff919fdaac3a076658">49fc43ec3e7e70be…</code></td></tr><tr><td><a href="vjepa2-vitl-fpc2-256_pca.png"><code>vjepa2-vitl-fpc2-256_pca.png</code></a></td><td>png</td><td>Patch-space RGB projection derived from the top three PCA components for vjepa2-vitl-fpc2-256.</td><td>supporting</td><td>5.6 KiB</td><td><code title="c6975e07740d548af94181333a19be45bc26137f6984a66b5d72c3ea925535ce">c6975e07740d548a…</code></td></tr><tr><td><a href="eupe-vit-b16_pca.png"><code>eupe-vit-b16_pca.png</code></a></td><td>png</td><td>Patch-space RGB projection derived from the top three PCA components for eupe-vit-b16.</td><td>supporting</td><td>5.0 KiB</td><td><code title="423e4d57bf8f980228e7e4115c10673861204bd24607d381dee80e24cfeca6fc">423e4d57bf8f9802…</code></td></tr><tr><td><a href="linear_cka.png"><code>linear_cka.png</code></a></td><td>png</td><td>Cross-model representation alignment measured with linear CKA.</td><td>supporting</td><td>1.4 KiB</td><td><code title="c302637b1a3729b862ea4e1b7be8cc9e43950b4497b3313d62cb4e28aa7eb14e">c302637b1a3729b8…</code></td></tr><tr><td><a href="knn_overlap_k10.png"><code>knn_overlap_k10.png</code></a></td><td>png</td><td>Cross-model neighborhood agreement using k=10.</td><td>supporting</td><td>1.4 KiB</td><td><code title="2de59917847ba03d67cc032b588c3d96e5a5d4f302ee9243334d1cf3942498f1">2de59917847ba03d…</code></td></tr><tr><td><a href="patch_correspondence.png"><code>patch_correspondence.png</code></a></td><td>png</td><td>Direct patch-space correspondence for models with matching embedding dimensions.</td><td>supporting</td><td>1.4 KiB</td><td><code title="a5e4f09e53ce552e664ee777c2c3b2f702e3ab51939573b606b60868890311d0">a5e4f09e53ce552e…</code></td></tr><tr><td><a href="artifacts.json"><code>artifacts.json</code></a></td><td>json</td><td>Artifact manifest</td><td>supporting</td><td>&mdash;</td><td>&mdash;</td></tr></tbody></table></article><article class="bundle-card"><h3>Run Context</h3><pre class="json-block">{
+  &quot;image&quot;: &quot;docs/assets/img/samples/elephant_sample_image.jpg&quot;,
+  &quot;models&quot;: [
+    &quot;dinov2-vit-l14&quot;,
+    &quot;ijepa-vit-h14&quot;,
+    &quot;vjepa2-vitl-fpc2-256&quot;,
+    &quot;eupe-vit-b16&quot;
+  ]
+}</pre></article><article class="bundle-card"><h3>Bundle Summary</h3><pre class="json-block">{
+  &quot;comparison_count&quot;: 6,
+  &quot;comparison_highlights&quot;: [
+    {
+      &quot;label&quot;: &quot;Strongest CKA alignment&quot;,
+      &quot;model_a&quot;: &quot;dinov2-vit-l14&quot;,
+      &quot;model_b&quot;: &quot;vjepa2-vitl-fpc2-256&quot;,
+      &quot;value&quot;: 0.35802173614501953
+    },
+    {
+      &quot;label&quot;: &quot;Weakest CKA alignment&quot;,
+      &quot;model_a&quot;: &quot;vjepa2-vitl-fpc2-256&quot;,
+      &quot;model_b&quot;: &quot;eupe-vit-b16&quot;,
+      &quot;value&quot;: 0.07618848234415054
+    },
+    {
+      &quot;label&quot;: &quot;Highest neighborhood overlap&quot;,
+      &quot;model_a&quot;: &quot;dinov2-vit-l14&quot;,
+      &quot;model_b&quot;: &quot;ijepa-vit-h14&quot;,
+      &quot;value&quot;: 0.2777343690395355
+    },
+    {
+      &quot;label&quot;: &quot;Strongest patch correspondence&quot;,
+      &quot;model_a&quot;: &quot;dinov2-vit-l14&quot;,
+      &quot;model_b&quot;: &quot;vjepa2-vitl-fpc2-256&quot;,
+      &quot;value&quot;: 0.06194474548101425
+    }
+  ],
+  &quot;model_count&quot;: 4,
+  &quot;model_highlights&quot;: [
+    {
+      &quot;label&quot;: &quot;Highest effective rank&quot;,
+      &quot;model&quot;: &quot;vjepa2-vitl-fpc2-256&quot;,
+      &quot;value&quot;: &quot;64/1024&quot;
+    },
+    {
+      &quot;label&quot;: &quot;Highest patch entropy&quot;,
+      &quot;model&quot;: &quot;ijepa-vit-h14&quot;,
+      &quot;value&quot;: &quot;2.89&quot;
+    },
+    {
+      &quot;label&quot;: &quot;Most top-heavy variance&quot;,
+      &quot;model&quot;: &quot;eupe-vit-b16&quot;,
+      &quot;value&quot;: &quot;87.0%&quot;
+    }
+  ],
+  &quot;pairwise_support&quot;: {
+    &quot;cls_cosine&quot;: {
+      &quot;supported_pairs&quot;: 0,
+      &quot;total_pairs&quot;: 6,
+      &quot;unavailable_pairs&quot;: 6,
+      &quot;unavailable_reasons&quot;: [
+        {
+          &quot;count&quot;: 4,
+          &quot;reason&quot;: &quot;Unavailable because only one model exposes a CLS token.&quot;
+        },
+        {
+          &quot;count&quot;: 1,
+          &quot;reason&quot;: &quot;Unavailable because CLS dimensions differ (1024 vs 768).&quot;
+        },
+        {
+          &quot;count&quot;: 1,
+          &quot;reason&quot;: &quot;Unavailable because neither model exposes a CLS token.&quot;
+        }
+      ]
+    },
+    &quot;knn_overlap_k10&quot;: {
+      &quot;supported_pairs&quot;: 6,
+      &quot;total_pairs&quot;: 6,
+      &quot;unavailable_pairs&quot;: 0
+    },
+    &quot;linear_cka&quot;: {
+      &quot;supported_pairs&quot;: 6,
+      &quot;total_pairs&quot;: 6,
+      &quot;unavailable_pairs&quot;: 0
+    },
+    &quot;mean_patch_correspondence&quot;: {
+      &quot;supported_pairs&quot;: 1,
+      &quot;total_pairs&quot;: 6,
+      &quot;unavailable_pairs&quot;: 5,
+      &quot;unavailable_reasons&quot;: [
+        {
+          &quot;count&quot;: 2,
+          &quot;reason&quot;: &quot;Unavailable because embedding dimensions differ (1024 vs 768).&quot;
+        },
+        {
+          &quot;count&quot;: 1,
+          &quot;reason&quot;: &quot;Unavailable because embedding dimensions differ (1024 vs 1280).&quot;
+        },
+        {
+          &quot;count&quot;: 1,
+          &quot;reason&quot;: &quot;Unavailable because embedding dimensions differ (1280 vs 1024).&quot;
+        },
+        {
+          &quot;count&quot;: 1,
+          &quot;reason&quot;: &quot;Unavailable because embedding dimensions differ (1280 vs 768).&quot;
+        }
+      ]
+    }
+  }
+}</pre></article><article class="bundle-card"><h3>Validation Overview</h3><div class="stats-grid"><div class="stat-card"><span>Overall status</span><strong>validated</strong></div><div class="stat-card"><span>Validated</span><strong>4</strong></div><div class="stat-card"><span>Partial</span><strong>0</strong></div><div class="stat-card"><span>Stale</span><strong>0</strong></div><div class="stat-card"><span>Unverified</span><strong>0</strong></div><div class="stat-card"><span>Failed</span><strong>0</strong></div></div></article></div></div>
+
+<div class="panel">
+<h2>Validation Summary</h2>
+<div class="validation-grid"><article class="validation-card"><div style="display:flex;justify-content:space-between;align-items:center;gap:1rem"><strong>dinov2-vit-l14</strong><span class="badge validated">validated</span></div><p>Safe to interpret as source-aligned for supported report features.</p><div class="stats-grid"><div class="stat-card"><span>Evidence timestamp</span><strong>2026-03-27T12:00:00Z</strong></div><div class="stat-card"><span>Fixture set</span><strong>standard</strong></div><div class="stat-card"><span>Signals checked</span><strong>0</strong></div><div class="stat-card"><span>Signals drifted</span><strong>0</strong></div><div class="stat-card"><span>Drifted fixtures</span><strong>0</strong></div></div><p><strong>Approved artifact:</strong> <code>dinov2-vit-l14:standard:2026-03-27T12:00:00Z</code></p><p><strong>Backend:</strong> ONNX Runtime <span class="badge validated">validated</span></p><p class="caveat">Validation ran against live ONNX Runtime execution.</p><p><strong>Preprocess:</strong> <span class="badge validated">validated</span> Approved preprocessing evidence matches the current registry contract.</p><div><strong>Tensor semantics:</strong><ul class="delta-list"><li><span class="badge validated">validated</span> <code>last_hidden_state</code> (patch+cls sequence) Approved tensor semantics evidence matches the current registry contract. </li></ul></div><p><strong>Parity:</strong> <span class="badge validated">validated</span> Approved reference parity evidence matches the current registry contract.</p><p class="caveat">No open caveats.</p></article>
+<article class="validation-card"><div style="display:flex;justify-content:space-between;align-items:center;gap:1rem"><strong>ijepa-vit-h14</strong><span class="badge validated">validated</span></div><p>Safe to interpret as source-aligned for supported report features.</p><div class="stats-grid"><div class="stat-card"><span>Evidence timestamp</span><strong>2026-03-27T12:00:00Z</strong></div><div class="stat-card"><span>Fixture set</span><strong>standard</strong></div><div class="stat-card"><span>Signals checked</span><strong>0</strong></div><div class="stat-card"><span>Signals drifted</span><strong>0</strong></div><div class="stat-card"><span>Drifted fixtures</span><strong>0</strong></div></div><p><strong>Approved artifact:</strong> <code>ijepa-vit-h14:standard:2026-03-27T12:00:00Z</code></p><p><strong>Backend:</strong> ONNX Runtime <span class="badge validated">validated</span></p><p class="caveat">Validation ran against live ONNX Runtime execution.</p><p><strong>Preprocess:</strong> <span class="badge validated">validated</span> Approved preprocessing evidence matches the current registry contract.</p><div><strong>Tensor semantics:</strong><ul class="delta-list"><li><span class="badge validated">validated</span> <code>last_hidden_state</code> (patch sequence) Approved tensor semantics evidence matches the current registry contract. </li></ul></div><p><strong>Parity:</strong> <span class="badge validated">validated</span> Approved reference parity evidence matches the current registry contract.</p><p class="caveat">No open caveats.</p></article>
+<article class="validation-card"><div style="display:flex;justify-content:space-between;align-items:center;gap:1rem"><strong>vjepa2-vitl-fpc2-256</strong><span class="badge validated">validated</span></div><p>Safe to interpret as source-aligned for supported report features.</p><div class="stats-grid"><div class="stat-card"><span>Evidence timestamp</span><strong>2026-03-27T12:00:00Z</strong></div><div class="stat-card"><span>Fixture set</span><strong>standard</strong></div><div class="stat-card"><span>Signals checked</span><strong>0</strong></div><div class="stat-card"><span>Signals drifted</span><strong>0</strong></div><div class="stat-card"><span>Drifted fixtures</span><strong>0</strong></div></div><p><strong>Approved artifact:</strong> <code>vjepa2-vitl-fpc2-256:standard:2026-03-27T12:00:00Z</code></p><p><strong>Backend:</strong> ONNX Runtime <span class="badge validated">validated</span></p><p class="caveat">Validation ran against live ONNX Runtime execution.</p><p><strong>Preprocess:</strong> <span class="badge validated">validated</span> Approved preprocessing evidence matches the current registry contract.</p><div><strong>Tensor semantics:</strong><ul class="delta-list"><li><span class="badge validated">validated</span> <code>last_hidden_state</code> (patch sequence) Approved tensor semantics evidence matches the current registry contract. </li></ul></div><p><strong>Parity:</strong> <span class="badge validated">validated</span> Approved reference parity evidence matches the current registry contract.</p><p class="caveat">No open caveats.</p></article>
+<article class="validation-card"><div style="display:flex;justify-content:space-between;align-items:center;gap:1rem"><strong>eupe-vit-b16</strong><span class="badge validated">validated</span></div><p>Safe to interpret as source-aligned for supported report features.</p><div class="stats-grid"><div class="stat-card"><span>Evidence timestamp</span><strong>2026-03-27T12:00:00Z</strong></div><div class="stat-card"><span>Fixture set</span><strong>standard</strong></div><div class="stat-card"><span>Signals checked</span><strong>0</strong></div><div class="stat-card"><span>Signals drifted</span><strong>0</strong></div><div class="stat-card"><span>Drifted fixtures</span><strong>0</strong></div></div><p><strong>Approved artifact:</strong> <code>eupe-vit-b16:standard:2026-03-27T12:00:00Z</code></p><p><strong>Backend:</strong> ONNX Runtime <span class="badge validated">validated</span></p><p class="caveat">Validation ran against live ONNX Runtime execution.</p><p><strong>Preprocess:</strong> <span class="badge validated">validated</span> Approved preprocessing evidence matches the current registry contract.</p><div><strong>Tensor semantics:</strong><ul class="delta-list"><li><span class="badge validated">validated</span> <code>last_hidden_state</code> (patch+cls sequence) Approved tensor semantics evidence matches the current registry contract. </li></ul></div><p><strong>Parity:</strong> <span class="badge validated">validated</span> Approved reference parity evidence matches the current registry contract.</p><p class="caveat">No open caveats.</p></article></div>
+</div>
+
+<footer style="margin-top:3rem;color:#8b949e;font-size:0.8em">
+  Generated by <a href="https://github.com/AbdelStark/latent-inspector" style="color:#79c0ff">latent-inspector</a>
+</footer>
+</body>
+</html>
