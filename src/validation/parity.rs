@@ -9,6 +9,7 @@ use crate::validation::freshness::parity_evidence_freshness;
 use crate::validation::report::{ParitySignalDelta, ParityValidationSummary, ValidationStatus};
 
 const SIGNATURE_SAMPLES: usize = 8;
+const INPUT_INDEPENDENCE_MAX_COSINE: f32 = 0.85;
 
 #[derive(Default)]
 struct ParityComparisonStats {
@@ -282,9 +283,37 @@ pub fn build_reference_artifact(
         ),
         source: profile.source.clone(),
         backend,
+        reference_source: backend.label().to_string(),
         tolerances: profile.tolerances.clone(),
         observed,
     }
+}
+
+pub fn apply_input_independence_gate(
+    mut parity: ParityValidationSummary,
+    zero_probe: &ModelOutput,
+    random_probe: &ModelOutput,
+) -> ParityValidationSummary {
+    let zero_embedding = flattened_embedding(zero_probe);
+    let random_embedding = flattened_embedding(random_probe);
+    let cosine = cosine_similarity(&zero_embedding, &random_embedding);
+
+    if cosine >= INPUT_INDEPENDENCE_MAX_COSINE {
+        parity.deltas.push(ParitySignalDelta {
+            name: "input_independence.zeros_vs_random.cosine".to_string(),
+            observed: format!("{cosine:.6}"),
+            expected: format!("<{INPUT_INDEPENDENCE_MAX_COSINE:.2}"),
+            abs_diff: Some(cosine - INPUT_INDEPENDENCE_MAX_COSINE),
+            tolerance: Some(INPUT_INDEPENDENCE_MAX_COSINE),
+        });
+        parity.status = ValidationStatus::Failed;
+        parity.summary = format!(
+            "{} Input-independence gate failed (cosine {:.4} >= {:.2}); outputs appear insufficiently sensitive to input changes.",
+            parity.summary, cosine, INPUT_INDEPENDENCE_MAX_COSINE
+        );
+    }
+
+    parity.with_diagnostics(parity.checked_signals + 1)
 }
 
 fn summarize_fixture_output(fixture_id: String, output: &ModelOutput) -> FixtureSignalSummary {
@@ -359,6 +388,30 @@ fn sample_signature(values: &[f32]) -> Vec<f32> {
             values[position]
         })
         .collect()
+}
+
+fn flattened_embedding(output: &ModelOutput) -> Vec<f32> {
+    let mut values = Vec::new();
+    if let Some(cls) = output.cls_token.as_ref() {
+        values.extend(cls.iter().copied());
+    }
+    values.extend(output.patch_tokens.iter().copied());
+    values
+}
+
+fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
+    let mut dot = 0.0f32;
+    let mut norm_a = 0.0f32;
+    let mut norm_b = 0.0f32;
+    for (lhs, rhs) in a.iter().zip(b.iter()) {
+        dot += lhs * rhs;
+        norm_a += lhs * lhs;
+        norm_b += rhs * rhs;
+    }
+    if norm_a == 0.0 || norm_b == 0.0 {
+        return 1.0;
+    }
+    (dot / (norm_a.sqrt() * norm_b.sqrt())).clamp(-1.0, 1.0)
 }
 
 fn compare_fixture_summaries(
@@ -688,5 +741,19 @@ mod tests {
         assert_eq!(parity.status, ValidationStatus::Unverified);
         assert!(parity.deltas.is_empty());
         assert!(parity.summary.contains("unavailable"));
+    }
+
+    #[test]
+    fn input_independence_gate_flags_near_constant_outputs() {
+        let parity =
+            ParityValidationSummary::new(ValidationStatus::Validated, "ok").with_diagnostics(0);
+        let zero_probe = test_output(0.1, 0.1);
+        let random_probe = test_output(0.11, 0.1);
+        let gated = apply_input_independence_gate(parity, &zero_probe, &random_probe);
+        assert_eq!(gated.status, ValidationStatus::Failed);
+        assert!(gated
+            .deltas
+            .iter()
+            .any(|delta| delta.name == "input_independence.zeros_vs_random.cosine"));
     }
 }

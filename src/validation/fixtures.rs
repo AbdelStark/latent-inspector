@@ -89,6 +89,8 @@ pub struct ReferenceArtifact {
     pub source: String,
     #[serde(default = "default_reference_backend")]
     pub backend: InferenceBackend,
+    #[serde(default = "default_reference_source")]
+    pub reference_source: String,
     pub tolerances: ParityTolerances,
     pub observed: ReferenceSignals,
 }
@@ -219,6 +221,51 @@ pub fn build_reference_artifact_id(
 
 fn default_reference_backend() -> InferenceBackend {
     InferenceBackend::Stub
+}
+
+fn default_reference_source() -> String {
+    "unspecified".to_string()
+}
+
+pub fn input_independence_probes(input_size: u32) -> Vec<MaterializedFixture> {
+    vec![
+        MaterializedFixture {
+            spec: ValidationFixtureSpec {
+                id: "input-probe-zeros".to_string(),
+                description: "All-zero RGB probe used for input-independence validation."
+                    .to_string(),
+                width: input_size,
+                height: input_size,
+                pattern: FixturePattern::Gradient,
+            },
+            image: DynamicImage::ImageRgb8(ImageBuffer::from_pixel(
+                input_size,
+                input_size,
+                Rgb([0, 0, 0]),
+            )),
+        },
+        MaterializedFixture {
+            spec: ValidationFixtureSpec {
+                id: "input-probe-random".to_string(),
+                description:
+                    "Deterministic pseudo-random RGB probe used for input-independence validation."
+                        .to_string(),
+                width: input_size,
+                height: input_size,
+                pattern: FixturePattern::Gradient,
+            },
+            image: DynamicImage::ImageRgb8(ImageBuffer::from_fn(input_size, input_size, |x, y| {
+                let seed = x
+                    .wrapping_mul(374_761_393)
+                    .wrapping_add(y.wrapping_mul(668_265_263));
+                let mixed = seed ^ (seed >> 13);
+                let r = (mixed & 0xFF) as u8;
+                let g = ((mixed >> 8) & 0xFF) as u8;
+                let b = ((mixed >> 16) & 0xFF) as u8;
+                Rgb([r, g, b])
+            })),
+        },
+    ]
 }
 
 fn materialize_pattern(spec: &ValidationFixtureSpec) -> DynamicImage {
