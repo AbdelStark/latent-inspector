@@ -34,7 +34,7 @@ Each pixel block below is a patch token projected onto the top three principal c
 </tr>
 <tr>
 <td width="50%"><img src="docs/assets/img/examples/vjepa2-vitl-fpc2-256_pca.png" alt="V-JEPA 2 PCA representation"/><br/><sub><strong>V-JEPA 2</strong> -- structured regions with less static partitioning. Trained on video, so even on a still image the encoder organizes patches as if they could move.</sub></td>
-<td width="50%"><img src="docs/assets/img/examples/eupe-vit-b16_pca.png" alt="EUPE PCA representation"/><br/><sub><strong>EUPE</strong> -- compressed, high-contrast boundaries. Proxy-distilled training appears to produce compact features that prioritize hard task-relevant separations over smooth gradients.</sub></td>
+<td width="50%"><img src="docs/assets/img/examples/eupe-vit-b16_pca.png" alt="EUPE PCA representation"/><br/><sub><strong>EUPE</strong> -- compact, sharper grouping. Proxy-distilled training produces a more top-heavy representation with stronger local agreement than the SSL-only references; the earlier broken export exaggerated that effect.</sub></td>
 </tr>
 </table>
 
@@ -77,7 +77,7 @@ Different SSL objectives produce different internal representations of the same 
 - **DINOv2** -- self-distillation across augmented views. Patches in similar semantic regions get pushed together. The result looks like unsupervised segmentation.
 - **I-JEPA** -- predict masked patches in latent space (not pixel space). Each patch must encode enough context to reconstruct its neighbors abstractly. Higher patch entropy than DINOv2 because the objective demands it.
 - **V-JEPA 2** -- JEPA on video. Learns spatiotemporal structure from internet-scale video. Even on a still image, the encoder carries a prior about how the world moves.
-- **EUPE** -- proxy distillation from a large universal teacher into a compact encoder. The representation is a learned compromise across perception tasks.
+- **EUPE** -- proxy distillation from a large universal teacher into a compact encoder. The representation is a learned compromise across perception tasks, not a direct small-student multi-teacher baseline.
 - **MAE** -- reconstruct masked pixels. Must encode enough detail to literally redraw what was hidden.
 - **CLIP** -- align images with text. The representation is shaped by language, not just visual similarity.
 
@@ -111,7 +111,19 @@ Everything runs through ONNX Runtime. Sources:
 
 **V-JEPA 2 export notes.** V-JEPA 2 is a video model. Since we analyze single images, we exported only the encoder (no predictor head) with a fixed 2-frame input -- the image is duplicated to meet the `tubelet_size=2` requirement. Output: 256 spatial patch tokens at dim 1024, same shape as DINOv2, so cross-model comparison works directly. Exported via TorchScript at opset 14, simplified with [onnxsim](https://github.com/daquexian/onnx-simplifier), verified against PyTorch reference (max diff < 0.003). Artifact: [`abdelstark/vjepa2-vitl-fpc2-256-onnx`](https://huggingface.co/abdelstark/vjepa2-vitl-fpc2-256-onnx).
 
-**EUPE export notes.** Use the reproducible script at [`scripts/export_eupe_onnx.py`](scripts/export_eupe_onnx.py) and procedure doc [`docs/eupe-onnx-export.md`](docs/eupe-onnx-export.md). It wraps `forward_features()` to concatenate `[x_norm_clstoken, x_norm_patchtokens] -> [1,197,768]`, checks ONNX graph validity, validates ONNX vs PyTorch parity on 5 images (`np.allclose` with `atol=1e-3`/`rtol=1e-3`), and enforces an input-independence gate (`cos(zeros, random) < 0.85`) before accepting the export.
+**EUPE export notes.** Use the reproducible script at [`scripts/export_eupe_onnx.py`](scripts/export_eupe_onnx.py) and procedure doc [`docs/eupe-onnx-export.md`](docs/eupe-onnx-export.md). The upstream Hugging Face release is a `.pt` checkpoint, so the export loads EUPE through the official `facebookresearch/eupe` torch.hub entrypoint, concatenates `[x_norm_clstoken, x_norm_patchtokens] -> [1,197,768]`, exports with the legacy TorchScript ONNX path (`dynamo=False`), rewrites the bundle as `model.onnx` + `model.onnx_data`, and gates publication on cosine/diff parity plus an input-independence check (`cos(zeros, random) < 0.85`).
+
+**EUPE correction.** The earlier public EUPE report was based on a broken ONNX export and should not be trusted. The corrected export still shows that EUPE is the most compressed of the four reference models, but the surviving story is narrower:
+
+- EUPE is still more top-heavy than DINOv2, I-JEPA, and V-JEPA 2: effective rank `22/768`, top-10 variance `87.0%`, components@90% `13`.
+- EUPE is still less isotropic and more locally coherent than the SSL-only models: patch isotropy `0.375`, spatial coherence `0.913`.
+- EUPE is weaker-aligned to the SSL-only cluster, but not remotely near-zero CKA: DINOv2 `0.151`, I-JEPA `0.116`, V-JEPA 2 `0.076`.
+- The invalid thesis was that EUPE was effectively off-manifold because of artifact-driven near-zero CKA and isotropy `0.026`. The corrected thesis is that EUPE is a compact, top-heavy outlier with sharper local agreement.
+- These numbers are geometry comparisons against DINOv2, I-JEPA, and V-JEPA 2. They are not the paper's ImageNet k-NN classification metric, and they do not use the paper's main peer set.
+- The paper's actual training story is proxy distillation through a merged 1.9B teacher. The earlier repo wording incorrectly described direct multi-teacher distillation into the 86M student.
+
+The refreshed single-image compare artifacts live in [`demo/reports/eupe-vs-ssl-reference.html`](demo/reports/eupe-vs-ssl-reference.html) and [`demo/reports/eupe-compare.json`](demo/reports/eupe-compare.json).
+PyTorch parity for the published export lives in the accompanying `export.validation.json` artifact on Hugging Face; the checked-in fixture is now explicit ONNX regression evidence rather than a fake PyTorch proof.
 
 For other HuggingFace models, use the [ONNX Community Converter](https://huggingface.co/spaces/onnx-community/convert-to-onnx).
 
