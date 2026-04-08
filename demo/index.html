@@ -1,782 +1,126 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="utf-8">
+<meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>How AI Models See the World</title>
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.css">
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/theme/black.css" id="theme">
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/monokai.css">
+<title>latent-inspector</title>
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
-
   :root {
-    --bg: #08080c;
-    --bg-card: #101018;
-    --bg-card-hover: #14141e;
-    --border: #1e1e2c;
-    --border-accent: #2a2a3c;
-    --text: #d8d8e4;
-    --text-secondary: #8888a0;
-    --text-dim: #555568;
-    --text-muted: #3a3a4c;
-    --white: #f0f0f8;
-    --orange: #e8773a;
-    --orange-soft: #c46830;
-    --blue: #5b9cf5;
-    --green: #4ac0a0;
-    --red: #e05555;
-    --purple: #9580e0;
-    --yellow: #d4b040;
-    --r-background-color: var(--bg);
-    --r-main-font: 'Inter', system-ui, sans-serif;
-    --r-heading-font: 'Inter', system-ui, sans-serif;
-    --r-main-color: var(--text);
-    --r-heading-color: var(--white);
-    --r-heading-text-transform: none;
+    color-scheme: dark;
+    --bg: #0d1117;
+    --panel: #161b22;
+    --panel-2: #11161d;
+    --text: #e6edf3;
+    --muted: #8b949e;
+    --accent: #79c0ff;
+    --accent-2: #58a6ff;
+    --border: #30363d;
   }
-
-  .reveal { font-weight: 300; font-size: 28px; line-height: 1.5; }
-  .reveal h1 { font-weight: 800; font-size: 2.6em; letter-spacing: -0.03em; line-height: 1.1; }
-  .reveal h2 { font-weight: 700; font-size: 1.8em; letter-spacing: -0.02em; color: var(--white); line-height: 1.2; }
-  .reveal h3 { font-weight: 600; font-size: 1.1em; color: var(--text-secondary); letter-spacing: -0.01em; text-transform: uppercase; letter-spacing: 0.05em; font-size: 0.85em; }
-
-  /* ── Accent colors ── */
-  .c-orange { color: var(--orange); }
-  .c-blue { color: var(--blue); }
-  .c-green { color: var(--green); }
-  .c-red { color: var(--red); }
-  .c-purple { color: var(--purple); }
-  .c-yellow { color: var(--yellow); }
-  .c-dim { color: var(--text-dim); }
-  .c-sec { color: var(--text-secondary); }
-
-  /* ── Large metric display ── */
-  .metric {
-    font-family: 'JetBrains Mono', monospace;
-    font-weight: 600;
-    line-height: 1;
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    font-family: "Segoe UI", system-ui, sans-serif;
+    color: var(--text);
+    background: radial-gradient(circle at top, #182032 0%, var(--bg) 45%);
   }
-  .metric-xl { font-size: 4.5em; }
-  .metric-lg { font-size: 3em; }
-  .metric-md { font-size: 2em; }
-  .metric-label { font-size: 0.55em; font-weight: 400; color: var(--text-secondary); margin-top: 0.3em; font-family: 'Inter', sans-serif; }
-
-  /* ── Cards ── */
-  .card {
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 1.2em 1.5em;
-    text-align: left;
+  main {
+    max-width: 1040px;
+    margin: 0 auto;
+    padding: 4rem 1.5rem 5rem;
   }
-  .card-glow-orange { border-color: rgba(232,119,58,0.25); box-shadow: 0 0 40px rgba(232,119,58,0.05); }
-  .card-glow-red { border-color: rgba(224,85,85,0.25); box-shadow: 0 0 40px rgba(224,85,85,0.05); }
-  .card-glow-green { border-color: rgba(74,192,160,0.2); }
-  .card-glow-blue { border-color: rgba(91,156,245,0.2); }
-  .card-glow-purple { border-color: rgba(149,128,224,0.2); }
-
-  .card p { margin: 0.3em 0; }
-  .card strong { color: var(--orange); font-weight: 500; }
-
-  /* ── Tables ── */
-  .reveal table { margin: 0.6em auto; font-size: 0.68em; border-collapse: separate; border-spacing: 0; }
-  .reveal table th {
-    background: var(--bg-card);
-    color: var(--text-secondary);
-    font-weight: 600;
-    padding: 0.6em 1em;
-    border-bottom: 1px solid var(--border-accent);
-    font-size: 0.85em;
+  .eyebrow {
+    margin: 0;
+    color: var(--muted);
     text-transform: uppercase;
-    letter-spacing: 0.04em;
+    letter-spacing: 0.12em;
+    font-size: 0.78rem;
   }
-  .reveal table td {
-    padding: 0.55em 1em;
-    border-bottom: 1px solid var(--border);
+  h1 {
+    margin: 0.35rem 0 0;
+    font-size: clamp(2.3rem, 5vw, 4rem);
+    line-height: 1.05;
   }
-  .reveal table tr:last-child td { border-bottom: none; }
-  .cell-hi-red { background: rgba(224,85,85,0.1) !important; color: var(--red) !important; font-weight: 600; }
-  .cell-hi-green { background: rgba(74,192,160,0.1) !important; color: var(--green) !important; font-weight: 600; }
-
-  /* ── CKA matrix ── */
-  .matrix { font-family: 'JetBrains Mono', monospace; font-size: 0.62em; }
-  .matrix td, .matrix th { text-align: center; padding: 0.6em 0.8em; }
-  .matrix .diag { color: var(--text-muted); }
-  .matrix .zero { color: var(--red); font-weight: 700; font-size: 1.15em; }
-  .matrix .high { color: var(--green); font-weight: 500; }
-
-  /* ── Code ── */
-  .reveal pre { box-shadow: none; font-size: 0.62em; margin: 0.8em 0; }
-  .reveal code { font-family: 'JetBrains Mono', monospace; }
-  .reveal pre code {
-    padding: 1.2em 1.5em;
-    border-radius: 10px;
-    background: var(--bg-card);
-    border: 1px solid var(--border);
+  .lede {
+    max-width: 760px;
+    margin: 1rem 0 0;
+    color: var(--muted);
+    font-size: 1.08rem;
     line-height: 1.6;
   }
-
-  /* ── Layout ── */
-  .flex { display: flex; gap: 1.5em; align-items: flex-start; }
-  .flex > div { flex: 1; }
-  .flex-center { display: flex; gap: 2em; align-items: center; justify-content: center; }
-  .flex-baseline { display: flex; gap: 2em; align-items: flex-end; justify-content: center; }
-
-  /* ── Image grid ── */
-  .pca-grid {
+  .grid {
     display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 12px;
-    max-width: 680px;
-    margin: 0 auto;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 1rem;
+    margin-top: 2rem;
   }
-  .pca-grid figure { margin: 0; text-align: center; }
-  .pca-grid img {
-    width: 100%;
-    border-radius: 8px;
+  .card {
+    display: flex;
+    flex-direction: column;
+    gap: 0.9rem;
+    padding: 1.35rem;
     border: 1px solid var(--border);
+    border-radius: 18px;
+    background: linear-gradient(180deg, var(--panel), var(--panel-2));
   }
-  .pca-grid figcaption {
-    font-size: 0.5em;
-    color: var(--text-secondary);
-    margin-top: 0.4em;
+  .card h2 {
+    margin: 0;
+    font-size: 1.45rem;
+    color: var(--text);
   }
-
-  /* ── Single image showcase ── */
-  .showcase-img {
-    max-height: 420px;
-    border-radius: 10px;
-    border: 1px solid var(--border);
-    box-shadow: 0 8px 40px rgba(0,0,0,0.4);
+  .card p {
+    margin: 0;
+    color: var(--muted);
+    line-height: 1.6;
   }
-
-  /* ── Divider ── */
-  .rule { width: 48px; height: 2px; background: var(--border-accent); margin: 1.2em auto; }
-  .rule-orange { background: var(--orange); opacity: 0.4; }
-
-  /* ── Utility ── */
-  .small { font-size: 0.75em; }
-  .smaller { font-size: 0.6em; color: var(--text-dim); }
-  .tiny { font-size: 0.48em; color: var(--text-muted); }
-  .mono { font-family: 'JetBrains Mono', monospace; }
-  .fw-400 { font-weight: 400; }
-  .fw-500 { font-weight: 500; }
-  .mt-1 { margin-top: 0.5em; }
-  .mt-2 { margin-top: 1em; }
-  .mt-3 { margin-top: 1.5em; }
-  .mb-0 { margin-bottom: 0; }
-  .tl { text-align: left; }
-
-  /* ── Progress & slide number ── */
-  .reveal .progress { color: var(--orange); height: 2px; }
-  .reveal .slide-number { font-family: 'JetBrains Mono', monospace; font-size: 0.45em; color: var(--text-muted); }
-
-  /* ── Section divider slides ── */
-  .section-title { display: flex; flex-direction: column; justify-content: center; min-height: 100%; }
-  .section-title h2 { font-size: 2.4em; margin-bottom: 0.1em; }
-  .section-title .subtitle { color: var(--text-secondary); font-size: 0.8em; font-weight: 300; }
-
-  /* ── Model badge ── */
-  .badge {
-    display: inline-block;
-    padding: 0.15em 0.6em;
-    border-radius: 6px;
-    font-size: 0.65em;
-    font-weight: 500;
-    font-family: 'JetBrains Mono', monospace;
+  .meta {
+    color: var(--muted);
+    font-size: 0.9rem;
   }
-  .badge-green { background: rgba(74,192,160,0.12); color: var(--green); border: 1px solid rgba(74,192,160,0.2); }
-  .badge-blue { background: rgba(91,156,245,0.12); color: var(--blue); border: 1px solid rgba(91,156,245,0.2); }
-  .badge-purple { background: rgba(149,128,224,0.12); color: var(--purple); border: 1px solid rgba(149,128,224,0.2); }
-  .badge-red { background: rgba(224,85,85,0.12); color: var(--red); border: 1px solid rgba(224,85,85,0.2); }
-
-  /* ── Arrow connector ── */
-  .arrow { color: var(--text-muted); font-size: 1.4em; line-height: 1; }
-
-  /* ── Keyline quote ── */
-  .keyline {
-    border-left: 3px solid var(--orange);
-    padding: 0.6em 1.2em;
-    background: rgba(232,119,58,0.04);
-    border-radius: 0 8px 8px 0;
-    margin: 0.8em 0;
-    font-size: 0.88em;
-    text-align: left;
+  .cta {
+    display: inline-flex;
+    align-items: center;
+    width: fit-content;
+    padding: 0.7rem 1rem;
+    border-radius: 999px;
+    text-decoration: none;
+    color: white;
+    background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    font-weight: 600;
   }
-
-  /* ── Terminal switch indicator ── */
-  .terminal-cue {
-    display: inline-block;
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 0.3em 0.8em;
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 0.55em;
-    color: var(--text-dim);
-    margin-top: 1.5em;
+  .footer {
+    margin-top: 2rem;
+    color: var(--muted);
+    font-size: 0.95rem;
   }
-  .terminal-cue::before { content: "▸ "; color: var(--green); }
+  a {
+    color: var(--accent);
+  }
 </style>
 </head>
 <body>
-<div class="reveal">
-<div class="slides">
+<main>
+  <p class="eyebrow">latent-inspector</p>
+  <h1>Representation analysis, presentation, and report</h1>
+  <p class="lede">This GitHub Pages deployment has two public entry points: the narrative presentation of the project and a self-contained sample compare report with the raw metrics, PCA projections, and heatmaps behind the claims.</p>
 
-<section data-background-color="#08080c">
-  <div class="card card-glow-red" style="max-width:1100px; margin:1.5em auto 0; text-align:left;">
-    <h2 style="margin-top:0;">EUPE Notice</h2>
-    <p>The earlier EUPE ONNX export used in this deck was broken and produced misleading geometry claims.</p>
-    <p>The corrected export and refreshed compare artifacts now live in <span class="mono">demo/reports/eupe-vs-ssl-reference.html</span> and <span class="mono">demo/reports/eupe-compare.json</span>.</p>
-    <p><a href="reports/20260408-123006/report.html">Open sample compare report</a> · <a href="reports/">Browse reports</a></p>
-    <p>The deck below has been rewritten around the corrected benchmark and revised interpretation.</p>
+  <div class="grid">
+    <section class="card">
+      <div class="meta">Presentation</div>
+      <h2>How AI Models See the World</h2>
+      <p>Reveal.js slide deck for latent-inspector. It walks through the project, the model comparison setup, the corrected EUPE interpretation, and the broader thesis about how different training objectives reshape representation geometry.</p>
+      <a class="cta" href="slides.html">Open presentation</a>
+    </section>
+
+    <section class="card">
+      <div class="meta">Sample Report</div>
+      <h2>Four-Model Elephant Compare Report</h2>
+      <p>Self-contained HTML report generated by <code>latent-inspector compare</code> for DINOv2, I-JEPA, V-JEPA 2, and EUPE on the canonical elephant image. Includes per-model metrics, pairwise CKA and k-NN overlap, PCA images, and exported artifact metadata.</p>
+      <a class="cta" href="reports/20260408-123006/report.html">Open sample report</a>
+    </section>
   </div>
-</section>
 
-<!-- ════════════════════════════════════════════ -->
-<!--  TITLE                                      -->
-<!-- ════════════════════════════════════════════ -->
-<section data-background-color="#08080c">
-  <div style="margin-top:1em;">
-    <h1 style="margin-bottom:0.1em;">How AI Models<br><span class="c-orange">See the World</span></h1>
-    <div class="rule rule-orange" style="margin:0.8em auto;"></div>
-    <p class="c-sec fw-400" style="font-size:0.75em;">A deep dive into self-supervised vision model representations</p>
-    <p class="mt-3" style="font-size:0.55em;"><span class="mono c-dim">latent-inspector</span> <span class="c-dim">|</span> <span class="c-dim">Rust + ONNX Runtime</span></p>
-    <p class="tiny mt-2">github.com/AbdelStark/latent-inspector</p>
-  </div>
-</section>
-
-<!-- ════════════════════════════════════════════ -->
-<!--  ACT 1 — THE HOOK                          -->
-<!-- ════════════════════════════════════════════ -->
-<section>
-  <section>
-    <div class="section-title">
-      <p class="c-sec" style="font-size:0.7em; letter-spacing:0.1em; text-transform:uppercase;">Act I</p>
-      <h2>Same Image.<br>Four Models.<br><span class="c-orange">Four Realities.</span></h2>
-    </div>
-  </section>
-  <section>
-    <h3>The Input</h3>
-    <img src="elephant_sample_image.jpg" alt="African elephant on savanna" class="showcase-img">
-    <p class="smaller mt-1">One photograph. 224 x 224 pixels. Three color channels. Every model sees the same pixels.</p>
-  </section>
-  <section>
-    <h3>What each model sees</h3>
-    <p class="small c-sec mb-0">Top 3 PCA components mapped to <span class="c-red">R</span><span class="c-green">G</span><span class="c-blue">B</span></p>
-    <div class="pca-grid mt-1">
-      <figure>
-        <img src="dinov2-vit-l14_pca.png" alt="DINOv2 PCA">
-        <figcaption><span class="c-green">DINOv2</span> — clean object segmentation</figcaption>
-      </figure>
-      <figure>
-        <img src="ijepa-vit-h14_pca.png" alt="I-JEPA PCA">
-        <figcaption><span class="c-blue">I-JEPA</span> — fine-grained spatial detail</figcaption>
-      </figure>
-      <figure>
-        <img src="vjepa2-vitl-fpc2-256_pca.png" alt="V-JEPA 2 PCA">
-        <figcaption><span class="c-purple">V-JEPA 2</span> — richest dimensional spread</figcaption>
-      </figure>
-      <figure>
-        <img src="eupe-vit-b16_pca.png" alt="EUPE PCA">
-        <figcaption><span class="c-red">EUPE</span> — compact, sharper grouping</figcaption>
-      </figure>
-    </div>
-  </section>
-</section>
-
-<!-- ════════════════════════════════════════════ -->
-<!--  ACT 2 — SELF-SUPERVISED LEARNING          -->
-<!-- ════════════════════════════════════════════ -->
-<section>
-  <section>
-    <div class="section-title">
-      <p class="c-sec" style="font-size:0.7em; letter-spacing:0.1em; text-transform:uppercase;">Act II</p>
-      <h2>Self-Supervised Learning</h2>
-      <p class="subtitle">Learning to see without being told what to look at</p>
-    </div>
-  </section>
-  <section>
-    <h3>The bottleneck</h3>
-    <div class="flex">
-      <div class="card">
-        <p class="c-red fw-500">Supervised</p>
-        <p class="small c-sec">Human labels for every image</p>
-        <p class="small c-sec">ImageNet: 14M images, years of work</p>
-        <p class="small c-sec">Millions of dollars</p>
-      </div>
-      <div class="card card-glow-green">
-        <p class="c-green fw-500">Self-Supervised</p>
-        <p class="small c-sec">No labels needed</p>
-        <p class="small c-sec">The internet: billions of images</p>
-        <p class="small c-sec">Zero annotation cost</p>
-      </div>
-    </div>
-    <p class="small mt-2">The trick: invent a <em>task</em> that requires no labels<br>but forces the model to understand the image's structure.</p>
-  </section>
-  <section>
-    <h3>Different questions, different understanding</h3>
-    <div class="card card-glow-orange tl">
-      <p><strong>Self-distillation:</strong> <span class="c-sec">"Two views of the same image. Produce the same representation for both."</span></p>
-      <p class="mt-1"><strong>Latent prediction:</strong> <span class="c-sec">"I masked part of the image. Predict the <em>representation</em> of the hidden part."</span></p>
-      <p class="mt-1"><strong>Video prediction:</strong> <span class="c-sec">"Predict the representation of the next frame."</span></p>
-      <p class="mt-1"><strong>Proxy distillation:</strong> <span class="c-sec">"First build one large proxy teacher from multiple experts, then compress that proxy into a small generalist student."</span></p>
-    </div>
-    <div class="keyline mt-2">
-      Each question creates a different learning pressure.<br>
-      That pressure <strong class="c-orange">sculpts the geometry</strong> of the representation.
-    </div>
-  </section>
-</section>
-
-<!-- ════════════════════════════════════════════ -->
-<!--  THE FOUR MODELS                            -->
-<!-- ════════════════════════════════════════════ -->
-<section>
-  <section>
-    <div class="section-title">
-      <p class="c-sec" style="font-size:0.7em; letter-spacing:0.1em; text-transform:uppercase;">The Cast</p>
-      <h2>Four Models</h2>
-    </div>
-  </section>
-  <section>
-    <div class="flex" style="align-items:stretch;">
-      <div class="card card-glow-green" style="flex:1;">
-        <p><span class="badge badge-green">DINOv2</span> <span class="c-dim small">ViT-L/14 · 304M · 1024-dim</span></p>
-        <p class="small c-sec mt-1">Self-distillation. Student matches a slowly-evolving teacher across augmented views.</p>
-        <p class="small mt-1">The model learns that <span class="c-green fw-500">objects are the things that stay stable</span> when everything else changes.</p>
-        <p class="tiny mt-1">Meta FAIR · Oquab et al., 2023</p>
-      </div>
-      <div class="card card-glow-blue" style="flex:1;">
-        <p><span class="badge badge-blue">I-JEPA</span> <span class="c-dim small">ViT-H/14 · 632M · 1280-dim</span></p>
-        <p class="small c-sec mt-1">Masks large image regions. Predicts the <em>representation</em> of missing patches, not pixels.</p>
-        <p class="small mt-1"><span class="c-blue fw-500">Predicts meaning, not appearance.</span> Every patch must encode unique spatial context.</p>
-        <p class="tiny mt-1">Meta FAIR · Assran et al., 2023 · Yann LeCun's JEPA</p>
-      </div>
-    </div>
-    <div class="flex mt-1" style="align-items:stretch;">
-      <div class="card card-glow-purple" style="flex:1;">
-        <p><span class="badge badge-purple">V-JEPA 2</span> <span class="c-dim small">ViT-L/16 · 304M · 1024-dim</span></p>
-        <p class="small c-sec mt-1">Video prediction in latent space. Predicts future frames, not pixels.</p>
-        <p class="small mt-1">Even on a static photo, carries <span class="c-purple fw-500">an implicit prior about motion and time</span>.</p>
-        <p class="tiny mt-1">Meta FAIR · Bardes et al., 2025</p>
-      </div>
-      <div class="card card-glow-red" style="flex:1;">
-        <p><span class="badge badge-red">EUPE</span> <span class="c-dim small">ViT-B/16 · 86M · 768-dim</span></p>
-        <p class="small c-sec mt-1">Proxy-distilled from a 1.9B universal teacher that aggregates multiple specialist teachers.</p>
-        <p class="small mt-1"><span class="c-red fw-500">Compact generalist.</span> Lower-rank, more top-heavy, and more locally coherent than the SSL-only models.</p>
-        <p class="tiny mt-1">Meta FAIR · Zhu et al., 2026</p>
-      </div>
-    </div>
-  </section>
-  <section>
-    <h2>Same image. Different training pressures.</h2>
-    <div class="rule rule-orange"></div>
-    <p class="fw-400">The model families differ too, but the biggest point still holds: <strong class="c-orange">training pressure reshapes representation geometry</strong>.</p>
-    <p class="small c-sec mt-2">Let's measure how that single choice<br>reshapes the entire geometry of the representation.</p>
-  </section>
-</section>
-
-<!-- ════════════════════════════════════════════ -->
-<!--  ACT 3 — THE TOOL                          -->
-<!-- ════════════════════════════════════════════ -->
-<section>
-  <section>
-    <div class="section-title">
-      <p class="c-sec" style="font-size:0.7em; letter-spacing:0.1em; text-transform:uppercase;">Act III</p>
-      <h2>The Instrument</h2>
-    </div>
-  </section>
-  <section>
-    <pre><code class="language-bash">cargo install latent-inspector</code></pre>
-    <div class="flex mt-2">
-      <div class="card tl">
-        <p class="small"><span class="c-orange fw-500">Rust</span> <span class="c-dim">single binary, no Python env</span></p>
-        <p class="small mt-1"><span class="c-blue fw-500">ONNX Runtime</span> <span class="c-dim">real inference, verified models</span></p>
-        <p class="small mt-1"><span class="c-green fw-500">Validated</span> <span class="c-dim">SHA-256 checksums, golden references</span></p>
-      </div>
-      <div class="card tl">
-        <p class="small"><span class="mono c-sec">compare</span> <span class="c-dim">cross-model metrics + matrices</span></p>
-        <p class="small mt-1"><span class="mono c-sec">inspect</span> <span class="c-dim">single-model deep diagnostics</span></p>
-        <p class="small mt-1"><span class="mono c-sec">tui</span> <span class="c-dim">interactive terminal dashboard</span></p>
-        <p class="small mt-1"><span class="mono c-sec">validate</span> <span class="c-dim">model integrity verification</span></p>
-      </div>
-    </div>
-    <div class="terminal-cue">switch to terminal: latent-inspector models --verbose</div>
-  </section>
-</section>
-
-<!-- ════════════════════════════════════════════ -->
-<!--  ACT 4 — WHAT IS A REPRESENTATION          -->
-<!-- ════════════════════════════════════════════ -->
-<section>
-  <section>
-    <div class="section-title">
-      <p class="c-sec" style="font-size:0.7em; letter-spacing:0.1em; text-transform:uppercase;">Act IV</p>
-      <h2>What is a <span class="c-blue">Representation</span>?</h2>
-    </div>
-  </section>
-  <section>
-    <h3>From pixels to vectors</h3>
-    <div class="card tl" style="max-width:700px; margin:0 auto;">
-      <p class="mono small"><span class="c-dim">Image</span> <span class="c-sec">224 x 224 px, 3 channels</span></p>
-      <p class="mono small c-dim mt-1">&nbsp;&nbsp;↓ &nbsp;split into 14 x 14 pixel patches</p>
-      <p class="mono small mt-1"><span class="c-sec">256 patches</span></p>
-      <p class="mono small c-dim mt-1">&nbsp;&nbsp;↓ &nbsp;linear projection to 1024 dimensions</p>
-      <p class="mono small mt-1"><span class="c-orange">256 vectors x 1024 numbers</span></p>
-      <p class="mono small c-dim mt-1">&nbsp;&nbsp;↓ &nbsp;24 Transformer layers (self-attention + FFN)</p>
-      <p class="mono small mt-1"><span class="c-green">256 refined vectors = the representation</span></p>
-    </div>
-    <p class="small c-sec mt-2">262,144 floating-point numbers. That's what we analyze.</p>
-  </section>
-  <section>
-    <h3>PCA — Principal Component Analysis</h3>
-    <div class="card card-glow-orange tl">
-      <p>1024 dimensions is too many to visualize. PCA finds the <strong>directions of maximum variation</strong>.</p>
-      <p class="mt-1">Map the top 3 directions to <span class="c-red fw-500">Red</span>, <span class="c-green fw-500">Green</span>, <span class="c-blue fw-500">Blue</span> channels.</p>
-      <p class="mt-1">Same-colored regions = the model considers those patches <strong>similar</strong>.</p>
-    </div>
-    <p class="smaller mt-2">Colors are relative to each model. You cannot compare "red" across models.</p>
-  </section>
-</section>
-
-<!-- ════════════════════════════════════════════ -->
-<!--  ACT 5 — PCA DEEP ANALYSIS                 -->
-<!-- ════════════════════════════════════════════ -->
-<section>
-  <section>
-    <div class="section-title">
-      <p class="c-sec" style="font-size:0.7em; letter-spacing:0.1em; text-transform:uppercase;">Act V</p>
-      <h2>How Each Model <span class="c-orange">Sees</span></h2>
-    </div>
-  </section>
-  <section>
-    <div class="flex-center">
-      <div>
-        <img src="dinov2-vit-l14_pca.png" alt="DINOv2 PCA" style="height:340px; border-radius:10px; border:1px solid var(--border);">
-      </div>
-      <div class="tl" style="max-width:480px;">
-        <p><span class="badge badge-green">DINOv2</span></p>
-        <h2 style="font-size:1.3em; margin:0.3em 0;">Emergent Segmentation</h2>
-        <p class="small c-sec">Sharp boundaries. The elephant body clusters in one color. Background in another.</p>
-        <p class="small c-sec mt-1">Self-distillation forces consistency across augmented views. The most consistent thing across crops, rotations, and color shifts is the <strong class="c-green">object itself</strong>.</p>
-      </div>
-    </div>
-  </section>
-  <section>
-    <div class="flex-center">
-      <div>
-        <img src="ijepa-vit-h14_pca.png" alt="I-JEPA PCA" style="height:340px; border-radius:10px; border:1px solid var(--border);">
-      </div>
-      <div class="tl" style="max-width:480px;">
-        <p><span class="badge badge-blue">I-JEPA</span></p>
-        <h2 style="font-size:1.3em; margin:0.3em 0;">Fine-Grained Detail</h2>
-        <p class="small c-sec">More colors. Trunk, legs, ears each distinct. Background has spatial structure.</p>
-        <p class="small c-sec mt-1">The prediction objective forces each patch to be unique. If adjacent patches had identical representations, the model <strong class="c-blue">couldn't predict which one is missing</strong>.</p>
-      </div>
-    </div>
-  </section>
-  <section>
-    <div class="flex-center">
-      <div>
-        <img src="vjepa2-vitl-fpc2-256_pca.png" alt="V-JEPA 2 PCA" style="height:340px; border-radius:10px; border:1px solid var(--border);">
-      </div>
-      <div class="tl" style="max-width:480px;">
-        <p><span class="badge badge-purple">V-JEPA 2</span></p>
-        <h2 style="font-size:1.3em; margin:0.3em 0;">Maximum Dimensional Richness</h2>
-        <p class="small c-sec">The most colorful projection. The most directions in representation space.</p>
-        <p class="small c-sec mt-1">Trained on video, it encodes spatial structure <em>plus</em> temporal priors. More factors to encode = <strong class="c-purple">more dimensions used</strong>.</p>
-      </div>
-    </div>
-  </section>
-  <section>
-    <div class="flex-center">
-      <div>
-        <img src="eupe-vit-b16_pca.png" alt="EUPE PCA" style="height:340px; border-radius:10px; border:1px solid var(--border);">
-      </div>
-      <div class="tl" style="max-width:480px;">
-        <p><span class="badge badge-red">EUPE</span></p>
-        <h2 style="font-size:1.3em; margin:0.3em 0;">Compact Compression</h2>
-        <p class="small c-sec">Sharper grouping and much stronger local agreement than the other three models.</p>
-        <p class="small c-sec mt-1">The corrected export still shows a compressed representation, but it remains clearly image-dependent and structurally meaningful.</p>
-      </div>
-    </div>
-    <p class="small c-dim mt-2">Let's quantify exactly how different.</p>
-  </section>
-</section>
-
-<!-- ════════════════════════════════════════════ -->
-<!--  ACT 6 — METRICS                           -->
-<!-- ════════════════════════════════════════════ -->
-<section>
-  <section>
-    <div class="section-title">
-      <p class="c-sec" style="font-size:0.7em; letter-spacing:0.1em; text-transform:uppercase;">Act VI</p>
-      <h2>Measuring Representations</h2>
-    </div>
-    <div class="terminal-cue">switch to terminal: latent-inspector compare</div>
-  </section>
-  <section>
-    <h3>Effective Rank</h3>
-    <p class="small c-sec">How many dimensions the model <em>actually uses</em>. Like a 1024-channel mixing board — how many channels carry signal?</p>
-    <table>
-      <tr><th>Model</th><th>Effective Rank</th><th>Of</th></tr>
-      <tr><td><span class="c-green">DINOv2</span></td><td>60</td><td class="c-dim">1024</td></tr>
-      <tr><td><span class="c-blue">I-JEPA</span></td><td>44</td><td class="c-dim">1280</td></tr>
-      <tr><td><span class="c-purple">V-JEPA 2</span></td><td class="cell-hi-green">64</td><td class="c-dim">1024</td></tr>
-      <tr><td><span class="c-red">EUPE</span></td><td class="cell-hi-red">22</td><td class="c-dim">768</td></tr>
-    </table>
-    <p class="smaller mt-1">V-JEPA 2: broadest spread. EUPE: most concentrated model in this four-model set.</p>
-  </section>
-  <section>
-    <h3>Patch Entropy</h3>
-    <p class="small c-sec">How differentiated are the patches? High = every patch says something unique.</p>
-    <table>
-      <tr><th>Model</th><th>Entropy</th><th></th></tr>
-      <tr><td><span class="c-green">DINOv2</span></td><td>2.52</td><td></td></tr>
-      <tr><td><span class="c-blue">I-JEPA</span></td><td class="cell-hi-green">2.89</td><td class="small c-sec">every patch is unique</td></tr>
-      <tr><td><span class="c-purple">V-JEPA 2</span></td><td class="cell-hi-red">2.36</td><td class="small c-sec">one coherent scene</td></tr>
-      <tr><td><span class="c-red">EUPE</span></td><td>2.83</td><td class="small c-sec">compact, still differentiated</td></tr>
-    </table>
-    <p class="smaller mt-1">I-JEPA <em>must</em> differentiate to predict. EUPE stays fairly expressive on this metric even while compressing variance much more aggressively elsewhere.</p>
-  </section>
-</section>
-
-<!-- ════════════════════════════════════════════ -->
-<!--  ACT 7 — ISOTROPY REVEAL                   -->
-<!-- ════════════════════════════════════════════ -->
-<section>
-  <section>
-    <div class="section-title">
-      <p class="c-sec" style="font-size:0.7em; letter-spacing:0.1em; text-transform:uppercase;">Act VII</p>
-      <h2><span class="c-orange">Isotropy</span></h2>
-      <p class="subtitle">Do patches point in diverse directions — or all the same way?</p>
-    </div>
-  </section>
-  <section>
-    <p class="small c-sec">Picture a room of 256 compasses.<br>1.0 = every compass points a different direction. 0.0 = they all point north.</p>
-    <div class="rule"></div>
-    <div class="flex-baseline mt-2">
-      <div style="text-align:center;">
-        <div class="metric metric-lg c-green">0.796</div>
-        <div class="metric-label">DINOv2</div>
-      </div>
-      <div style="text-align:center;">
-        <div class="metric metric-lg c-blue">0.788</div>
-        <div class="metric-label">I-JEPA</div>
-      </div>
-      <div style="text-align:center;">
-        <div class="metric metric-lg c-purple">0.678</div>
-        <div class="metric-label">V-JEPA 2</div>
-      </div>
-      <div style="text-align:center;" class="fragment" data-fragment-index="1">
-        <div class="metric metric-xl c-red">0.375</div>
-        <div class="metric-label">EUPE</div>
-      </div>
-    </div>
-  </section>
-  <section>
-    <div class="metric metric-xl c-red" style="margin-bottom:0.3em;">0.375</div>
-    <p class="c-sec">Low, but <strong class="c-red">not near zero</strong>.</p>
-    <div class="rule"></div>
-    <div class="card card-glow-red tl mt-2" style="max-width:700px; margin-left:auto; margin-right:auto;">
-      <p>EUPE still uses fewer directions than the SSL-only models, but the corrected export shows a <strong>compressed representation</strong>, not a degenerate one.</p>
-      <p class="mt-1 c-sec">That matches the surviving qualitative story: sharper, more top-heavy features and much stronger local agreement.</p>
-    </div>
-    <div class="flex-center mt-2">
-      <div class="card tl" style="flex:0 1 auto;">
-        <p class="small"><span class="c-sec">Top-10 variance:</span> <span class="c-red fw-500">87.0%</span></p>
-        <p class="smaller">still by far the most top-heavy model</p>
-      </div>
-      <div class="card tl" style="flex:0 1 auto;">
-        <p class="small"><span class="c-sec">Components @ 90%:</span> <span class="c-red fw-500">13</span></p>
-        <p class="smaller">vs 31, 22, and 38 for the others</p>
-      </div>
-    </div>
-  </section>
-</section>
-
-<!-- ════════════════════════════════════════════ -->
-<!--  ACT 8 — CKA                               -->
-<!-- ════════════════════════════════════════════ -->
-<section>
-  <section>
-    <div class="section-title">
-      <p class="c-sec" style="font-size:0.7em; letter-spacing:0.1em; text-transform:uppercase;">Act VIII</p>
-      <h2>Cross-Model Similarity</h2>
-      <p class="subtitle">CKA — Centered Kernel Alignment</p>
-    </div>
-  </section>
-  <section>
-    <h3>What CKA measures</h3>
-    <div class="card card-glow-orange tl" style="max-width:700px; margin:0 auto;">
-      <p>Do two models organize their representations in <strong>similar geometric structures</strong>?</p>
-      <p class="c-sec mt-1">Like two restaurant critics: do they agree on <em>which restaurants are similar to each other</em>?</p>
-      <p class="mt-1"><span class="mono c-green">1.000</span> = identical geometry &nbsp;&nbsp;&nbsp; <span class="mono c-red">0.000</span> = completely unrelated</p>
-    </div>
-  </section>
-  <section>
-    <h3>The CKA Matrix</h3>
-    <table class="matrix">
-      <tr><th></th><th><span class="c-green">DINOv2</span></th><th><span class="c-blue">I-JEPA</span></th><th><span class="c-purple">V-JEPA 2</span></th><th><span class="c-red">EUPE</span></th></tr>
-      <tr><td class="c-green fw-500">DINOv2</td><td class="diag">1.000</td><td>0.329</td><td class="high">0.358</td><td>0.151</td></tr>
-      <tr><td class="c-blue fw-500">I-JEPA</td><td>0.329</td><td class="diag">1.000</td><td>0.275</td><td>0.116</td></tr>
-      <tr><td class="c-purple fw-500">V-JEPA 2</td><td class="high">0.358</td><td>0.275</td><td class="diag">1.000</td><td>0.076</td></tr>
-      <tr><td class="c-red fw-500">EUPE</td><td>0.151</td><td>0.116</td><td>0.076</td><td class="diag">1.000</td></tr>
-    </table>
-    <p class="small mt-2">EUPE is still the weakest match to the SSL-only cluster, but the corrected export shows <strong class="c-red">weak, non-zero alignment</strong> rather than export-driven collapse.</p>
-  </section>
-  <section>
-    <h3>Three findings</h3>
-    <div class="tl" style="max-width:750px; margin:0 auto;">
-      <div class="card mt-1 fragment">
-        <p><span class="c-green fw-500">1.</span> DINOv2 ↔ V-JEPA 2 = <span class="mono c-green">0.358</span> <span class="c-dim">— highest pair</span></p>
-        <p class="small c-sec">Same ViT-L architecture constrains the geometry. Architecture matters more than expected.</p>
-      </div>
-      <div class="card mt-1 fragment">
-        <p><span class="c-blue fw-500">2.</span> EUPE is weakest against everyone: <span class="mono c-blue">0.151 / 0.116 / 0.076</span></p>
-        <p class="small c-sec">Clear outlier within this four-model comparison. The gap is real; the earlier magnitude was artifact-driven.</p>
-      </div>
-      <div class="card card-glow-red mt-1 fragment">
-        <p><span class="c-red fw-500">3.</span> The stronger surviving signal is <span class="mono c-red">compression</span>, not total disagreement.</p>
-        <p class="small c-sec">EUPE concentrates variance harder, uses fewer effective directions, and keeps neighboring patches much more aligned.</p>
-      </div>
-    </div>
-  </section>
-  <section>
-    <h3>The Actual Distillation Story</h3>
-    <div class="card card-glow-red tl" style="max-width:650px; margin:1em auto;">
-      <p class="c-sec">The 86M student does <strong class="c-red">not</strong> directly distill from multiple teachers at once.</p>
-      <p class="mt-1">It distills from a merged 1.9B proxy teacher, and the paper explicitly compares against the direct multi-teacher baseline.</p>
-      <p class="mt-1 c-sec">That makes the corrected CKA numbers easier to read: EUPE reorganizes the geometry substantially, but it remains coherent.</p>
-    </div>
-  </section>
-</section>
-
-<!-- ════════════════════════════════════════════ -->
-<!--  k-NN OVERLAP                               -->
-<!-- ════════════════════════════════════════════ -->
-<section>
-  <h3>k-NN Overlap — Local Neighborhood Agreement</h3>
-  <p class="small c-sec">For each patch, find its 10 nearest neighbors in each model. What fraction do they share?</p>
-  <table class="matrix">
-    <tr><th></th><th><span class="c-green">DINOv2</span></th><th><span class="c-blue">I-JEPA</span></th><th><span class="c-purple">V-JEPA 2</span></th><th><span class="c-red">EUPE</span></th></tr>
-    <tr><td class="c-green fw-500">DINOv2</td><td class="diag">1.000</td><td class="high">0.278</td><td>0.205</td><td>0.172</td></tr>
-    <tr><td class="c-blue fw-500">I-JEPA</td><td class="high">0.278</td><td class="diag">1.000</td><td>0.202</td><td>0.128</td></tr>
-    <tr><td class="c-purple fw-500">V-JEPA 2</td><td>0.205</td><td>0.202</td><td class="diag">1.000</td><td class="cell-hi-red">0.087</td></tr>
-    <tr><td class="c-red fw-500">EUPE</td><td>0.172</td><td>0.128</td><td class="cell-hi-red">0.087</td><td class="diag">1.000</td></tr>
-  </table>
-  <div class="flex-center mt-2">
-    <div class="card tl" style="flex:0 1 auto;"><p class="small"><span class="c-green fw-500">27.8%</span> <span class="c-dim">DINOv2 ↔ I-JEPA — highest</span></p></div>
-    <div class="card tl" style="flex:0 1 auto;"><p class="small"><span class="c-red fw-500">8.7%</span> <span class="c-dim">EUPE ↔ V-JEPA 2 — lowest</span></p></div>
-  </div>
-  <p class="small c-sec mt-2">Again: lower agreement than the SSL-only cluster, but still a coherent image-dependent representation. This is patch-neighborhood overlap on one image, not the paper's ImageNet k-NN classification metric.</p>
-</section>
-
-<!-- ════════════════════════════════════════════ -->
-<!--  ACT 9 — TOOLKIT                           -->
-<!-- ════════════════════════════════════════════ -->
-<section>
-  <section>
-    <div class="section-title">
-      <p class="c-sec" style="font-size:0.7em; letter-spacing:0.1em; text-transform:uppercase;">Act IX</p>
-      <h2>The Toolkit</h2>
-    </div>
-    <div class="terminal-cue">switch to terminal for live demos</div>
-  </section>
-  <section>
-    <h3>Single Model Deep-Dive</h3>
-    <pre><code class="language-bash">latent-inspector inspect elephant.jpg --model dinov2-vit-l14</code></pre>
-    <p class="small c-sec mt-1">Full diagnostics: PCA variance spectrum, patch norm distributions,<br>CLS token analysis, all metrics in one view.</p>
-  </section>
-  <section>
-    <h3>Interactive Terminal UI</h3>
-    <pre><code class="language-bash">latent-inspector tui elephant.jpg \
-  -m dinov2-vit-l14,ijepa-vit-h14,vjepa2-vitl-fpc2-256,eupe-vit-b16</code></pre>
-    <p class="small c-sec mt-1">Dashboard · Inspector · Compare · Spectrum<br>All interactive. All in the terminal.</p>
-  </section>
-  <section>
-    <h3>Validation Pipeline</h3>
-    <pre><code class="language-bash">latent-inspector validate --model dinov2-vit-l14 --model ijepa-vit-h14 \
-  --model vjepa2-vitl-fpc2-256 --model eupe-vit-b16</code></pre>
-    <div class="flex-center mt-2">
-      <span class="badge badge-green">DINOv2 · 73 signals</span>
-      <span class="badge badge-blue">I-JEPA · 45 signals</span>
-      <span class="badge badge-purple">V-JEPA 2 · 45 signals</span>
-      <span class="badge badge-red">EUPE · 73 signals</span>
-    </div>
-    <p class="small c-sec mt-2">Preprocessing contracts. Golden references. Zero drift.<br>Not vibes — <strong>verifiable measurements</strong>.</p>
-  </section>
-</section>
-
-<!-- ════════════════════════════════════════════ -->
-<!--  ACT 10 — INSIGHT                          -->
-<!-- ════════════════════════════════════════════ -->
-<section>
-  <section>
-    <div class="section-title">
-      <p class="c-sec" style="font-size:0.7em; letter-spacing:0.1em; text-transform:uppercase;">Act X</p>
-      <h2>What Shapes <span class="c-orange">Perception</span>?</h2>
-    </div>
-  </section>
-  <section>
-    <h3>The hierarchy of forces</h3>
-    <div class="tl" style="max-width:700px; margin:0 auto;">
-      <p class="fragment"><span class="c-orange fw-600" style="font-size:1.3em;">1</span> &nbsp;<span class="fw-500">Training objective</span> <span class="c-dim">— the dominant force</span></p>
-      <p class="fragment mt-1"><span class="c-blue fw-600" style="font-size:1.3em;">2</span> &nbsp;<span class="fw-500">Architecture</span> <span class="c-dim">— the container that constrains geometry</span></p>
-      <p class="fragment mt-1"><span class="c-purple fw-600" style="font-size:1.3em;">3</span> &nbsp;<span class="fw-500">Modality</span> <span class="c-dim">— image vs video matters more than paradigm</span></p>
-      <p class="fragment mt-1"><span class="c-red fw-600" style="font-size:1.3em;">4</span> &nbsp;<span class="fw-500">Model size</span> <span class="c-dim">— the compression budget</span></p>
-    </div>
-  </section>
-  <section>
-    <h2 style="line-height:1.3;">Different <span class="c-orange">World Models</span>.<br>Different Ways of Seeing.</h2>
-    <div class="rule rule-orange"></div>
-    <p class="c-sec" style="max-width:700px; margin:0 auto;">If you're building a system that needs to understand the physical world — a robot, an autonomous vehicle, a world model — the question isn't just <em>"which model gets the best accuracy."</em></p>
-    <p class="mt-2 fw-500" style="font-size:1.1em;">What kind of <span class="c-orange">perception</span> does this model have?</p>
-  </section>
-</section>
-
-<!-- ════════════════════════════════════════════ -->
-<!--  CLOSING                                    -->
-<!-- ════════════════════════════════════════════ -->
-<section data-background-color="#08080c">
-  <div style="margin-top:1.5em;">
-    <p class="mono c-dim" style="font-size:0.65em; letter-spacing:0.05em;">OPEN SOURCE · RUST · RUNS IN SECONDS</p>
-    <h1 style="margin:0.3em 0;">latent-inspector</h1>
-    <pre style="max-width:500px; margin:0.5em auto;"><code class="language-bash">cargo install latent-inspector</code></pre>
-    <div class="rule rule-orange mt-2"></div>
-    <div class="flex-center mt-2" style="gap:0.8em;">
-      <span class="badge badge-green">DINOv2</span>
-      <span class="badge badge-blue">I-JEPA</span>
-      <span class="badge badge-purple">V-JEPA 2</span>
-      <span class="badge badge-red">EUPE</span>
-      <span class="c-dim small" style="margin-left:0.5em;">MAE · CLIP · SigLIP · DINOv3 coming</span>
-    </div>
-    <p class="mt-2" style="font-size:0.7em;"><a href="reports/20260408-123006/report.html">Sample compare report</a> · <a href="reports/">Reports index</a></p>
-    <p class="mt-3" style="font-size:0.75em;"><strong>github.com/AbdelStark/latent-inspector</strong></p>
-  </div>
-</section>
-
-</div>
-</div>
-
-<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/highlight.js"></script>
-<script>
-Reveal.initialize({
-  hash: true,
-  slideNumber: 'c/t',
-  showSlideNumber: 'all',
-  transition: 'none',
-  transitionSpeed: 'fast',
-  backgroundTransition: 'none',
-  width: 1920,
-  height: 1080,
-  margin: 0.06,
-  center: true,
-  plugins: [ RevealHighlight ]
-});
-</script>
+  <p class="footer">Repository: <a href="https://github.com/AbdelStark/latent-inspector">github.com/AbdelStark/latent-inspector</a></p>
+</main>
 </body>
 </html>

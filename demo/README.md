@@ -1,20 +1,20 @@
-# latent-inspector — Slide Deck
+# latent-inspector — Pages Site
 
-This folder hosts the public slide deck and published HTML comparison reports for latent-inspector, deployed to GitHub Pages at:
+This folder hosts the public landing page, presentation, and published HTML comparison reports for latent-inspector, deployed to GitHub Pages at:
 
 **→ https://abdelstark.github.io/latent-inspector/**
 
 ## What's in here
 
-- `index.html` — reveal.js slide deck (self-contained, no build step required)
-- `slides.html` — alias of index.html, kept for direct-link stability
+- `index.html` — landing page with the two public entry points
+- `slides.html` — reveal.js presentation, kept as the stable direct presentation URL
 - `reports/` — published HTML report bundles and a reports index
 - `*_pca.png` — PCA-projection stills from the four reference models (DINOv2, I-JEPA, V-JEPA 2, EUPE), generated with `latent-inspector compare`
 - `elephant_sample_image.jpg` — the canonical sample image used throughout the deck
 
 ## Viewing locally
 
-The deck is plain HTML with reveal.js loaded from a CDN — you can just open it:
+The landing page and presentation are plain HTML. You can just open them:
 
 ```bash
 open demo/index.html            # macOS
@@ -45,7 +45,7 @@ This folder is deployed to GitHub Pages automatically by `.github/workflows/page
 
 Published entry points:
 
-- `/` — slide deck
-- `/slides.html` — stable alias of the slide deck
+- `/` — landing page with links to the presentation and sample report
+- `/slides.html` — presentation: "How AI Models See the World"
 - `/reports/` — reports index
 - `/reports/20260408-123006/report.html` — sample four-model compare report

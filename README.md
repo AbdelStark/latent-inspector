@@ -7,9 +7,9 @@ Inspect and compare self-supervised vision model representations for DINOv2, I-J
 [![Crates.io](https://img.shields.io/crates/v/latent-inspector.svg)](https://crates.io/crates/latent-inspector)
 [![License](https://img.shields.io/crates/l/latent-inspector.svg)](https://crates.io/crates/latent-inspector)
 [![Rust 1.75+](https://img.shields.io/badge/rust-1.75%2B-000000?logo=rust)](https://www.rust-lang.org)
-[![Slides](https://img.shields.io/badge/slides-github%20pages-0a7aca?logo=github)](https://abdelstark.github.io/latent-inspector/)
+[![Pages](https://img.shields.io/badge/pages-github%20pages-0a7aca?logo=github)](https://abdelstark.github.io/latent-inspector/)
 
-📊 **Slides: [abdelstark.github.io/latent-inspector](https://abdelstark.github.io/latent-inspector/)** — "How AI Models See the World" (launch deck)
+📊 **Pages: [abdelstark.github.io/latent-inspector](https://abdelstark.github.io/latent-inspector/)** — landing page with links to the presentation and sample report. Direct presentation URL: [abdelstark.github.io/latent-inspector/slides.html](https://abdelstark.github.io/latent-inspector/slides.html)
 
 </div>
 <table>
