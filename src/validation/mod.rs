@@ -8,8 +8,14 @@ pub mod semantics;
 use crate::errors::{ModelError, ValidationError};
 use crate::models::ModelSession;
 use evidence::summarize_registered_evidence;
-use fixtures::{build_reference_artifact_id, load_fixture_set, ContractArtifact, LoadedFixtureSet};
-use parity::{build_reference_artifact, evaluate_reference_parity, summarize_outputs};
+use fixtures::{
+    build_reference_artifact_id, input_independence_probes, load_fixture_set, ContractArtifact,
+    LoadedFixtureSet,
+};
+use parity::{
+    apply_input_independence_gate, build_reference_artifact, evaluate_reference_parity,
+    summarize_outputs,
+};
 use report::ModelValidationSummary;
 use semantics::{evaluate_preprocess_contract, evaluate_tensor_semantics};
 
@@ -117,6 +123,21 @@ pub fn validate_session_with_fixture_set(
 
     let tensors = evaluate_tensor_semantics(session.entry(), &contract, fixture_set, &outputs[0]);
     let observed = summarize_outputs(fixtures.as_slice(), outputs.as_slice());
+    let probes = input_independence_probes(session.entry().info.input_size);
+    let mut probe_outputs = Vec::with_capacity(probes.len());
+    for probe in &probes {
+        let output =
+            session
+                .infer(&probe.image)
+                .map_err(|err| ValidationError::FailedValidation {
+                    model: model.clone(),
+                    reason: format!(
+                        "Inference failed on input-independence probe '{}': {err}",
+                        probe.spec.id
+                    ),
+                })?;
+        probe_outputs.push(output);
+    }
 
     let reference = if refresh_goldens {
         let artifact = build_reference_artifact(
@@ -138,6 +159,7 @@ pub fn validate_session_with_fixture_set(
         &observed,
         &reference,
     );
+    let parity = apply_input_independence_gate(parity, &probe_outputs[0], &probe_outputs[1]);
     let evidence_timestamp = reference.evidence_timestamp.clone();
     let artifact_id = reference.artifact_id.clone();
     let fixture_set_id = reference.fixture_set.clone();
