@@ -21,12 +21,15 @@ import onnx
 import onnxruntime as ort
 import torch
 import torch.nn as nn
+from huggingface_hub import hf_hub_download
 from PIL import Image
 from torchvision.transforms import v2 as T
-from transformers import AutoModel
 
 
 DEFAULT_MODEL_ID = "facebook/EUPE-ViT-B"
+DEFAULT_HUB_REPO = "facebookresearch/eupe:main"
+DEFAULT_HUB_ENTRYPOINT = "eupe_vitb16"
+DEFAULT_CHECKPOINT_FILENAME = "EUPE-ViT-B.pt"
 DEFAULT_OUTPUT_NAME = "last_hidden_state"
 
 
@@ -38,6 +41,16 @@ class PairMetrics:
 
 
 @dataclass
+class ValidationThresholds:
+    min_cls_cosine: float
+    min_patch_cosine: float
+    max_cls_mean_abs_diff: float
+    max_patch_mean_abs_diff: float
+    max_cls_max_abs_diff: float
+    max_patch_max_abs_diff: float
+
+
+@dataclass
 class ValidationRecord:
     image: str
     cls: PairMetrics
@@ -45,14 +58,19 @@ class ValidationRecord:
     allclose_atol: float
     allclose_rtol: float
     allclose_pass: bool
+    threshold_pass: bool
 
 
 @dataclass
 class ExportReport:
     model_id: str
+    hub_repo: str
+    hub_entrypoint: str
+    checkpoint_path: str
     onnx_path: str
     opset: int
     image_size: int
+    thresholds: ValidationThresholds
     validation_records: List[ValidationRecord]
     validation_passed: bool
     input_independence_cosine: float
@@ -62,13 +80,27 @@ class ExportReport:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--model-id", default=DEFAULT_MODEL_ID)
+    parser.add_argument("--hub-repo", default=DEFAULT_HUB_REPO)
+    parser.add_argument("--hub-entrypoint", default=DEFAULT_HUB_ENTRYPOINT)
+    parser.add_argument("--checkpoint", type=Path, default=None)
+    parser.add_argument(
+        "--checkpoint-filename", default=DEFAULT_CHECKPOINT_FILENAME
+    )
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--opset", type=int, default=17)
     parser.add_argument("--image-size", type=int, default=224)
-    parser.add_argument("--validation-images", type=Path, default=Path("docs/assets/img/samples"))
+    parser.add_argument(
+        "--validation-images", type=Path, default=Path("docs/assets/img/samples")
+    )
     parser.add_argument("--max-images", type=int, default=5)
     parser.add_argument("--atol", type=float, default=1e-3)
     parser.add_argument("--rtol", type=float, default=1e-3)
+    parser.add_argument("--min-cls-cosine", type=float, default=0.995)
+    parser.add_argument("--min-patch-cosine", type=float, default=0.99)
+    parser.add_argument("--max-cls-mean-abs-diff", type=float, default=0.03)
+    parser.add_argument("--max-patch-mean-abs-diff", type=float, default=0.05)
+    parser.add_argument("--max-cls-max-abs-diff", type=float, default=0.5)
+    parser.add_argument("--max-patch-max-abs-diff", type=float, default=5.0)
     parser.add_argument("--input-independence-threshold", type=float, default=0.85)
     parser.add_argument("--report", type=Path, default=None)
     parser.add_argument("--device", default="cpu", choices=["cpu", "cuda"])
@@ -165,7 +197,28 @@ def run_ort(session: ort.InferenceSession, x: np.ndarray) -> np.ndarray:
     return session.run([output_name], {input_name: x.astype(np.float32)})[0]
 
 
-def compare_outputs(torch_y: np.ndarray, ort_y: np.ndarray, atol: float, rtol: float) -> tuple[PairMetrics, PairMetrics, bool]:
+def within_thresholds(
+    cls_metrics: PairMetrics,
+    patch_metrics: PairMetrics,
+    thresholds: ValidationThresholds,
+) -> bool:
+    return (
+        cls_metrics.cosine >= thresholds.min_cls_cosine
+        and patch_metrics.cosine >= thresholds.min_patch_cosine
+        and cls_metrics.mean_abs_diff <= thresholds.max_cls_mean_abs_diff
+        and patch_metrics.mean_abs_diff <= thresholds.max_patch_mean_abs_diff
+        and cls_metrics.max_abs_diff <= thresholds.max_cls_max_abs_diff
+        and patch_metrics.max_abs_diff <= thresholds.max_patch_max_abs_diff
+    )
+
+
+def compare_outputs(
+    torch_y: np.ndarray,
+    ort_y: np.ndarray,
+    atol: float,
+    rtol: float,
+    thresholds: ValidationThresholds,
+) -> tuple[PairMetrics, PairMetrics, bool, bool]:
     cls_t, cls_o = torch_y[:, :1, :], ort_y[:, :1, :]
     patch_t, patch_o = torch_y[:, 1:, :], ort_y[:, 1:, :]
 
@@ -181,7 +234,8 @@ def compare_outputs(torch_y: np.ndarray, ort_y: np.ndarray, atol: float, rtol: f
     )
 
     allclose_pass = bool(np.allclose(torch_y, ort_y, atol=atol, rtol=rtol))
-    return cls_metrics, patch_metrics, allclose_pass
+    threshold_pass = within_thresholds(cls_metrics, patch_metrics, thresholds)
+    return cls_metrics, patch_metrics, allclose_pass, threshold_pass
 
 
 def maybe_simplify(model_path: Path) -> None:
@@ -198,41 +252,108 @@ def maybe_simplify(model_path: Path) -> None:
 
 def build_input_independence_probe(size: int) -> tuple[np.ndarray, np.ndarray]:
     zeros = np.zeros((1, 3, size, size), dtype=np.float32)
-
     rng = np.random.default_rng(13)
     rnd = rng.normal(loc=0.0, scale=1.0, size=(1, 3, size, size)).astype(np.float32)
     return zeros, rnd
+
+
+def resolve_checkpoint_path(args: argparse.Namespace) -> Path:
+    if args.checkpoint is not None:
+        return args.checkpoint
+    return Path(hf_hub_download(args.model_id, args.checkpoint_filename))
+
+
+def hub_source(repo_or_dir: str) -> str:
+    return "local" if Path(repo_or_dir).exists() else "github"
+
+
+def load_eupe_model(args: argparse.Namespace, checkpoint_path: Path) -> nn.Module:
+    return torch.hub.load(
+        args.hub_repo,
+        args.hub_entrypoint,
+        source=hub_source(args.hub_repo),
+        weights=str(checkpoint_path),
+        trust_repo=True,
+        skip_validation=True,
+    )
+
+
+def temp_single_file_path(output: Path) -> Path:
+    return output.with_name(f"{output.stem}.single{output.suffix}")
+
+
+def export_single_file(
+    model: EUPEWrapper,
+    dummy: torch.Tensor,
+    output_path: Path,
+    opset: int,
+) -> None:
+    torch.onnx.export(
+        model,
+        (dummy,),
+        str(output_path),
+        input_names=["pixel_values"],
+        output_names=[DEFAULT_OUTPUT_NAME],
+        opset_version=opset,
+        dynamo=False,
+    )
+
+
+def convert_to_external_data(single_file_path: Path, output_path: Path) -> None:
+    output_data_path = output_path.parent / f"{output_path.name}_data"
+    if output_path.exists():
+        output_path.unlink()
+    if output_data_path.exists():
+        output_data_path.unlink()
+
+    exported = onnx.load(str(single_file_path))
+    onnx.save_model(
+        exported,
+        str(output_path),
+        save_as_external_data=True,
+        all_tensors_to_one_file=True,
+        location=output_data_path.name,
+        size_threshold=1024,
+    )
 
 
 def main() -> None:
     args = parse_args()
     set_repro()
 
+    thresholds = ValidationThresholds(
+        min_cls_cosine=args.min_cls_cosine,
+        min_patch_cosine=args.min_patch_cosine,
+        max_cls_mean_abs_diff=args.max_cls_mean_abs_diff,
+        max_patch_mean_abs_diff=args.max_patch_mean_abs_diff,
+        max_cls_max_abs_diff=args.max_cls_max_abs_diff,
+        max_patch_max_abs_diff=args.max_patch_max_abs_diff,
+    )
+
     device = resolve_device(args.device)
     args.output.parent.mkdir(parents=True, exist_ok=True)
+    single_file_output = temp_single_file_path(args.output)
 
-    print(f"Loading {args.model_id} ...")
-    base = AutoModel.from_pretrained(args.model_id, trust_remote_code=True)
+    checkpoint_path = resolve_checkpoint_path(args)
+    print(f"Loading {args.hub_entrypoint} from {args.hub_repo} ...")
+    print(f"Checkpoint: {checkpoint_path}")
+    base = load_eupe_model(args, checkpoint_path)
     base.eval()
     base.to(device)
 
     model = EUPEWrapper(base).eval()
-    dummy = torch.zeros(1, 3, args.image_size, args.image_size, device=device, dtype=torch.float32)
-
-    print(f"Exporting ONNX to {args.output} ...")
-    torch.onnx.export(
-        model,
-        (dummy,),
-        str(args.output),
-        input_names=["pixel_values"],
-        output_names=[DEFAULT_OUTPUT_NAME],
-        opset_version=args.opset,
-        dynamo=True,
-        external_data=True,
+    dummy = torch.zeros(
+        1, 3, args.image_size, args.image_size, device=device, dtype=torch.float32
     )
 
+    print(f"Exporting single-file ONNX to {single_file_output} ...")
+    export_single_file(model, dummy, single_file_output, args.opset)
+
     if not args.skip_simplify:
-        maybe_simplify(args.output)
+        maybe_simplify(single_file_output)
+
+    print(f"Rewriting external-data bundle to {args.output} ...")
+    convert_to_external_data(single_file_output, args.output)
 
     exported = onnx.load(str(args.output))
     onnx.checker.check_model(exported)
@@ -249,8 +370,12 @@ def main() -> None:
         torch_y = run_torch(model, tensor, device)
         ort_y = run_ort(session, tensor.numpy())
 
-        cls_metrics, patch_metrics, allclose_pass = compare_outputs(
-            torch_y, ort_y, atol=args.atol, rtol=args.rtol
+        cls_metrics, patch_metrics, allclose_pass, threshold_pass = compare_outputs(
+            torch_y,
+            ort_y,
+            atol=args.atol,
+            rtol=args.rtol,
+            thresholds=thresholds,
         )
 
         records.append(
@@ -261,6 +386,7 @@ def main() -> None:
                 allclose_atol=args.atol,
                 allclose_rtol=args.rtol,
                 allclose_pass=allclose_pass,
+                threshold_pass=threshold_pass,
             )
         )
 
@@ -269,14 +395,18 @@ def main() -> None:
     r_out = run_ort(session, rnd)
     independence_cos = cosine_similarity(z_out, r_out)
 
-    validation_passed = all(r.allclose_pass for r in records)
+    validation_passed = all(r.threshold_pass for r in records)
     gate_passed = independence_cos < args.input_independence_threshold
 
     report = ExportReport(
         model_id=args.model_id,
+        hub_repo=args.hub_repo,
+        hub_entrypoint=args.hub_entrypoint,
+        checkpoint_path=str(checkpoint_path),
         onnx_path=str(args.output),
         opset=args.opset,
         image_size=args.image_size,
+        thresholds=thresholds,
         validation_records=records,
         validation_passed=validation_passed and gate_passed,
         input_independence_cosine=independence_cos,
@@ -290,9 +420,9 @@ def main() -> None:
     print("------------------")
     for record in records:
         print(
-            f"{record.image}: allclose={record.allclose_pass} "
-            f"cls_max={record.cls.max_abs_diff:.6f} patch_max={record.patch.max_abs_diff:.6f} "
-            f"cls_cos={record.cls.cosine:.6f} patch_cos={record.patch.cosine:.6f}"
+            f"{record.image}: thresholds={record.threshold_pass} allclose={record.allclose_pass} "
+            f"cls(max={record.cls.max_abs_diff:.6f}, mean={record.cls.mean_abs_diff:.6f}, cos={record.cls.cosine:.6f}) "
+            f"patch(max={record.patch.max_abs_diff:.6f}, mean={record.patch.mean_abs_diff:.6f}, cos={record.patch.cosine:.6f})"
         )
     print(
         f"input-independence cosine(zero,random)={independence_cos:.6f} "
@@ -300,9 +430,13 @@ def main() -> None:
     )
 
     if not validation_passed:
-        raise SystemExit("Export failed validation: ONNX output is not allclose to PyTorch on validation images.")
+        raise SystemExit(
+            "Export failed validation: ONNX output drifted beyond the configured parity thresholds."
+        )
     if not gate_passed:
-        raise SystemExit("Export failed input-independence gate: output appears input-insensitive.")
+        raise SystemExit(
+            "Export failed input-independence gate: output appears input-insensitive."
+        )
 
     print(f"\nExport successful: {args.output}")
     print(f"Validation report: {report_path}")

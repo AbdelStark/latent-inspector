@@ -649,9 +649,12 @@ pub fn registry() -> Vec<RegistryEntry> {
         // Source: facebook/EUPE-ViT-B (HuggingFace)
         // ONNX:   abdelstark/eupe-vit-b16-onnx (custom export)
         //
-        // Export method: forward_features() wrapper concatenating CLS + patches,
-        // TorchScript ONNX at opset 14, simplified with onnxsim, fp32 RoPE.
-        // Distilled from multiple domain-expert teachers (DINOv2, depth, segmentation).
+        // Export method: official facebookresearch/eupe torch.hub loader +
+        // forward_features() wrapper concatenating CLS + patches.
+        // Exported with the legacy TorchScript ONNX path because the newer
+        // torch.export/dynamo exporter currently fails on EUPE.
+        // Trained with proxy distillation: a compact student distilled from a
+        // single large proxy teacher that itself aggregates multiple experts.
         RegistryEntry {
             info: ModelInfo {
                 name: "eupe-vit-b16".to_string(),
@@ -665,7 +668,7 @@ pub fn registry() -> Vec<RegistryEntry> {
                 params_m: 86,
             },
             availability: Availability::ready(
-                "EUPE ViT-B/16 distilled from multiple domain-expert teachers into a compact efficient encoder.",
+                "EUPE ViT-B/16 proxy-distilled from a large universal teacher into a compact efficient encoder.",
             ),
             artifacts: vec![
                 ModelArtifact {
@@ -674,7 +677,7 @@ pub fn registry() -> Vec<RegistryEntry> {
                         "https://huggingface.co/abdelstark/eupe-vit-b16-onnx/resolve/main/model.onnx"
                             .to_string(),
                     checksum: Checksum::Sha256(
-                        "01e5483095a6e3e171394e00436c0ca1b38e9d6b478cdb2266df9fbf4f068c8d"
+                        "e0f0572f72afbb4857c960bbd99c3a6d71c8c7834b5cf0ed99632f53ba384f0f"
                             .to_string(),
                     ),
                 },
@@ -684,7 +687,7 @@ pub fn registry() -> Vec<RegistryEntry> {
                         "https://huggingface.co/abdelstark/eupe-vit-b16-onnx/resolve/main/model.onnx_data"
                             .to_string(),
                     checksum: Checksum::Sha256(
-                        "10a459ecc03a82fd48a54dae62f019d591d09b2dbb0c48fe765aef8534842749"
+                        "66fd1a1988c68746d49083026b9fbffc278c60061eaed9ef5c89d80b5716da87"
                             .to_string(),
                     ),
                 },

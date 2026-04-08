@@ -15,16 +15,16 @@
       "dead_dimensions": 0,
       "patch_entropy": 2.5229468,
       "attention_gini": null,
-      "cls_l2_norm": 46.279892,
-      "patch_norm_mean": 47.517574,
-      "patch_norm_std": 1.4129773,
-      "top10_variance_pct": 66.79412,
+      "cls_l2_norm": 46.279903,
+      "patch_norm_mean": 47.517582,
+      "patch_norm_std": 1.4129778,
+      "top10_variance_pct": 66.794136,
       "components_90pct": 31,
-      "patch_isotropy": 0.795566,
-      "patch_uniformity": -2.7001605,
-      "spatial_coherence": 0.57396716,
-      "rankme": 51.54327,
-      "spectral_decay": 1.2723802
+      "patch_isotropy": 0.79556584,
+      "patch_uniformity": -2.70016,
+      "spatial_coherence": 0.5739671,
+      "rankme": 51.543297,
+      "spectral_decay": 1.2723796
     },
     {
       "model_name": "ijepa-vit-h14",
@@ -35,15 +35,15 @@
       "patch_entropy": 2.890598,
       "attention_gini": null,
       "cls_l2_norm": null,
-      "patch_norm_mean": 33.771305,
-      "patch_norm_std": 6.136659,
+      "patch_norm_mean": 33.771313,
+      "patch_norm_std": 6.136669,
       "top10_variance_pct": 72.70681,
       "components_90pct": 22,
       "patch_isotropy": 0.7884939,
       "patch_uniformity": -2.7173722,
-      "spatial_coherence": 0.53155607,
-      "rankme": 46.634605,
-      "spectral_decay": 1.5922526
+      "spatial_coherence": 0.5315557,
+      "rankme": 46.63456,
+      "spectral_decay": 1.5922521
     },
     {
       "model_name": "vjepa2-vitl-fpc2-256",
@@ -54,34 +54,34 @@
       "patch_entropy": 2.3617692,
       "attention_gini": null,
       "cls_l2_norm": null,
-      "patch_norm_mean": 101.03558,
-      "patch_norm_std": 6.713215,
-      "top10_variance_pct": 58.141415,
+      "patch_norm_mean": 101.03559,
+      "patch_norm_std": 6.713193,
+      "top10_variance_pct": 58.1414,
       "components_90pct": 38,
-      "patch_isotropy": 0.67778134,
-      "patch_uniformity": -2.4990141,
-      "spatial_coherence": 0.43983573,
+      "patch_isotropy": 0.6777812,
+      "patch_uniformity": -2.4990137,
+      "spatial_coherence": 0.4398357,
       "rankme": 54.988335,
-      "spectral_decay": 1.0746424
+      "spectral_decay": 1.0746447
     },
     {
       "model_name": "eupe-vit-b16",
       "n_patches": 196,
       "embed_dim": 768,
-      "effective_rank": 17,
+      "effective_rank": 22,
       "dead_dimensions": 0,
-      "patch_entropy": 2.8394182,
+      "patch_entropy": 2.8339362,
       "attention_gini": null,
-      "cls_l2_norm": 56.48838,
-      "patch_norm_mean": 57.315727,
-      "patch_norm_std": 1.5164145,
-      "top10_variance_pct": 88.81261,
-      "components_90pct": 12,
-      "patch_isotropy": 0.02643478,
-      "patch_uniformity": -0.10403962,
-      "spatial_coherence": 0.9850896,
-      "rankme": 38.443256,
-      "spectral_decay": 1.7273724
+      "cls_l2_norm": 14.936672,
+      "patch_norm_mean": 16.73217,
+      "patch_norm_std": 0.55645883,
+      "top10_variance_pct": 86.97404,
+      "components_90pct": 13,
+      "patch_isotropy": 0.37513536,
+      "patch_uniformity": -1.2324903,
+      "spatial_coherence": 0.91349405,
+      "rankme": 38.523117,
+      "spectral_decay": 1.820676
     }
   ],
   "comparisons": [
@@ -94,7 +94,7 @@
         "compared_patch_count": 256
       },
       "cls_cosine_sim": null,
-      "linear_cka": 0.3290942,
+      "linear_cka": 0.32909337,
       "knn_overlap_k10": 0.27773437,
       "mean_patch_correspondence": null,
       "metric_caveats": [
@@ -119,9 +119,9 @@
         "compared_patch_count": 256
       },
       "cls_cosine_sim": null,
-      "linear_cka": 0.35802194,
+      "linear_cka": 0.35802174,
       "knn_overlap_k10": 0.20546874,
-      "mean_patch_correspondence": 0.06194472,
+      "mean_patch_correspondence": 0.061944745,
       "metric_caveats": [
         {
           "key": "cls_cosine_sim",
@@ -140,8 +140,8 @@
         "note": "Compared the first 196 shared patches because the models expose different patch grids (256 vs 196)."
       },
       "cls_cosine_sim": null,
-      "linear_cka": 0.044375647,
-      "knn_overlap_k10": 0.13163266,
+      "linear_cka": 0.15140209,
+      "knn_overlap_k10": 0.17244898,
       "mean_patch_correspondence": null,
       "metric_caveats": [
         {
@@ -165,7 +165,7 @@
         "compared_patch_count": 256
       },
       "cls_cosine_sim": null,
-      "linear_cka": 0.27543575,
+      "linear_cka": 0.27543703,
       "knn_overlap_k10": 0.20234375,
       "mean_patch_correspondence": null,
       "metric_caveats": [
@@ -191,8 +191,8 @@
         "note": "Compared the first 196 shared patches because the models expose different patch grids (256 vs 196)."
       },
       "cls_cosine_sim": null,
-      "linear_cka": 0.0,
-      "knn_overlap_k10": 0.1,
+      "linear_cka": 0.11562227,
+      "knn_overlap_k10": 0.12806122,
       "mean_patch_correspondence": null,
       "metric_caveats": [
         {
@@ -217,8 +217,8 @@
         "note": "Compared the first 196 shared patches because the models expose different patch grids (256 vs 196)."
       },
       "cls_cosine_sim": null,
-      "linear_cka": 0.0376142,
-      "knn_overlap_k10": 0.08928572,
+      "linear_cka": 0.07618678,
+      "knn_overlap_k10": 0.0867347,
       "mean_patch_correspondence": null,
       "metric_caveats": [
         {
@@ -249,7 +249,7 @@
       {
         "label": "Most top-heavy variance",
         "model": "eupe-vit-b16",
-        "value": "88.8%"
+        "value": "87.0%"
       }
     ],
     "comparison_highlights": [
@@ -257,13 +257,13 @@
         "label": "Strongest CKA alignment",
         "model_a": "dinov2-vit-l14",
         "model_b": "vjepa2-vitl-fpc2-256",
-        "value": 0.35802194
+        "value": 0.35802174
       },
       {
         "label": "Weakest CKA alignment",
-        "model_a": "ijepa-vit-h14",
+        "model_a": "vjepa2-vitl-fpc2-256",
         "model_b": "eupe-vit-b16",
-        "value": 0.0
+        "value": 0.07618678
       },
       {
         "label": "Highest neighborhood overlap",
@@ -275,7 +275,7 @@
         "label": "Strongest patch correspondence",
         "model_a": "dinov2-vit-l14",
         "model_b": "vjepa2-vitl-fpc2-256",
-        "value": 0.06194472
+        "value": 0.061944745
       }
     ],
     "cls_cosine_matrix": {
@@ -341,26 +341,26 @@
       "rows": [
         [
           1.0,
-          0.3290942,
-          0.35802194,
-          0.044375647
+          0.32909337,
+          0.35802174,
+          0.15140209
         ],
         [
-          0.3290942,
+          0.32909337,
           1.0,
-          0.27543575,
-          0.0
+          0.27543703,
+          0.11562227
         ],
         [
-          0.35802194,
-          0.27543575,
+          0.35802174,
+          0.27543703,
           1.0,
-          0.0376142
+          0.07618678
         ],
         [
-          0.044375647,
-          0.0,
-          0.0376142,
+          0.15140209,
+          0.11562227,
+          0.07618678,
           1.0
         ]
       ]
@@ -382,24 +382,24 @@
           1.0,
           0.27773437,
           0.20546874,
-          0.13163266
+          0.17244898
         ],
         [
           0.27773437,
           1.0,
           0.20234375,
-          0.1
+          0.12806122
         ],
         [
           0.20546874,
           0.20234375,
           1.0,
-          0.08928572
+          0.0867347
         ],
         [
-          0.13163266,
-          0.1,
-          0.08928572,
+          0.17244898,
+          0.12806122,
+          0.0867347,
           1.0
         ]
       ]
@@ -420,7 +420,7 @@
         [
           1.0,
           null,
-          0.06194472,
+          0.061944745,
           null
         ],
         [
@@ -430,7 +430,7 @@
           null
         ],
         [
-          0.06194472,
+          0.061944745,
           null,
           1.0,
           null

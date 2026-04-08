@@ -294,6 +294,7 @@ pub fn apply_input_independence_gate(
     zero_probe: &ModelOutput,
     random_probe: &ModelOutput,
 ) -> ParityValidationSummary {
+    let checked_signals = parity.checked_signals + 1;
     let zero_embedding = flattened_embedding(zero_probe);
     let random_embedding = flattened_embedding(random_probe);
     let cosine = cosine_similarity(&zero_embedding, &random_embedding);
@@ -313,7 +314,7 @@ pub fn apply_input_independence_gate(
         );
     }
 
-    parity.with_diagnostics(parity.checked_signals + 1)
+    parity.with_diagnostics(checked_signals)
 }
 
 fn summarize_fixture_output(fixture_id: String, output: &ModelOutput) -> FixtureSignalSummary {

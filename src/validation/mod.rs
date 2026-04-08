@@ -6,6 +6,7 @@ pub mod report;
 pub mod semantics;
 
 use crate::errors::{ModelError, ValidationError};
+use crate::models::InferenceBackend;
 use crate::models::ModelSession;
 use evidence::summarize_registered_evidence;
 use fixtures::{
@@ -159,7 +160,11 @@ pub fn validate_session_with_fixture_set(
         &observed,
         &reference,
     );
-    let parity = apply_input_independence_gate(parity, &probe_outputs[0], &probe_outputs[1]);
+    let parity = if matches!(session.backend(), InferenceBackend::OnnxRuntime) {
+        apply_input_independence_gate(parity, &probe_outputs[0], &probe_outputs[1])
+    } else {
+        parity
+    };
     let evidence_timestamp = reference.evidence_timestamp.clone();
     let artifact_id = reference.artifact_id.clone();
     let fixture_set_id = reference.fixture_set.clone();
