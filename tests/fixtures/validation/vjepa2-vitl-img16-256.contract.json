@@ -1,5 +1,5 @@
 {
-  "model": "vjepa2-vitl-fpc2-256",
+  "model": "vjepa2-vitl-img16-256",
   "profile": {
     "source": "facebookresearch/vjepa2",
     "evidence_timestamp": "2026-03-27T12:00:00Z",
@@ -8,7 +8,7 @@
       "input_size": 256,
       "resize_filter": "lanczos3",
       "color_space": "rgb",
-      "layout": "ntchw",
+      "layout": "nchw",
       "mean": [0.485, 0.456, 0.406],
       "std": [0.229, 0.224, 0.225]
     },

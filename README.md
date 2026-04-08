@@ -11,7 +11,7 @@ Inspect and compare self-supervised vision model representations for DINOv2, I-J
 
 <table>
 <tr>
-<td width="50%"><strong><a href="https://abdelstark.github.io/latent-inspector/slides.html">How AI Models See the World</a></strong><br/><sub>Presentation deck for latent-inspector: project narrative, model comparison setup, corrected EUPE interpretation, and the representation-geometry thesis.</sub></td>
+<td width="50%"><strong><a href="https://abdelstark.github.io/latent-inspector/slides.html">How AI Models See the World</a></strong><br/><sub>Presentation deck for latent-inspector: project narrative, model comparison setup, corrected EUPE and V-JEPA 2 interpretations, and the representation-geometry thesis.</sub></td>
 <td width="50%"><strong><a href="https://abdelstark.github.io/latent-inspector/reports/20260408-123006/report.html">Four-Model Elephant Compare Report</a></strong><br/><sub>Self-contained sample report with per-model metrics, pairwise CKA and k-NN overlap, PCA projections, and exported artifact metadata.</sub></td>
 </tr>
 </table>
@@ -38,7 +38,7 @@ Each pixel block below is a patch token projected onto the top three principal c
 <td width="50%"><img src="docs/assets/img/examples/ijepa-vit-h14_pca.png" alt="I-JEPA PCA representation"/><br/><sub><strong>I-JEPA</strong> -- finer local variation. The latent-prediction objective forces each patch to encode its own context rather than collapsing into broad semantic zones.</sub></td>
 </tr>
 <tr>
-<td width="50%"><img src="docs/assets/img/examples/vjepa2-vitl-fpc2-256_pca.png" alt="V-JEPA 2 PCA representation"/><br/><sub><strong>V-JEPA 2</strong> -- structured regions with less static partitioning. Trained on video, so even on a still image the encoder organizes patches as if they could move.</sub></td>
+<td width="50%"><img src="docs/assets/img/examples/vjepa2-vitl-img16-256_pca.png" alt="V-JEPA 2 PCA representation"/><br/><sub><strong>V-JEPA 2</strong> -- structured regions with strong local continuity once the image path is adapted correctly. Following Meta's repeated-frame image evaluation path, the encoder lands much closer to DINOv2 than the retired 2-frame surrogate suggested.</sub></td>
 <td width="50%"><img src="docs/assets/img/examples/eupe-vit-b16_pca.png" alt="EUPE PCA representation"/><br/><sub><strong>EUPE</strong> -- compact, sharper grouping. Proxy-distilled training produces a more top-heavy representation with stronger local agreement than the SSL-only references; the earlier broken export exaggerated that effect.</sub></td>
 </tr>
 </table>
@@ -58,7 +58,7 @@ cargo build --release
 
 # Compare three models on a single image (models auto-download on first use)
 ./target/release/latent-inspector compare photo.jpg \
-  --models dinov2-vit-l14,ijepa-vit-h14,vjepa2-vitl-fpc2-256
+  --models dinov2-vit-l14,ijepa-vit-h14,vjepa2-vitl-img16-256
 
 # Deep-dive into one model
 ./target/release/latent-inspector inspect photo.jpg --model dinov2-vit-l14
@@ -111,10 +111,17 @@ Everything runs through ONNX Runtime. Sources:
 |----------|-------------------|-------------|-------|
 | `dinov2-vit-l14` | [`facebook/dinov2-large`](https://huggingface.co/facebook/dinov2-large) | [`onnx-community/dinov2-large`](https://huggingface.co/onnx-community/dinov2-large) -- community export | [Oquab et al. 2024](https://arxiv.org/abs/2304.07193) |
 | `ijepa-vit-h14` | [`facebook/ijepa_vith14_1k`](https://huggingface.co/facebook/ijepa_vith14_1k) | [`onnx-community/ijepa_vith14_1k`](https://huggingface.co/onnx-community/ijepa_vith14_1k) -- community export | [Assran et al. 2023](https://arxiv.org/abs/2301.08243) |
-| `vjepa2-vitl-fpc2-256` | [`facebook/vjepa2-vitl-fpc64-256`](https://huggingface.co/facebook/vjepa2-vitl-fpc64-256) | [`abdelstark/vjepa2-vitl-fpc2-256-onnx`](https://huggingface.co/abdelstark/vjepa2-vitl-fpc2-256-onnx) -- custom export | [Bardes et al. 2024](https://arxiv.org/abs/2506.09985) |
+| `vjepa2-vitl-img16-256` | [`facebook/vjepa2-vitl-fpc64-256`](https://huggingface.co/facebook/vjepa2-vitl-fpc64-256) | [`abdelstark/vjepa2-vitl-img16-256-onnx`](https://huggingface.co/abdelstark/vjepa2-vitl-img16-256-onnx) -- custom export | [Bardes et al. 2024](https://arxiv.org/abs/2506.09985) |
 | `eupe-vit-b16` | [`facebook/EUPE-ViT-B`](https://huggingface.co/facebook/EUPE-ViT-B) | [`abdelstark/eupe-vit-b16-onnx`](https://huggingface.co/abdelstark/eupe-vit-b16-onnx) -- custom export | [Zhu et al. 2026](https://arxiv.org/abs/2603.22387) |
 
-**V-JEPA 2 export notes.** V-JEPA 2 is a video model. Since we analyze single images, we exported only the encoder (no predictor head) with a fixed 2-frame input -- the image is duplicated to meet the `tubelet_size=2` requirement. Output: 256 spatial patch tokens at dim 1024, same shape as DINOv2, so cross-model comparison works directly. Exported via TorchScript at opset 14, simplified with [onnxsim](https://github.com/daquexian/onnx-simplifier), verified against PyTorch reference (max diff < 0.003). Artifact: [`abdelstark/vjepa2-vitl-fpc2-256-onnx`](https://huggingface.co/abdelstark/vjepa2-vitl-fpc2-256-onnx).
+**V-JEPA 2 export notes.** The earlier public `vjepa2-vitl-fpc2-256` artifact was not a broken ONNX export, but it was the wrong still-image adapter. Duplicating a photo to only 2 frames produces a materially different representation from the stable repeated-frame image manifold used by Meta's own image-evaluation path. The corrected export uses [`scripts/export_vjepa2_onnx.py`](scripts/export_vjepa2_onnx.py); the reproducible procedure and source links are documented in [`docs/vjepa2-onnx-export.md`](docs/vjepa2-onnx-export.md). In short: repeat a single image to 16 frames, run the official encoder-only video trunk, reshape the output into `8 x 256 x 1024`, and average over time back to `256 x 1024` patch tokens. Published artifact: [`abdelstark/vjepa2-vitl-img16-256-onnx`](https://huggingface.co/abdelstark/vjepa2-vitl-img16-256-onnx). On 5 sample images the ONNX matches PyTorch with cosine `> 0.999999`, worst mean abs diff `1.37e-4`, worst max abs diff `0.00643`, and input-independence cosine `0.317`. The canonical CLI name is `vjepa2-vitl-img16-256`; the older `vjepa2-vitl-fpc2-256` name remains as a backward-compatible alias.
+
+**V-JEPA 2 correction.** The corrected image path changes the interpretation materially:
+
+- The old 2-frame surrogate understated V-JEPA 2's image coherence and made the PCA look artificially odd.
+- On the elephant sample, corrected V-JEPA 2 lands at effective rank `51/1024`, patch entropy `2.89`, isotropy `0.417`, and spatial coherence `0.809`.
+- Alignment rises sharply relative to the retired adapter: CKA vs DINOv2 `0.495`, CKA vs I-JEPA `0.381`, k-NN overlap vs DINOv2 `0.366`, k-NN overlap vs I-JEPA `0.311`.
+- The corrected story is not "V-JEPA 2 is the weird outlier on still images." The surviving story is that it stays distinctly video-shaped while remaining much closer to the SSL image encoders than the 2-frame surrogate implied.
 
 **EUPE export notes.** Use the reproducible script at [`scripts/export_eupe_onnx.py`](scripts/export_eupe_onnx.py) and procedure doc [`docs/eupe-onnx-export.md`](docs/eupe-onnx-export.md). The upstream Hugging Face release is a `.pt` checkpoint, so the export loads EUPE through the official `facebookresearch/eupe` torch.hub entrypoint, concatenates `[x_norm_clstoken, x_norm_patchtokens] -> [1,197,768]`, exports with the legacy TorchScript ONNX path (`dynamo=False`), rewrites the bundle as `model.onnx` + `model.onnx_data`, and gates publication on cosine/diff parity plus an input-independence check (`cos(zeros, random) < 0.85`).
 
@@ -122,12 +129,12 @@ Everything runs through ONNX Runtime. Sources:
 
 - EUPE is still more top-heavy than DINOv2, I-JEPA, and V-JEPA 2: effective rank `22/768`, top-10 variance `87.0%`, components@90% `13`.
 - EUPE is still less isotropic and more locally coherent than the SSL-only models: patch isotropy `0.375`, spatial coherence `0.913`.
-- EUPE is weaker-aligned to the SSL-only cluster, but not remotely near-zero CKA: DINOv2 `0.151`, I-JEPA `0.116`, V-JEPA 2 `0.076`.
+- EUPE is weaker-aligned to the SSL-only cluster, but not remotely near-zero CKA: DINOv2 `0.150`, I-JEPA `0.115`, V-JEPA 2 `0.103`.
 - The invalid thesis was that EUPE was effectively off-manifold because of artifact-driven near-zero CKA and isotropy `0.026`. The corrected thesis is that EUPE is a compact, top-heavy outlier with sharper local agreement.
 - These numbers are geometry comparisons against DINOv2, I-JEPA, and V-JEPA 2. They are not the paper's ImageNet k-NN classification metric, and they do not use the paper's main peer set.
 - The paper's actual training story is proxy distillation through a merged 1.9B teacher. The earlier repo wording incorrectly described direct multi-teacher distillation into the 86M student.
 
-The refreshed single-image compare artifacts live in [`demo/reports/eupe-vs-ssl-reference.html`](demo/reports/eupe-vs-ssl-reference.html) and [`demo/reports/eupe-compare.json`](demo/reports/eupe-compare.json).
+The refreshed single-image compare artifacts live in [`demo/reports/20260408-123006/report.html`](demo/reports/20260408-123006/report.html) and [`demo/reports/20260408-123006/compare.json`](demo/reports/20260408-123006/compare.json). [`demo/reports/eupe-vs-ssl-reference.html`](demo/reports/eupe-vs-ssl-reference.html) mirrors the same corrected bundle at a stable root path.
 PyTorch parity for the published export lives in the accompanying `export.validation.json` artifact on Hugging Face; the checked-in fixture is now explicit ONNX regression evidence rather than a fake PyTorch proof.
 
 For other HuggingFace models, use the [ONNX Community Converter](https://huggingface.co/spaces/onnx-community/convert-to-onnx).
@@ -430,7 +437,7 @@ Fits a power law `λ_i ~ i^(-β)` to the eigenvalue spectrum via least-squares i
 
 ### The video model trick
 
-V-JEPA 2 expects `[batch, frames, channels, height, width]`. For single-image analysis, the frame is duplicated (`src/models/loader.rs:infer()` -> `run_video()`). With `tubelet_size=2`, two identical frames collapse the temporal dimension, yielding pure spatial patch tokens. The spatial pathway processes the image normally; the temporal pathway sees no motion. Valid encoding -- just the spatial component of a spatiotemporal model.
+V-JEPA 2 is still a video model, but the current adapter no longer uses the retired 2-frame shortcut. For single-image analysis, the wrapper repeats the image to 16 frames, runs the official video encoder, reshapes the token sequence into `8` temporal groups by `256` spatial patches, then averages over time. That keeps the representation on the same repeated-frame manifold Meta uses for image evaluation while still producing a plain `[1, 256, 1024]` patch tensor for cross-model comparison.
 
 ### Validation
 

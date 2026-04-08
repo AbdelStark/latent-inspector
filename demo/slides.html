@@ -275,8 +275,8 @@
         <figcaption><span class="c-blue">I-JEPA</span> — fine-grained spatial detail</figcaption>
       </figure>
       <figure>
-        <img src="vjepa2-vitl-fpc2-256_pca.png" alt="V-JEPA 2 PCA">
-        <figcaption><span class="c-purple">V-JEPA 2</span> — richest dimensional spread</figcaption>
+        <img src="vjepa2-vitl-img16-256_pca.png" alt="V-JEPA 2 PCA">
+        <figcaption><span class="c-purple">V-JEPA 2</span> — strong spatial coherence from the corrected 16-frame image path</figcaption>
       </figure>
       <figure>
         <img src="eupe-vit-b16_pca.png" alt="EUPE PCA">
@@ -480,13 +480,13 @@
   <section>
     <div class="flex-center">
       <div>
-        <img src="vjepa2-vitl-fpc2-256_pca.png" alt="V-JEPA 2 PCA" style="height:340px; border-radius:10px; border:1px solid var(--border);">
+        <img src="vjepa2-vitl-img16-256_pca.png" alt="V-JEPA 2 PCA" style="height:340px; border-radius:10px; border:1px solid var(--border);">
       </div>
       <div class="tl" style="max-width:480px;">
         <p><span class="badge badge-purple">V-JEPA 2</span></p>
-        <h2 style="font-size:1.3em; margin:0.3em 0;">Maximum Dimensional Richness</h2>
-        <p class="small c-sec">The most colorful projection. The most directions in representation space.</p>
-        <p class="small c-sec mt-1">Trained on video, it encodes spatial structure <em>plus</em> temporal priors. More factors to encode = <strong class="c-purple">more dimensions used</strong>.</p>
+        <h2 style="font-size:1.3em; margin:0.3em 0;">Spatiotemporal Coherence</h2>
+        <p class="small c-sec">Much cleaner local continuity once the still image is adapted through the 16-frame evaluation path.</p>
+        <p class="small c-sec mt-1">The corrected image wrapper keeps the video prior, but it now looks like a coherent image representation rather than a distorted 2-frame surrogate.</p>
       </div>
     </div>
   </section>
@@ -522,12 +522,12 @@
     <p class="small c-sec">How many dimensions the model <em>actually uses</em>. Like a 1024-channel mixing board — how many channels carry signal?</p>
     <table>
       <tr><th>Model</th><th>Effective Rank</th><th>Of</th></tr>
-      <tr><td><span class="c-green">DINOv2</span></td><td>60</td><td class="c-dim">1024</td></tr>
+      <tr><td><span class="c-green">DINOv2</span></td><td class="cell-hi-green">60</td><td class="c-dim">1024</td></tr>
       <tr><td><span class="c-blue">I-JEPA</span></td><td>44</td><td class="c-dim">1280</td></tr>
-      <tr><td><span class="c-purple">V-JEPA 2</span></td><td class="cell-hi-green">64</td><td class="c-dim">1024</td></tr>
+      <tr><td><span class="c-purple">V-JEPA 2</span></td><td>51</td><td class="c-dim">1024</td></tr>
       <tr><td><span class="c-red">EUPE</span></td><td class="cell-hi-red">22</td><td class="c-dim">768</td></tr>
     </table>
-    <p class="smaller mt-1">V-JEPA 2: broadest spread. EUPE: most concentrated model in this four-model set.</p>
+    <p class="smaller mt-1">DINOv2 stays the broadest spread. EUPE remains the most concentrated model in this four-model set.</p>
   </section>
   <section>
     <h3>Patch Entropy</h3>
@@ -536,7 +536,7 @@
       <tr><th>Model</th><th>Entropy</th><th></th></tr>
       <tr><td><span class="c-green">DINOv2</span></td><td>2.52</td><td></td></tr>
       <tr><td><span class="c-blue">I-JEPA</span></td><td class="cell-hi-green">2.89</td><td class="small c-sec">every patch is unique</td></tr>
-      <tr><td><span class="c-purple">V-JEPA 2</span></td><td class="cell-hi-red">2.36</td><td class="small c-sec">one coherent scene</td></tr>
+      <tr><td><span class="c-purple">V-JEPA 2</span></td><td>2.89</td><td class="small c-sec">high variation once the image path is corrected</td></tr>
       <tr><td><span class="c-red">EUPE</span></td><td>2.83</td><td class="small c-sec">compact, still differentiated</td></tr>
     </table>
     <p class="smaller mt-1">I-JEPA <em>must</em> differentiate to predict. EUPE stays fairly expressive on this metric even while compressing variance much more aggressively elsewhere.</p>
@@ -567,7 +567,7 @@
         <div class="metric-label">I-JEPA</div>
       </div>
       <div style="text-align:center;">
-        <div class="metric metric-lg c-purple">0.678</div>
+        <div class="metric metric-lg c-purple">0.417</div>
         <div class="metric-label">V-JEPA 2</div>
       </div>
       <div style="text-align:center;" class="fragment" data-fragment-index="1">
@@ -590,8 +590,8 @@
         <p class="smaller">still by far the most top-heavy model</p>
       </div>
       <div class="card tl" style="flex:0 1 auto;">
-        <p class="small"><span class="c-sec">Components @ 90%:</span> <span class="c-red fw-500">13</span></p>
-        <p class="smaller">vs 31, 22, and 38 for the others</p>
+      <p class="small"><span class="c-sec">Components @ 90%:</span> <span class="c-red fw-500">13</span></p>
+        <p class="smaller">vs 31, 22, and 29 for the others</p>
       </div>
     </div>
   </section>
@@ -620,27 +620,27 @@
     <h3>The CKA Matrix</h3>
     <table class="matrix">
       <tr><th></th><th><span class="c-green">DINOv2</span></th><th><span class="c-blue">I-JEPA</span></th><th><span class="c-purple">V-JEPA 2</span></th><th><span class="c-red">EUPE</span></th></tr>
-      <tr><td class="c-green fw-500">DINOv2</td><td class="diag">1.000</td><td>0.329</td><td class="high">0.358</td><td>0.151</td></tr>
-      <tr><td class="c-blue fw-500">I-JEPA</td><td>0.329</td><td class="diag">1.000</td><td>0.275</td><td>0.116</td></tr>
-      <tr><td class="c-purple fw-500">V-JEPA 2</td><td class="high">0.358</td><td>0.275</td><td class="diag">1.000</td><td>0.076</td></tr>
-      <tr><td class="c-red fw-500">EUPE</td><td>0.151</td><td>0.116</td><td>0.076</td><td class="diag">1.000</td></tr>
+      <tr><td class="c-green fw-500">DINOv2</td><td class="diag">1.000</td><td>0.329</td><td class="high">0.495</td><td>0.150</td></tr>
+      <tr><td class="c-blue fw-500">I-JEPA</td><td>0.329</td><td class="diag">1.000</td><td>0.381</td><td>0.115</td></tr>
+      <tr><td class="c-purple fw-500">V-JEPA 2</td><td class="high">0.495</td><td>0.381</td><td class="diag">1.000</td><td>0.103</td></tr>
+      <tr><td class="c-red fw-500">EUPE</td><td>0.150</td><td>0.115</td><td>0.103</td><td class="diag">1.000</td></tr>
     </table>
-    <p class="small mt-2">EUPE is still the weakest match to the SSL-only cluster, but the corrected export shows <strong class="c-red">weak, non-zero alignment</strong> rather than export-driven collapse.</p>
+    <p class="small mt-2">The corrected image path pulls V-JEPA 2 much closer to DINOv2 and I-JEPA. EUPE is still the weakest match to the others, but now clearly as a coherent compressed outlier rather than an export artifact.</p>
   </section>
   <section>
     <h3>Three findings</h3>
     <div class="tl" style="max-width:750px; margin:0 auto;">
       <div class="card mt-1 fragment">
-        <p><span class="c-green fw-500">1.</span> DINOv2 ↔ V-JEPA 2 = <span class="mono c-green">0.358</span> <span class="c-dim">— highest pair</span></p>
-        <p class="small c-sec">Same ViT-L architecture constrains the geometry. Architecture matters more than expected.</p>
+        <p><span class="c-green fw-500">1.</span> DINOv2 ↔ V-JEPA 2 = <span class="mono c-green">0.495</span> <span class="c-dim">— highest pair</span></p>
+        <p class="small c-sec">The corrected 16-frame image path reveals that V-JEPA 2 is much closer to DINOv2 on still images than the retired 2-frame surrogate implied.</p>
       </div>
       <div class="card mt-1 fragment">
-        <p><span class="c-blue fw-500">2.</span> EUPE is weakest against everyone: <span class="mono c-blue">0.151 / 0.116 / 0.076</span></p>
-        <p class="small c-sec">Clear outlier within this four-model comparison. The gap is real; the earlier magnitude was artifact-driven.</p>
+        <p><span class="c-blue fw-500">2.</span> I-JEPA ↔ V-JEPA 2 = <span class="mono c-blue">0.381</span></p>
+        <p class="small c-sec">V-JEPA 2 still keeps a video-shaped bias, but on images it now sits much closer to the two SSL image encoders than to the old surrogate geometry.</p>
       </div>
       <div class="card card-glow-red mt-1 fragment">
-        <p><span class="c-red fw-500">3.</span> The stronger surviving signal is <span class="mono c-red">compression</span>, not total disagreement.</p>
-        <p class="small c-sec">EUPE concentrates variance harder, uses fewer effective directions, and keeps neighboring patches much more aligned.</p>
+        <p><span class="c-red fw-500">3.</span> EUPE stays weakest against everyone: <span class="mono c-red">0.150 / 0.115 / 0.103</span></p>
+        <p class="small c-sec">The stronger surviving EUPE signal is compression, not total disagreement. The gap is real; the earlier near-zero magnitude was artifact-driven.</p>
       </div>
     </div>
   </section>
@@ -662,16 +662,16 @@
   <p class="small c-sec">For each patch, find its 10 nearest neighbors in each model. What fraction do they share?</p>
   <table class="matrix">
     <tr><th></th><th><span class="c-green">DINOv2</span></th><th><span class="c-blue">I-JEPA</span></th><th><span class="c-purple">V-JEPA 2</span></th><th><span class="c-red">EUPE</span></th></tr>
-    <tr><td class="c-green fw-500">DINOv2</td><td class="diag">1.000</td><td class="high">0.278</td><td>0.205</td><td>0.172</td></tr>
-    <tr><td class="c-blue fw-500">I-JEPA</td><td class="high">0.278</td><td class="diag">1.000</td><td>0.202</td><td>0.128</td></tr>
-    <tr><td class="c-purple fw-500">V-JEPA 2</td><td>0.205</td><td>0.202</td><td class="diag">1.000</td><td class="cell-hi-red">0.087</td></tr>
-    <tr><td class="c-red fw-500">EUPE</td><td>0.172</td><td>0.128</td><td class="cell-hi-red">0.087</td><td class="diag">1.000</td></tr>
+    <tr><td class="c-green fw-500">DINOv2</td><td class="diag">1.000</td><td>0.278</td><td class="high">0.366</td><td>0.168</td></tr>
+    <tr><td class="c-blue fw-500">I-JEPA</td><td>0.278</td><td class="diag">1.000</td><td>0.311</td><td class="cell-hi-red">0.122</td></tr>
+    <tr><td class="c-purple fw-500">V-JEPA 2</td><td class="high">0.366</td><td>0.311</td><td class="diag">1.000</td><td>0.226</td></tr>
+    <tr><td class="c-red fw-500">EUPE</td><td>0.168</td><td class="cell-hi-red">0.122</td><td>0.226</td><td class="diag">1.000</td></tr>
   </table>
   <div class="flex-center mt-2">
-    <div class="card tl" style="flex:0 1 auto;"><p class="small"><span class="c-green fw-500">27.8%</span> <span class="c-dim">DINOv2 ↔ I-JEPA — highest</span></p></div>
-    <div class="card tl" style="flex:0 1 auto;"><p class="small"><span class="c-red fw-500">8.7%</span> <span class="c-dim">EUPE ↔ V-JEPA 2 — lowest</span></p></div>
+    <div class="card tl" style="flex:0 1 auto;"><p class="small"><span class="c-green fw-500">36.6%</span> <span class="c-dim">DINOv2 ↔ V-JEPA 2 — highest</span></p></div>
+    <div class="card tl" style="flex:0 1 auto;"><p class="small"><span class="c-red fw-500">12.2%</span> <span class="c-dim">I-JEPA ↔ EUPE — lowest</span></p></div>
   </div>
-  <p class="small c-sec mt-2">Again: lower agreement than the SSL-only cluster, but still a coherent image-dependent representation. This is patch-neighborhood overlap on one image, not the paper's ImageNet k-NN classification metric.</p>
+  <p class="small c-sec mt-2">The corrected adapter changes the local story as well: V-JEPA 2 now shares many more neighborhoods with DINOv2 and I-JEPA than the 2-frame surrogate suggested. This is patch-neighborhood overlap on one image, not the paper's ImageNet k-NN classification metric.</p>
 </section>
 
 <!-- ════════════════════════════════════════════ -->
@@ -693,13 +693,13 @@
   <section>
     <h3>Interactive Terminal UI</h3>
     <pre><code class="language-bash">latent-inspector tui elephant.jpg \
-  -m dinov2-vit-l14,ijepa-vit-h14,vjepa2-vitl-fpc2-256,eupe-vit-b16</code></pre>
+  -m dinov2-vit-l14,ijepa-vit-h14,vjepa2-vitl-img16-256,eupe-vit-b16</code></pre>
     <p class="small c-sec mt-1">Dashboard · Inspector · Compare · Spectrum<br>All interactive. All in the terminal.</p>
   </section>
   <section>
     <h3>Validation Pipeline</h3>
     <pre><code class="language-bash">latent-inspector validate --model dinov2-vit-l14 --model ijepa-vit-h14 \
-  --model vjepa2-vitl-fpc2-256 --model eupe-vit-b16</code></pre>
+  --model vjepa2-vitl-img16-256 --model eupe-vit-b16</code></pre>
     <div class="flex-center mt-2">
       <span class="badge badge-green">DINOv2 · 73 signals</span>
       <span class="badge badge-blue">I-JEPA · 45 signals</span>

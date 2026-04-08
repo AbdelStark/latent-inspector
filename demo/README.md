@@ -34,7 +34,7 @@ python3 -m http.server --directory demo 8000
 ```bash
 cargo build --release
 ./target/release/latent-inspector compare demo/elephant_sample_image.jpg \
-  --models dinov2-vit-l14,ijepa-vit-h14,vjepa2-vitl-fpc2-256,eupe-vit-b16 \
+  --models dinov2-vit-l14,ijepa-vit-h14,vjepa2-vitl-img16-256,eupe-vit-b16 \
   --output demo/ \
   --format png
 ```

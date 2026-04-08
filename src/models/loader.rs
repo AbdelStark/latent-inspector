@@ -1010,7 +1010,7 @@ mod tests {
 
         let output = ModelSession::output_from_hidden(
             &session.entry,
-            vec![1, 2, 3, 224, 224],
+            vec![1, 3, 256, 256],
             hidden.shape().to_vec(),
             hidden.view(),
             SequenceOutputLayout::PatchOnly,
@@ -1041,7 +1041,7 @@ mod tests {
 
         let error = ModelSession::output_from_hidden(
             &session.entry,
-            vec![1, 2, 3, 224, 224],
+            vec![1, 3, 256, 256],
             hidden.shape().to_vec(),
             hidden.view(),
             SequenceOutputLayout::PatchOnly,

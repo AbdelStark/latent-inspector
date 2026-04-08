@@ -7,7 +7,7 @@
     "models": [
       "dinov2-vit-l14",
       "ijepa-vit-h14",
-      "vjepa2-vitl-fpc2-256",
+      "vjepa2-vitl-img16-256",
       "eupe-vit-b16"
     ]
   },
@@ -17,34 +17,34 @@
       {
         "label": "Strongest CKA alignment",
         "model_a": "dinov2-vit-l14",
-        "model_b": "vjepa2-vitl-fpc2-256",
-        "value": 0.35802173614501953
+        "model_b": "vjepa2-vitl-img16-256",
+        "value": 0.49507004022598267
       },
       {
         "label": "Weakest CKA alignment",
-        "model_a": "vjepa2-vitl-fpc2-256",
+        "model_a": "vjepa2-vitl-img16-256",
         "model_b": "eupe-vit-b16",
-        "value": 0.07618678361177444
+        "value": 0.10283123701810837
       },
       {
         "label": "Highest neighborhood overlap",
         "model_a": "dinov2-vit-l14",
-        "model_b": "ijepa-vit-h14",
-        "value": 0.2777343690395355
+        "model_b": "vjepa2-vitl-img16-256",
+        "value": 0.3656249940395355
       },
       {
         "label": "Strongest patch correspondence",
         "model_a": "dinov2-vit-l14",
-        "model_b": "vjepa2-vitl-fpc2-256",
-        "value": 0.06194474548101425
+        "model_b": "vjepa2-vitl-img16-256",
+        "value": 0.05260229483246803
       }
     ],
     "model_count": 4,
     "model_highlights": [
       {
         "label": "Highest effective rank",
-        "model": "vjepa2-vitl-fpc2-256",
-        "value": "64/1024"
+        "model": "dinov2-vit-l14",
+        "value": "60/1024"
       },
       {
         "label": "Highest patch entropy",
@@ -117,15 +117,15 @@
       "path": "report.html",
       "kind": "html",
       "label": "Compare report",
-      "byte_size": 28992,
-      "sha256": "2f88f2f874033610ab2aaa661186ba0d804f05ca17e1400d34b32e31de058058"
+      "byte_size": 29024,
+      "sha256": "7be4da936a468ffa7c275bcfb23adfa714b4fa37ca50c408eda31019e8d903ec"
     },
     {
       "path": "compare.json",
       "kind": "json",
       "label": "Compare report data",
       "byte_size": 16567,
-      "sha256": "b9d06e82821d5df98770c499cd010f3a1f28560ca36ea74d8b4e3bb2a7094519"
+      "sha256": "41a5d96b94b5c11755912166a5446fae562391a043708fed1776b83116ea5ab4"
     },
     {
       "path": "input_image.png",
@@ -149,32 +149,32 @@
       "sha256": "49fc43ec3e7e70be23ed81f2da4fa21d22937d73e6be57ff919fdaac3a076658"
     },
     {
-      "path": "vjepa2-vitl-fpc2-256_pca.png",
+      "path": "vjepa2-vitl-img16-256_pca.png",
       "kind": "png",
-      "label": "Patch-space RGB projection derived from the top three PCA components for vjepa2-vitl-fpc2-256.",
-      "byte_size": 5737,
-      "sha256": "c6975e07740d548af94181333a19be45bc26137f6984a66b5d72c3ea925535ce"
+      "label": "Patch-space RGB projection derived from the top three PCA components for vjepa2-vitl-img16-256.",
+      "byte_size": 5594,
+      "sha256": "212c98b2a4e57e8b11dcef0f498d6824ff32c4dd5a31bb4c912cb633e794d9ef"
     },
     {
       "path": "eupe-vit-b16_pca.png",
       "kind": "png",
       "label": "Patch-space RGB projection derived from the top three PCA components for eupe-vit-b16.",
-      "byte_size": 5132,
-      "sha256": "1811e59355f5a0eb41b1222f791304eee2e8de31593d8a0183faecfd6218bc18"
+      "byte_size": 5128,
+      "sha256": "9bed2875dcb4aa8c6aaa7a0fa5b6993b9698cd833695f6db4d882665e78e700d"
     },
     {
       "path": "linear_cka.png",
       "kind": "png",
       "label": "Cross-model representation alignment measured with linear CKA.",
-      "byte_size": 1472,
-      "sha256": "c302637b1a3729b862ea4e1b7be8cc9e43950b4497b3313d62cb4e28aa7eb14e"
+      "byte_size": 1469,
+      "sha256": "8aab9af53b18660b75e3f93d82f2a89cf11f113185b69144e700f97f758ec8aa"
     },
     {
       "path": "knn_overlap_k10.png",
       "kind": "png",
       "label": "Cross-model neighborhood agreement using k=10.",
-      "byte_size": 1470,
-      "sha256": "2de59917847ba03d67cc032b588c3d96e5a5d4f302ee9243334d1cf3942498f1"
+      "byte_size": 1474,
+      "sha256": "43e9016ed33d39788c81c7a0d1d21cd1d1fc1b17fafb01b94c113779001e38c8"
     },
     {
       "path": "patch_correspondence.png",
@@ -196,7 +196,7 @@
       "recommendation": "Safe to interpret as source-aligned for supported report features."
     },
     {
-      "model": "vjepa2-vitl-fpc2-256",
+      "model": "vjepa2-vitl-img16-256",
       "status": "validated",
       "recommendation": "Safe to interpret as source-aligned for supported report features."
     },

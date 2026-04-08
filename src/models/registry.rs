@@ -210,6 +210,9 @@ pub struct ModelArtifact {
 pub struct RegistryEntry {
     pub info: ModelInfo,
     pub availability: Availability,
+    /// Backward-compatible alternate CLI identifiers for this model.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub aliases: Vec<String>,
     /// One or more files required to run the model from cache.
     pub artifacts: Vec<ModelArtifact>,
     /// Image normalization mean (RGB).
@@ -304,11 +307,11 @@ fn default_validation_profile(
 /// |-----------------------|----------------------------------------|--------------------------------------------|
 /// | `dinov2-vit-l14`      | `facebook/dinov2-large`                | `onnx-community/dinov2-large`              |
 /// | `ijepa-vit-h14`       | `facebook/ijepa_vith14_1k`             | `onnx-community/ijepa_vith14_1k`           |
-/// | `vjepa2-vitl-fpc2-256`| `facebook/vjepa2-vitl-fpc64-256`       | `abdelstark/vjepa2-vitl-fpc2-256-onnx` (*) |
+/// | `vjepa2-vitl-img16-256`| `facebook/vjepa2-vitl-fpc64-256`      | `abdelstark/vjepa2-vitl-img16-256-onnx` (*) |
 ///
-/// (*) Custom encoder-only export: the V-JEPA 2 predictor is stripped and
-///     the input is fixed to 2 frames (duplicated from a single image) so
-///     that a video-backbone model produces comparable patch embeddings.
+/// (*) Custom encoder-only export for image analysis: a still image is repeated
+///     to 16 frames, encoded by the official video trunk, reshaped into
+///     temporal groups, and averaged back down to 256 spatial patch tokens.
 pub fn registry() -> Vec<RegistryEntry> {
     let phase_three_note =
         "Reserved for the multi-model milestone once ONNX output mapping and validation are in place.";
@@ -334,6 +337,7 @@ pub fn registry() -> Vec<RegistryEntry> {
             availability: Availability::ready(
                 "Reference Phase 1 model with preprocessing, caching, and ONNX session loading wired end-to-end.",
             ),
+            aliases: Vec::new(),
             artifacts: vec![ModelArtifact {
                 relative_path: "dinov2-vit-l14.onnx".to_string(),
                 download_url:
@@ -384,6 +388,7 @@ pub fn registry() -> Vec<RegistryEntry> {
                 "Phase 3",
                 "Reserved for the multi-model milestone; artifact metadata still needs to be pinned.",
             ),
+            aliases: Vec::new(),
             artifacts: Vec::new(),
             norm_mean: [0.485, 0.456, 0.406],
             norm_std: [0.229, 0.224, 0.225],
@@ -423,6 +428,7 @@ pub fn registry() -> Vec<RegistryEntry> {
                 params_m: 304,
             },
             availability: Availability::planned("Phase 3", phase_three_note),
+            aliases: Vec::new(),
             artifacts: vec![ModelArtifact {
                 relative_path: "mae-vit-l16.onnx".to_string(),
                 download_url:
@@ -470,6 +476,7 @@ pub fn registry() -> Vec<RegistryEntry> {
                 params_m: 304,
             },
             availability: Availability::planned("Phase 3", phase_three_note),
+            aliases: Vec::new(),
             artifacts: vec![ModelArtifact {
                 relative_path: "clip-vit-l14.onnx".to_string(),
                 download_url:
@@ -525,6 +532,7 @@ pub fn registry() -> Vec<RegistryEntry> {
             availability: Availability::ready(
                 "ONNX community export with verified SHA-256 hashes for both model graph and external data.",
             ),
+            aliases: Vec::new(),
             artifacts: vec![
                 ModelArtifact {
                     relative_path: "ijepa-vit-h14/model.onnx".to_string(),
@@ -575,15 +583,15 @@ pub fn registry() -> Vec<RegistryEntry> {
         //         of Complex Real-World Interactions"
         //        Bardes et al. 2024  — https://arxiv.org/abs/2506.09985
         // Source: facebook/vjepa2-vitl-fpc64-256 (HuggingFace)
-        // ONNX:   abdelstark/vjepa2-vitl-fpc2-256-onnx (custom export)
+        // ONNX:   abdelstark/vjepa2-vitl-img16-256-onnx (custom export)
         //
-        // Export method: encoder-only (predictor stripped), TorchScript ONNX
-        // exporter at opset 14, simplified with onnxsim, 2-frame input (single
-        // image duplicated to satisfy tubelet_size=2). Produces 256 spatial
-        // patches × 1024 embed dim — same shape as DINOv2.
+        // Export method: encoder-only wrapper that follows Meta's image-eval
+        // path more faithfully by repeating a still image to 16 frames,
+        // reshaping the resulting temporal-spatial tokens into 8 temporal
+        // groups × 256 spatial patches, then averaging across time.
         RegistryEntry {
             info: ModelInfo {
-                name: "vjepa2-vitl-fpc2-256".to_string(),
+                name: "vjepa2-vitl-img16-256".to_string(),
                 architecture: "ViT-L/16".to_string(),
                 patch_size: 16,
                 embed_dim: 1024,
@@ -593,47 +601,50 @@ pub fn registry() -> Vec<RegistryEntry> {
                 input_size: 256,
                 params_m: 304,
             },
+            aliases: vec!["vjepa2-vitl-fpc2-256".to_string()],
             availability: Availability::ready(
-                "V-JEPA 2 ViT-L encoder exported to ONNX with 2-frame video input for single-image latent inspection.",
+                "V-JEPA 2 ViT-L image adapter exported to ONNX using the 16-frame repeated-image path from Meta's image evaluation setup.",
             ),
             artifacts: vec![
                 ModelArtifact {
-                    relative_path: "vjepa2-vitl-fpc2-256/model.onnx".to_string(),
+                    relative_path: "vjepa2-vitl-img16-256/model.onnx".to_string(),
                     download_url:
-                        "https://huggingface.co/abdelstark/vjepa2-vitl-fpc2-256-onnx/resolve/main/model.onnx"
+                        "https://huggingface.co/abdelstark/vjepa2-vitl-img16-256-onnx/resolve/main/model.onnx"
                             .to_string(),
                     checksum: Checksum::Sha256(
-                        "942f72f0f1afe2bea855160c8f11080cd4d322b54a04e5e671fb96beb8ce6537"
+                        "fb930ff6a740f91473d5ad802134ab16ca0de0a2c54eeafb32f77d605fa04f83"
                             .to_string(),
                     ),
                 },
                 ModelArtifact {
-                    relative_path: "vjepa2-vitl-fpc2-256/model.onnx_data".to_string(),
+                    relative_path: "vjepa2-vitl-img16-256/model.onnx_data".to_string(),
                     download_url:
-                        "https://huggingface.co/abdelstark/vjepa2-vitl-fpc2-256-onnx/resolve/main/model.onnx_data"
+                        "https://huggingface.co/abdelstark/vjepa2-vitl-img16-256-onnx/resolve/main/model.onnx_data"
                             .to_string(),
                     checksum: Checksum::Sha256(
-                        "3a82e4d3cb3eaf1c13209daa08bb8ad7a408a4cc8bff3bee48978a8bfd34e640"
+                        "500f6ed1a52ffe39985d499b3e6398700f8ae2693aeccd573d9799e137ae3477"
                             .to_string(),
                     ),
                 },
             ],
             norm_mean: [0.485, 0.456, 0.406],
             norm_std: [0.229, 0.224, 0.225],
-            input_name: "pixel_values_videos".to_string(),
+            input_name: "pixel_values".to_string(),
             output_name: "last_hidden_state".to_string(),
-            video_frames: Some(2),
-            validation: default_validation_profile(
-                "facebookresearch/vjepa2",
-                PreprocessContract {
+            video_frames: None,
+            validation: ModelValidationProfile {
+                source: "facebookresearch/vjepa2".to_string(),
+                evidence_timestamp: "2026-03-27T12:00:00Z".to_string(),
+                fixture_set: "standard".to_string(),
+                preprocess: PreprocessContract {
                     input_size: 256,
                     resize_filter: "lanczos3".to_string(),
                     color_space: "rgb".to_string(),
-                    layout: "ntchw".to_string(),
+                    layout: "nchw".to_string(),
                     mean: [0.485, 0.456, 0.406],
                     std: [0.229, 0.224, 0.225],
                 },
-                TensorContract {
+                tensor: TensorContract {
                     name: "last_hidden_state".to_string(),
                     role: TensorRole::PatchSequence,
                     cls_expected: false,
@@ -641,7 +652,17 @@ pub fn registry() -> Vec<RegistryEntry> {
                     patch_count: 256,
                     embedding_dim: 1024,
                 },
-            ),
+                tolerances: ParityTolerances {
+                    patch_count_abs: 0,
+                    embedding_dim_abs: 0,
+                    patch_mean_abs: 1e-3,
+                    patch_std_abs: 1e-3,
+                    cls_l2_abs: 1e-3,
+                    patch_rms_abs: default_parity_signal_tolerance(),
+                    patch_signature_abs: default_parity_signal_tolerance(),
+                    cls_signature_abs: default_parity_signal_tolerance(),
+                },
+            },
         },
         // ── EUPE ViT-B/16 ──────────────────────────────────────────────
         // Paper: "Efficient Universal Perception Encoder"
@@ -667,6 +688,7 @@ pub fn registry() -> Vec<RegistryEntry> {
                 input_size: 224,
                 params_m: 86,
             },
+            aliases: Vec::new(),
             availability: Availability::ready(
                 "EUPE ViT-B/16 proxy-distilled from a large universal teacher into a compact efficient encoder.",
             ),
@@ -730,6 +752,7 @@ pub fn registry() -> Vec<RegistryEntry> {
                 params_m: 400,
             },
             availability: Availability::planned("Phase 3", phase_three_note),
+            aliases: Vec::new(),
             artifacts: vec![ModelArtifact {
                 relative_path: "siglip-so400m.onnx".to_string(),
                 download_url:
@@ -769,7 +792,9 @@ pub fn registry() -> Vec<RegistryEntry> {
 
 /// Look up a registry entry by model name.
 pub fn find(name: &str) -> Option<RegistryEntry> {
-    registry().into_iter().find(|entry| entry.info.name == name)
+    registry()
+        .into_iter()
+        .find(|entry| entry.info.name == name || entry.aliases.iter().any(|alias| alias == name))
 }
 
 /// Look up a model that is ready for inference in the current phase.
@@ -809,7 +834,7 @@ mod tests {
         assert!(names.contains(&"mae-vit-l16".to_string()));
         assert!(names.contains(&"clip-vit-l14".to_string()));
         assert!(names.contains(&"ijepa-vit-h14".to_string()));
-        assert!(names.contains(&"vjepa2-vitl-fpc2-256".to_string()));
+        assert!(names.contains(&"vjepa2-vitl-img16-256".to_string()));
         assert!(names.contains(&"eupe-vit-b16".to_string()));
         assert!(names.contains(&"siglip-so400m".to_string()));
     }
@@ -822,10 +847,16 @@ mod tests {
             vec![
                 "dinov2-vit-l14".to_string(),
                 "ijepa-vit-h14".to_string(),
-                "vjepa2-vitl-fpc2-256".to_string(),
+                "vjepa2-vitl-img16-256".to_string(),
                 "eupe-vit-b16".to_string(),
             ]
         );
+    }
+
+    #[test]
+    fn test_alias_lookup_resolves_to_canonical_entry() {
+        let entry = find("vjepa2-vitl-fpc2-256").unwrap();
+        assert_eq!(entry.info.name, "vjepa2-vitl-img16-256");
     }
 
     #[test]

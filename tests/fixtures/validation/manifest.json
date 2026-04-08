@@ -45,9 +45,9 @@
       "contract": "siglip-so400m.contract.json",
       "reference": "siglip-so400m.reference.json"
     },
-    "vjepa2-vitl-fpc2-256": {
-      "contract": "vjepa2-vitl-fpc2-256.contract.json",
-      "reference": "vjepa2-vitl-fpc2-256.reference.json"
+    "vjepa2-vitl-img16-256": {
+      "contract": "vjepa2-vitl-img16-256.contract.json",
+      "reference": "vjepa2-vitl-img16-256.reference.json"
     },
     "eupe-vit-b16": {
       "contract": "eupe-vit-b16.contract.json",

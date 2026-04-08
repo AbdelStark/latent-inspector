@@ -95,8 +95,12 @@ fn test_registry_has_all_models() {
     assert!(names.contains(&"ijepa-vit-h14".to_string()));
     assert!(names.contains(&"siglip-so400m".to_string()));
 
-    assert!(names.contains(&"vjepa2-vitl-fpc2-256".to_string()));
+    assert!(names.contains(&"vjepa2-vitl-img16-256".to_string()));
     assert!(names.contains(&"eupe-vit-b16".to_string()));
+    assert_eq!(
+        find("vjepa2-vitl-fpc2-256").unwrap().info.name,
+        "vjepa2-vitl-img16-256"
+    );
 
     let ready = latent_inspector::models::registry::ready_model_names();
     assert_eq!(
@@ -104,7 +108,7 @@ fn test_registry_has_all_models() {
         vec![
             "dinov2-vit-l14".to_string(),
             "ijepa-vit-h14".to_string(),
-            "vjepa2-vitl-fpc2-256".to_string(),
+            "vjepa2-vitl-img16-256".to_string(),
             "eupe-vit-b16".to_string(),
         ]
     );
