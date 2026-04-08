@@ -9,7 +9,12 @@ Inspect and compare self-supervised vision model representations for DINOv2, I-J
 [![Rust 1.75+](https://img.shields.io/badge/rust-1.75%2B-000000?logo=rust)](https://www.rust-lang.org)
 [![Pages](https://img.shields.io/badge/pages-github%20pages-0a7aca?logo=github)](https://abdelstark.github.io/latent-inspector/)
 
-📊 **Pages: [abdelstark.github.io/latent-inspector](https://abdelstark.github.io/latent-inspector/)** — landing page with links to the presentation and sample report. Direct presentation URL: [abdelstark.github.io/latent-inspector/slides.html](https://abdelstark.github.io/latent-inspector/slides.html)
+<table>
+<tr>
+<td width="50%"><strong><a href="https://abdelstark.github.io/latent-inspector/slides.html">How AI Models See the World</a></strong><br/><sub>Presentation deck for latent-inspector: project narrative, model comparison setup, corrected EUPE interpretation, and the representation-geometry thesis.</sub></td>
+<td width="50%"><strong><a href="https://abdelstark.github.io/latent-inspector/reports/20260408-123006/report.html">Four-Model Elephant Compare Report</a></strong><br/><sub>Self-contained sample report with per-model metrics, pairwise CKA and k-NN overlap, PCA projections, and exported artifact metadata.</sub></td>
+</tr>
+</table>
 
 </div>
 <table>
