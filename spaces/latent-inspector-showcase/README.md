@@ -38,6 +38,7 @@ A static Space is the fastest truthful publication layer.
 - `styles.css`
 - `assets/` with screenshots and PCA stills
 - `publish.sh` helper for HF upload once authenticated
+- `PUBLISH-MONDAY-CHECKLIST.md` with the exact ship steps and links
 
 ## Local preview
 ```bash
@@ -47,23 +48,28 @@ python3 -m http.server 8123
 ```
 
 ## Publish to Hugging Face Spaces
+Recommended Space ID:
+- `AbdelStark/latent-inspector-showcase`
+
 1. authenticate:
 ```bash
 hf auth login
 ```
-2. create the Space repo:
-```bash
-hf repo create AbdelStark/latent-inspector --type space
-```
-3. upload the package:
+2. publish in one shot:
 ```bash
 cd spaces/latent-inspector-showcase
-hf upload AbdelStark/latent-inspector . --repo-type space
+./publish.sh AbdelStark/latent-inspector-showcase
 ```
 
-If the Space name is already taken, use a variant like:
-- `latent-inspector-demo`
-- `latent-inspector-showcase`
+This helper will:
+- verify HF auth
+- create the Space if it does not exist yet
+- upload the package
+- print the live URL
+
+If the preferred Space name is already taken, use a variant like:
+- `AbdelStark/latent-inspector-demo`
+- `AbdelStark/latent-inspector-showcase-v1`
 
 ## Recommended next step after this package
 After the static Space is live:
