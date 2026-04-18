@@ -11,6 +11,8 @@ Inspect and compare self-supervised vision model representations for DINOv2, I-J
 
 📊 **Slides: [abdelstark.github.io/latent-inspector](https://abdelstark.github.io/latent-inspector/)** — "How AI Models See the World" (launch deck)
 
+🌐 **Hugging Face Space package:** `spaces/latent-inspector-showcase/` — static HTML front door ready to publish as a Space.
+
 </div>
 <table>
 <tr>
