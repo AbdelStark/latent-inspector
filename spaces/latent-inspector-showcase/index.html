@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>latent-inspector</title>
+    <meta name="description" content="Inspect how DINOv2, I-JEPA, V-JEPA 2, and EUPE carve the same image differently." />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="container">
+      <section class="hero">
+        <div>
+          <div class="eyebrow">Rust · ONNX Runtime · SSL vision geometry</div>
+          <h1>latent-inspector</h1>
+          <p class="subtitle">Compare how modern self-supervised vision backbones internally represent the same image.</p>
+          <p class="subtitle" style="font-size:18px;margin-top:8px;">This first Space is a static visual overview of the tool and findings. Interactive compare mode can come next.</p>
+          <div class="actions">
+            <a class="btn primary" href="#proof">See model differences</a>
+            <a class="btn" href="https://github.com/AbdelStark/latent-inspector">View GitHub repo</a>
+            <a class="btn" href="https://abdelstark.github.io/latent-inspector/">Open slides</a>
+            <a class="btn" href="https://abdelstark.github.io/latent-inspector/reports/eupe-vs-ssl-reference.html">Open report</a>
+          </div>
+          <div class="metrics">
+            <div class="metric-card"><div class="metric-k">Core models</div><div class="metric-v">4 models</div></div>
+            <div class="metric-card"><div class="metric-k">Comparison</div><div class="metric-v">PCA · CKA · rank</div></div>
+            <div class="metric-card"><div class="metric-k">Surface</div><div class="metric-v">CLI + TUI</div></div>
+            <div class="metric-card"><div class="metric-k">Focus</div><div class="metric-v">Representation health</div></div>
+          </div>
+        </div>
+        <div class="hero-card">
+          <img src="assets/elephant_sample_image.jpg" alt="Canonical elephant input image" />
+          <div class="hero-caption">
+            <span>Same image in</span>
+            <span>Four model views out</span>
+          </div>
+        </div>
+      </section>
+
+      <section id="proof" class="section panel">
+        <h2>What to notice first</h2>
+        <p>The same elephant image produces very different internal geometries depending on the training objective. That is the whole point of latent-inspector: to make representation differences visible and measurable.</p>
+        <div class="callout">Use this Space as the front door. Use the repo for source, the slides for narrative, and the report for deeper evidence.</div>
+      </section>
+
+      <section class="section panel">
+        <h2>PCA projections across the four reference models</h2>
+        <div class="pca-grid">
+          <article class="figure">
+            <h3>DINOv2</h3>
+            <img src="assets/dinov2-vit-l14_pca.png" alt="DINOv2 PCA projection" />
+            <p>Large coherent object-level zones. Strong semantic grouping.</p>
+          </article>
+          <article class="figure">
+            <h3>I-JEPA</h3>
+            <img src="assets/ijepa-vit-h14_pca.png" alt="I-JEPA PCA projection" />
+            <p>Finer local variation. More contextual structure per patch.</p>
+          </article>
+          <article class="figure">
+            <h3>V-JEPA 2</h3>
+            <img src="assets/vjepa2-vitl-fpc2-256_pca.png" alt="V-JEPA 2 PCA projection" />
+            <p>Structured continuity shaped by video-aware training.</p>
+          </article>
+          <article class="figure">
+            <h3>EUPE</h3>
+            <img src="assets/eupe-vit-b16_pca.png" alt="EUPE PCA projection" />
+            <p>Sharper, more compact geometry from proxy-distilled training.</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="section grid-2">
+        <article class="panel">
+          <h2>What the tool actually measures</h2>
+          <p><strong>Per-model:</strong> effective rank, dead dimensions, patch entropy, isotropy, uniformity, variance concentration, spatial coherence.</p>
+          <p><strong>Cross-model:</strong> CKA alignment, k-NN overlap, and other geometry comparisons where the architecture supports it.</p>
+          <p><strong>Why it matters:</strong> world-model and perception work lives or dies by latent-space quality. If the representation is weak, every downstream system inherits the weakness.</p>
+        </article>
+        <article class="panel">
+          <h2>Why this is useful</h2>
+          <p>Most people talk about SSL models at the paper-summary level. latent-inspector makes the differences concrete on a real image and gives you metrics, not just intuitions.</p>
+          <p>It is especially good for:</p>
+          <ul>
+            <li>backbone comparison</li>
+            <li>representation-health debugging</li>
+            <li>world-model / physical-AI reasoning</li>
+            <li>operator-legible demos and reports</li>
+          </ul>
+        </article>
+      </section>
+
+      <section class="section panel">
+        <h2>TUI surfaces</h2>
+        <div class="screenshot-grid">
+          <article class="screenshot large">
+            <div class="label">Dashboard — registry, preview, architecture comparison</div>
+            <img src="assets/tui-dashboard.png" alt="latent-inspector dashboard screenshot" />
+          </article>
+          <article class="screenshot">
+            <div class="label">Compare — cross-model metrics and overlap</div>
+            <img src="assets/tui-compare.png" alt="latent-inspector compare screenshot" />
+          </article>
+          <article class="screenshot">
+            <div class="label">Spectrum — variance / scree view</div>
+            <img src="assets/tui-spectrum.png" alt="latent-inspector spectrum screenshot" />
+          </article>
+        </div>
+      </section>
+
+      <section class="section panel">
+        <h2>Next useful upgrade for this Space</h2>
+        <p>Static first was the right call. The fastest next upgrade is not more prose — it is a short demo video and a tighter report preview. After that, build a second Space or v2 with a small interactive compare surface.</p>
+      </section>
+
+      <p class="footer">Built from the public latent-inspector repo assets. Use this as the browser-native front door, then go deeper through the repo, slides, and report.</p>
+    </main>
+  </body>
+</html>

@@ -16,6 +16,8 @@ Inspect and compare self-supervised vision model representations for DINOv2, I-J
 </tr>
 </table>
 
+🌐 **Hugging Face Space package:** `spaces/latent-inspector-showcase/` — static HTML front door ready to publish as a Space.
+
 </div>
 <table>
 <tr>
